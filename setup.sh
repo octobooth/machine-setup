@@ -32,7 +32,6 @@ gh_cli_extensions=(
     "github/gh-copilot"
     "github/gh-gei"
     "github/gh-models"
-    "github/gh-projects"
 )
 
 # Define required sites
