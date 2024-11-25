@@ -14,6 +14,7 @@ $vs_code_extensions = $config.vs_code_extensions
 $gh_cli_extensions = $config.gh_cli_extensions
 $PWA_SITES = $config.pwa_sites
 $DEMO_SITES = $config.demo_sites
+$VLC_SETTINGS = $config.vlc_settings
 
 # -----------------------------
 # Function Definitions
@@ -52,9 +53,7 @@ function Configure-VLC {
         New-Item -Path $vlcConfigPath -ItemType File -Force
     }
     Add-Content -Path $vlcConfigPath -Value "# Setup-script-configured=true"
-    Add-Content -Path $vlcConfigPath -Value "osd=0 # Hide filename display"
-    Add-Content -Path $vlcConfigPath -Value "loop=1 # Enable loop by default"
-    Add-Content -Path $vlcConfigPath -Value "video-title-show=0 # Hide filename display"
+    Add-Content -Path $vlcConfigPath -Value $VLC_SETTINGS
     Write-Output "✅ VLC settings configured - please restart VLC"
 }
 

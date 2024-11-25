@@ -16,6 +16,7 @@ vs_code_extensions=($(jq -r '.vs_code_extensions[]' "$CONFIG_FILE"))
 gh_cli_extensions=($(jq -r '.gh_cli_extensions[]' "$CONFIG_FILE"))
 PWA_SITES=($(jq -r '.pwa_sites[]' "$CONFIG_FILE"))
 DEMO_SITES=($(jq -r '.demo_sites[]' "$CONFIG_FILE"))
+VLC_SETTINGS=$(jq -r '.vlc_settings' "$CONFIG_FILE")
 
 # -----------------------------
 # Function Definitions
@@ -60,9 +61,7 @@ configure_vlc_settings() {
     # Add our sentinel and settings
     {
         echo "# Setup-script-configured=true"
-        echo "osd=0 # Hide filename display"
-        echo "loop=1 # Enable loop by default"
-        echo "video-title-show=0 # Hide filename display"
+        echo "$VLC_SETTINGS"
     } >> "$PREF_FILE"
     
     echo "✅ VLC settings configured - please restart VLC"
