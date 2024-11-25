@@ -8,42 +8,14 @@
 # Constants and Variables
 # -----------------------------
 
-# Define VS Code theme
-VSCODE_THEME="Default Dark+"
+CONFIG_FILE="/workspaces/machine-setup/config.json"
 
-# Define common VS Code extensions
-vs_code_extensions=(
-    "GitHub.copilot"
-    "GitHub.copilot-chat"
-    "GitHub.codespaces"
-    "github.vscode-github-actions"
-    "github.copilot-workspace"
-    "GitHub.vscode-pull-request-github"
-    "GitHub.remotehub"
-    "GitHub.vscode-codeql"
-)
-
-# Define GitHub CLI extensions
-gh_cli_extensions=(
-    "advanced-security/gh-sbom"
-    "github/gh-actions-importer"
-    "github/gh-classroom"
-    "github/gh-codeql"
-    "github/gh-copilot"
-    "github/gh-gei"
-    "github/gh-models"
-)
-
-# Define required sites
-PWA_SITES=(
-    "https://spark.githubnext.com"
-    "https://copilot-workspace.githubnext.com"
-)
-
-DEMO_SITES=(
-    "https://github.com"
-    "${PWA_SITES[@]}"
-)
+# Load configuration from JSON file
+VSCODE_THEME=$(jq -r '.vscode_theme' "$CONFIG_FILE")
+vs_code_extensions=($(jq -r '.vs_code_extensions[]' "$CONFIG_FILE"))
+gh_cli_extensions=($(jq -r '.gh_cli_extensions[]' "$CONFIG_FILE"))
+PWA_SITES=($(jq -r '.pwa_sites[]' "$CONFIG_FILE"))
+DEMO_SITES=($(jq -r '.demo_sites[]' "$CONFIG_FILE"))
 
 # -----------------------------
 # Function Definitions
