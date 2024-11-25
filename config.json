@@ -20,8 +20,8 @@
         "github/gh-models"
     ],
     "pwa_sites": [
-        "https://spark.githubnext.com",
-        "https://copilot-workspace.githubnext.com"
+        { "name": "GitHub Spark", "url": "https://spark.githubnext.com" },
+        { "name": "GitHub Copilot Workspace", "url": "https://copilot-workspace.githubnext.com" }
     ],
     "demo_sites": [
         "https://github.com",
