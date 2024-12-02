@@ -19,21 +19,25 @@ The configuration for the setup scripts is stored in the `config.json` file. You
 ### macOS
 
 1. Open a terminal and navigate to the repository directory.
-2. Run the setup script:
+2. Run the setup script to configure the machine:
 
     ```bash
     ./setup.sh
     ```
+3. A script will be created on the Desktop to load up the necessary applications.
+4. Store any booth videos in the `$HOME/videos` folder for easier loading from VLC.
 
 ### Windows
 
 1. Open PowerShell as an administrator.
 2. Navigate to the repository directory.
-3. Run the setup script:
+3. Run the setup script to configure the machine:
 
     ```powershell
     .\setup.ps1
     ```
+4. A script will be created on the Desktop to load up the necessary applications.
+5. Store any booth videos in the `C:\Users\<YourUsername>\Videos` folder for easier loading from VLC.
 
 ## License
 
