@@ -1,0 +1,32 @@
+{
+    "vscode_theme": "Default Dark+",
+    "vs_code_extensions": [
+        "GitHub.copilot",
+        "GitHub.copilot-chat",
+        "GitHub.codespaces",
+        "github.vscode-github-actions",
+        "github.copilot-workspace",
+        "GitHub.vscode-pull-request-github",
+        "GitHub.remotehub",
+        "GitHub.vscode-codeql"
+    ],
+    "gh_cli_extensions": [
+        "advanced-security/gh-sbom",
+        "github/gh-actions-importer",
+        "github/gh-classroom",
+        "github/gh-codeql",
+        "github/gh-copilot",
+        "github/gh-gei",
+        "github/gh-models"
+    ],
+    "pwa_sites": [
+        { "name": "GitHub Spark", "url": "https://spark.githubnext.com" },
+        { "name": "GitHub Copilot Workspace", "url": "https://copilot-workspace.githubnext.com" }
+    ],
+    "demo_sites": [
+        "https://github.com",
+        "https://spark.githubnext.com",
+        "https://copilot-workspace.githubnext.com"
+    ],
+    "vlc_settings": "osd=0 # Hide filename display\nloop=1 # Enable loop by default\nvideo-title-show=0 # Hide filename display"
+}
