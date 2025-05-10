@@ -285,6 +285,7 @@ New-DemoLoader
 $installed = @(
     "Visual Studio Code",
     "Visual Studio Code Insiders",
+    "Windows Terminal",
     "VLC Media Player",
     "GitHub CLI"
 ) | ForEach-Object { winget list | Select-String $_ }
