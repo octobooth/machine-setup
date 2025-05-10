@@ -243,6 +243,7 @@ function Install-PWAs {
 # Install core applications first
 Install-App -Name "Visual Studio Code" -Id "Microsoft.VisualStudioCode"
 Install-App -Name "Visual Studio Code Insiders" -Id "Microsoft.VisualStudioCode.Insiders"
+Install-App -Name "Windows Terminal" -Id "Microsoft.WindowsTerminal"
 Install-App -Name "GitHub CLI" -Id "GitHub.cli"
 Install-App -Name "VLC Media Player" -Id "VideoLAN.VLC"
 
