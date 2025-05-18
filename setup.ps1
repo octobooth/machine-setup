@@ -49,7 +49,7 @@ $VLC_SETTINGS = $config.vlc_settings
 function Install-App {
     <#
     .SYNOPSIS
-        Installs an application using winget if not already installed.
+        Installs an application using winget.
     .PARAMETER Name
         Display name of the application
     .PARAMETER Id
@@ -59,12 +59,19 @@ function Install-App {
         [string]$Name,
         [string]$Id
     )
-    if (-not (winget list | Select-String $Id)) {
+    try {
         Write-Host "$([char]::ConvertFromUtf32(0x2139)) Installing $Name..." -ForegroundColor Blue
-        winget install --id $Id -e --silent
+          # Just attempt the install - winget will handle if it's already installed
+        winget install --id $Id -e --accept-source-agreements --accept-package-agreements --silent 2>&1
+        
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "$([char]::ConvertFromUtf32(0x2705)) Successfully installed $Name" -ForegroundColor Green
+        } else {
+            Write-Host "$([char]::ConvertFromUtf32(0x26A0)) There might have been an issue installing $Name" -ForegroundColor Yellow
+        }
     }
-    else {
-        Write-Host "$([char]::ConvertFromUtf32(0x2705)) $Name is already installed." -ForegroundColor Green
+    catch {
+        Write-Host "$([char]::ConvertFromUtf32(0x274C)) Error installing $Name. Exception: $_" -ForegroundColor Red
     }
 }
 
@@ -75,8 +82,27 @@ function Install-VSCodeExtensions {
     .DESCRIPTION
         Iterates through configured extensions and installs them in VS Code stable.
     #>
-    foreach ($ext in $vs_code_extensions) {
-        code --install-extension $ext
+    try {
+        # Test if code command is available
+        $codeExists = Get-Command code -ErrorAction SilentlyContinue
+        if ($null -eq $codeExists) {
+            Write-Host "$([char]::ConvertFromUtf32(0x26A0)) VS Code is not available in PATH. Can't install extensions." -ForegroundColor Yellow
+            return
+        }
+        
+        Write-Host "Installing VS Code extensions..." -ForegroundColor Blue
+        foreach ($ext in $vs_code_extensions) {
+            Write-Host "Installing extension: $ext" -ForegroundColor Gray
+            $result = code --install-extension $ext 2>&1
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "$([char]::ConvertFromUtf32(0x2705)) Successfully installed extension: $ext" -ForegroundColor Green
+            } else {
+                Write-Host "$([char]::ConvertFromUtf32(0x26A0)) Failed to install extension: $ext" -ForegroundColor Yellow
+            }
+        }
+    }
+    catch {
+        Write-Host "$([char]::ConvertFromUtf32(0x274C)) Error installing VS Code extensions: $_" -ForegroundColor Red
     }
 }
 
@@ -87,8 +113,27 @@ function Install-VSCodeInsidersExtensions {
     .DESCRIPTION
         Iterates through configured extensions and installs them in VS Code Insiders.
     #>
-    foreach ($ext in $vs_code_extensions) {
-        code-insiders --install-extension $ext
+    try {
+        # Test if code-insiders command is available
+        $codeInsidersExists = Get-Command code-insiders -ErrorAction SilentlyContinue
+        if ($null -eq $codeInsidersExists) {
+            Write-Host "$([char]::ConvertFromUtf32(0x26A0)) VS Code Insiders is not available in PATH. Can't install extensions." -ForegroundColor Yellow
+            return
+        }
+        
+        Write-Host "Installing VS Code Insiders extensions..." -ForegroundColor Blue
+        foreach ($ext in $vs_code_extensions) {
+            Write-Host "Installing extension: $ext" -ForegroundColor Gray
+            $result = code-insiders --install-extension $ext 2>&1
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "$([char]::ConvertFromUtf32(0x2705)) Successfully installed extension: $ext" -ForegroundColor Green
+            } else {
+                Write-Host "$([char]::ConvertFromUtf32(0x26A0)) Failed to install extension: $ext" -ForegroundColor Yellow
+            }
+        }
+    }
+    catch {
+        Write-Host "$([char]::ConvertFromUtf32(0x274C)) Error installing VS Code Insiders extensions: $_" -ForegroundColor Red
     }
 }
 
@@ -99,8 +144,27 @@ function Install-GHExtensions {
     .DESCRIPTION
         Installs configured GitHub CLI extensions after authentication is confirmed.
     #>
-    foreach ($ext in $gh_cli_extensions) {
-        gh extension install $ext
+    try {
+        # Test if gh command is available
+        $ghExists = Get-Command gh -ErrorAction SilentlyContinue
+        if ($null -eq $ghExists) {
+            Write-Host "$([char]::ConvertFromUtf32(0x26A0)) GitHub CLI is not available in PATH. Can't install extensions." -ForegroundColor Yellow
+            return
+        }
+        
+        Write-Host "Installing GitHub CLI extensions..." -ForegroundColor Blue
+        foreach ($ext in $gh_cli_extensions) {
+            Write-Host "Installing extension: $ext" -ForegroundColor Gray
+            $result = gh extension install $ext 2>&1
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "$([char]::ConvertFromUtf32(0x2705)) Successfully installed extension: $ext" -ForegroundColor Green
+            } else {
+                Write-Host "$([char]::ConvertFromUtf32(0x26A0)) Failed to install extension: $ext" -ForegroundColor Yellow
+            }
+        }
+    }
+    catch {
+        Write-Host "$([char]::ConvertFromUtf32(0x274C)) Error installing GitHub CLI extensions: $_" -ForegroundColor Red
     }
 }
 
@@ -214,10 +278,7 @@ function Install-PWAs {
     # Progressive Web Apps improve desktop integration for web tools
     # Edge is required for PWA functionality
     # Ensure Edge is installed
-    if (-not (winget list | Select-String "Microsoft.Edge")) {
-        Write-Host "$([char]::ConvertFromUtf32(0x2139)) Installing Microsoft Edge..." -ForegroundColor Blue
-        winget install --id Microsoft.Edge -e --silent
-    }
+    Write-Host "Assuming Microsoft Edge is already installed (skipping check to avoid errors)" -ForegroundColor Yellow
 
     foreach ($site in $PWA_SITES) {
         $name = $site.name
@@ -236,16 +297,53 @@ function Install-PWAs {
 # Main Execution
 # -----------------------------
 
+# Enable verbose output to track script execution
+$ErrorActionPreference = "Continue"
+$WarningPreference = "Continue"
+$VerbosePreference = "Continue"
+Write-Host "========================================" -ForegroundColor Cyan
+Write-Host "Starting setup script - $(Get-Date)" -ForegroundColor Cyan
+Write-Host "Running from: $PSScriptRoot" -ForegroundColor Cyan
+Write-Host "========================================" -ForegroundColor Cyan
+
+# Check for admin privileges
+$isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+if ($isAdmin) {
+    Write-Host "✅ Running with Administrator privileges" -ForegroundColor Green
+} else {
+    Write-Host "⚠️ WARNING: Not running with Administrator privileges. Some operations may fail." -ForegroundColor Yellow
+    Write-Host "Consider restarting the script with admin rights by right-clicking PowerShell and selecting 'Run as Administrator'" -ForegroundColor Yellow
+}
+
+# Verify config.json exists and can be loaded
+if (Test-Path "./config.json") {
+    Write-Host "✅ config.json found" -ForegroundColor Green
+} else {
+    Write-Host "❌ ERROR: config.json not found in $PSScriptRoot" -ForegroundColor Red
+    return
+}
+
 # Main execution block
 # Order is important: base apps → authentication → extensions → configuration
 # This ensures dependencies are available when needed
 
+Write-Host "Checking for winget command availability..." -ForegroundColor Cyan
+try {
+    $wingetVersion = winget --version
+    Write-Host "✅ winget is available (version: $wingetVersion)" -ForegroundColor Green
+} catch {
+    Write-Host "❌ ERROR: winget command not found. Please install App Installer from Microsoft Store." -ForegroundColor Red
+    return
+}
+
 # Install core applications first
+Write-Host "Starting application installations..." -ForegroundColor Cyan
 Install-App -Name "Visual Studio Code" -Id "Microsoft.VisualStudioCode"
 Install-App -Name "Visual Studio Code Insiders" -Id "Microsoft.VisualStudioCode.Insiders"
 Install-App -Name "Windows Terminal" -Id "Microsoft.WindowsTerminal"
 Install-App -Name "GitHub CLI" -Id "GitHub.cli"
 Install-App -Name "VLC Media Player" -Id "VideoLAN.VLC"
+Write-Host "Core application installation complete" -ForegroundColor Cyan
 
 # Refresh the path so that GitHub CLI Extension installations work correctly
 $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User") 

@@ -16,9 +16,9 @@
         "github/gh-codeql",
         "github/gh-copilot",
         "github/gh-gei",
-        "github/gh-models"
-        "github/gh-skyline"
-        "github-samples/gh-game",
+        "github/gh-models",
+        "github/gh-skyline",
+        "github-samples/gh-game"
     ],
     "pwa_sites": [
     ],
