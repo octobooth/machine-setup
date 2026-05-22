@@ -359,7 +359,33 @@ function Register-MCPServers {
         $mcpConfig = [PSCustomObject]@{ mcpServers = [PSCustomObject]@{} }
     }
 
+    $placeholders = @()
+    if ($config.shared.PSObject.Properties.Name -contains 'placeholders') {
+        $placeholders = @($config.shared.placeholders)
+    }
+
     foreach ($server in $config.shared.mcp_servers) {
+        $serverValues = @()
+        if ($server.PSObject.Properties.Name -contains 'args' -and $server.args) {
+            $serverValues += @($server.args)
+        }
+        if ($server.PSObject.Properties.Name -contains 'url' -and $server.url) {
+            $serverValues += $server.url
+        }
+
+        $hasPlaceholder = $false
+        foreach ($value in $serverValues) {
+            foreach ($placeholder in $placeholders) {
+                if ($value -like "*$placeholder*") { $hasPlaceholder = $true; break }
+            }
+            if ($hasPlaceholder) { break }
+        }
+
+        if ($hasPlaceholder) {
+            Write-Warn "Skipping MCP server '$($server.name)' (contains placeholder value — edit config.json and re-run)"
+            continue
+        }
+
         $serverConfig = if ($server.type -eq "local") {
             [PSCustomObject]@{
                 tools   = @("*")
@@ -382,6 +408,186 @@ function Register-MCPServers {
 
     $mcpConfig | ConvertTo-Json -Depth 10 | Out-File -FilePath $mcpConfigPath -Force -Encoding UTF8
     Write-Success "MCP servers written to $mcpConfigPath"
+}
+
+function Install-VisualStudio {
+    if ($null -eq $config.windows.visual_studio) {
+        return
+    }
+
+    $vs = $config.windows.visual_studio
+    $edition = $vs.edition
+    $url = $vs.bootstrapper_url
+    $installPath = $vs.install_path
+
+    if ((Test-ShouldSkipInstalled) -and $installPath -and (Test-Path $installPath)) {
+        Write-Success "Already installed: Visual Studio $edition ($installPath)"
+        return
+    }
+
+    Write-Info "Installing Visual Studio $edition from $url ..."
+
+    $bootstrapper = Join-Path $env:TEMP "vs_$($edition.ToLower()).exe"
+
+    try {
+        Invoke-WebRequest -Uri $url -OutFile $bootstrapper -UseBasicParsing
+    } catch {
+        $script:failedItems += "Visual Studio: bootstrapper download failed"
+        Write-Err "Failed to download Visual Studio bootstrapper: $_"
+        return
+    }
+
+    # Build bootstrapper arguments: --add per workload, plus standard install flags
+    $bootstrapperArgs = @()
+    foreach ($workload in $vs.workloads) {
+        $bootstrapperArgs += "--add"
+        $bootstrapperArgs += $workload
+    }
+    if ($vs.include_recommended) { $bootstrapperArgs += "--includeRecommended" }
+    $bootstrapperArgs += "--quiet"
+    $bootstrapperArgs += "--wait"
+    $bootstrapperArgs += "--norestart"
+    $bootstrapperArgs += "--nocache"
+
+    Write-Info "Running Visual Studio installer (this may take a while)..."
+    try {
+        $proc = Start-Process -FilePath $bootstrapper -ArgumentList $bootstrapperArgs -Wait -PassThru -NoNewWindow
+        # Per Microsoft docs: 0 = success, 3010 = success but reboot required, 1602/1603 = user/install error
+        if ($proc.ExitCode -eq 0) {
+            Write-Success "Visual Studio $edition installed"
+        } elseif ($proc.ExitCode -eq 3010) {
+            Write-Success "Visual Studio $edition installed (reboot required)"
+        } else {
+            $script:failedItems += "Visual Studio: installer exit $($proc.ExitCode)"
+            Write-Err "Visual Studio installer returned exit code $($proc.ExitCode)"
+        }
+    } catch {
+        $script:failedItems += "Visual Studio: $_"
+        Write-Err "Failed to run Visual Studio installer: $_"
+    } finally {
+        Remove-Item $bootstrapper -ErrorAction SilentlyContinue
+    }
+}
+
+function Install-Aspire {
+    if ((Test-ShouldSkipInstalled) -and (Get-Command aspire -ErrorAction SilentlyContinue)) {
+        Write-Success "Already installed: aspire CLI"
+        return
+    }
+
+    Write-Info "Installing Aspire CLI..."
+
+    $tmp = Join-Path $env:TEMP "aspire-install.ps1"
+
+    try {
+        Invoke-WebRequest -Uri "https://aspire.dev/install.ps1" -OutFile $tmp -UseBasicParsing
+    } catch {
+        $script:failedItems += "aspire CLI: download failed"
+        Write-Err "Failed to download Aspire installer: $_"
+        return
+    }
+
+    Invoke-SafeInstall -Description "aspire CLI: install" -Action {
+        & powershell -NoProfile -ExecutionPolicy Bypass -File $tmp 2>&1
+    }
+
+    Remove-Item $tmp -ErrorAction SilentlyContinue
+
+    # Refresh PATH from system + user, and make aspire available in this session
+    $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+    $aspireBin = Join-Path $env:USERPROFILE ".aspire\bin"
+    if ((Test-Path $aspireBin) -and ($env:Path -notlike "*$aspireBin*")) {
+        $env:Path = "$aspireBin;$env:Path"
+    }
+
+    if (Get-Command aspire -ErrorAction SilentlyContinue) {
+        Write-Success "Aspire CLI installed"
+    } else {
+        Write-Warn "Aspire installer ran but 'aspire' is not yet on PATH"
+    }
+}
+
+function Install-NpmGlobals {
+    $packages = $config.shared.npm_global_packages
+    if ($null -eq $packages -or $packages.Count -eq 0) {
+        return
+    }
+
+    # Refresh PATH so npm (installed by winget via OpenJS.NodeJS.LTS) is visible
+    $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+
+    if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
+        Write-Warn "npm not available on PATH; skipping global npm package install"
+        $script:failedItems += "npm global packages: npm not on PATH"
+        return
+    }
+
+    Write-Info "Installing npm packages globally..."
+    foreach ($pkg in $packages) {
+        Invoke-SafeInstall -Description "npm global: $pkg" -Action {
+            npm install -g $pkg 2>&1
+        }
+    }
+}
+
+function Install-CopilotApp {
+    if ($null -eq $config.windows.copilot_app) {
+        return
+    }
+
+    $url = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') {
+        $config.windows.copilot_app.url_arm64
+    } else {
+        $config.windows.copilot_app.url_x64
+    }
+
+    # Common install locations the desktop app may use
+    $installedMarkers = @(
+        (Join-Path $env:LOCALAPPDATA "Programs\github-copilot"),
+        (Join-Path $env:LOCALAPPDATA "Programs\GitHubCopilot"),
+        (Join-Path $env:LOCALAPPDATA "Programs\GitHub Copilot")
+    )
+    if (Test-ShouldSkipInstalled) {
+        foreach ($m in $installedMarkers) {
+            if (Test-Path $m) {
+                Write-Success "Already installed: GitHub Copilot app ($m)"
+                return
+            }
+        }
+    }
+
+    Write-Info "Downloading GitHub Copilot app from $url ..."
+    $installer = Join-Path $env:TEMP "GitHub-Copilot-setup.exe"
+
+    try {
+        Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing
+    } catch {
+        $script:failedItems += "GitHub Copilot app: download failed"
+        Write-Err "Failed to download GitHub Copilot app: $_"
+        return
+    }
+
+    Write-Info "Running GitHub Copilot app installer (silent)..."
+    try {
+        $proc = Start-Process -FilePath $installer -ArgumentList '/S' -Wait -PassThru
+        if ($proc.ExitCode -ne 0) {
+            Write-Warn "Silent install returned exit code $($proc.ExitCode); retrying interactively..."
+            $proc2 = Start-Process -FilePath $installer -Wait -PassThru
+            if ($proc2.ExitCode -ne 0) {
+                $script:failedItems += "GitHub Copilot app: installer exit $($proc2.ExitCode)"
+                Write-Err "GitHub Copilot app installer failed (exit $($proc2.ExitCode))"
+            } else {
+                Write-Success "GitHub Copilot app installed"
+            }
+        } else {
+            Write-Success "GitHub Copilot app installed"
+        }
+    } catch {
+        $script:failedItems += "GitHub Copilot app: $_"
+        Write-Err "Failed to run GitHub Copilot app installer: $_"
+    } finally {
+        Remove-Item $installer -ErrorAction SilentlyContinue
+    }
 }
 
 function New-DemoLoader {
@@ -435,6 +641,9 @@ Import-Config
 
 # Install packages
 Install-Packages
+Install-VisualStudio
+Install-Aspire
+Install-NpmGlobals
 Set-VLCConfiguration
 
 # Launch post-install apps
@@ -442,6 +651,7 @@ Start-PostInstallApps
 
 # Setup environments
 Connect-GH
+Install-CopilotApp
 Copy-Repos
 Install-PWAs
 

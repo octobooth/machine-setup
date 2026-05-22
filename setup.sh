@@ -134,6 +134,12 @@ load_config() {
 
     demo_sites=()
     while IFS= read -r line; do demo_sites+=("$line"); done < <(jq -r '.shared.demo_sites[]' "$CONFIG_FILE")
+
+    placeholders=()
+    while IFS= read -r line; do placeholders+=("$line"); done < <(jq -r '.shared.placeholders // [] | .[]' "$CONFIG_FILE")
+
+    npm_global_packages=()
+    while IFS= read -r line; do npm_global_packages+=("$line"); done < <(jq -r '.shared.npm_global_packages // [] | .[]' "$CONFIG_FILE")
 }
 
 # ----------------------------------------
@@ -397,6 +403,28 @@ configure_editors() {
     done
 }
 
+# Returns 0 if any arg/url of the MCP server at the given index matches a placeholder
+mcp_server_has_placeholder() {
+    local idx="$1"
+
+    if [[ ${#placeholders[@]} -eq 0 ]]; then
+        return 1
+    fi
+
+    local values
+    values=$(jq -r ".shared.mcp_servers[$idx] | (.args // []) + [(.url // empty)] | .[]" "$CONFIG_FILE")
+
+    while IFS= read -r value; do
+        for placeholder in "${placeholders[@]}"; do
+            if [[ "$value" == *"$placeholder"* ]]; then
+                return 0
+            fi
+        done
+    done <<< "$values"
+
+    return 1
+}
+
 # Registers MCP servers in Copilot CLI config
 register_mcp_servers() {
     local copilot_home="${COPILOT_HOME:-$HOME/.copilot}"
@@ -422,6 +450,11 @@ register_mcp_servers() {
         local name type
         name=$(jq -r ".shared.mcp_servers[$i].name" "$CONFIG_FILE")
         type=$(jq -r ".shared.mcp_servers[$i].type" "$CONFIG_FILE")
+
+        if mcp_server_has_placeholder "$i"; then
+            log_warn "Skipping MCP server '$name' (contains placeholder value — edit config.json and re-run)"
+            continue
+        fi
 
         if [[ "$type" == "local" ]]; then
             local command args
@@ -450,6 +483,50 @@ register_mcp_servers() {
 
     echo "$existing" | jq . > "$mcp_config"
     log_success "MCP servers written to $mcp_config"
+}
+
+# Installs the Microsoft Aspire CLI via the official installer script
+install_aspire() {
+    if should_skip_installed && command -v aspire &> /dev/null; then
+        log_success "Already installed: aspire CLI"
+        return
+    fi
+
+    log_info "Installing Aspire CLI..."
+
+    local tmp
+    tmp=$(mktemp)
+    if ! curl -fsSL https://aspire.dev/install.sh -o "$tmp"; then
+        failed_items+=("aspire CLI: download failed")
+        log_error "Failed to download Aspire installer"
+        rm -f "$tmp"
+        return
+    fi
+
+    try_install "aspire CLI: install" bash "$tmp"
+    rm -f "$tmp"
+
+    # Make aspire available in this shell + persist for future shells
+    local aspire_bin="$HOME/.aspire/bin"
+    if [[ -d "$aspire_bin" ]]; then
+        export PATH="$aspire_bin:$PATH"
+
+        local shell_rc="$HOME/.zshrc"
+        if ! grep -q '\.aspire/bin' "$shell_rc" 2>/dev/null; then
+            log_info "Adding Aspire CLI to PATH in $shell_rc..."
+            {
+                echo ''
+                echo '# Aspire CLI'
+                echo 'export PATH="$HOME/.aspire/bin:$PATH"'
+            } >> "$shell_rc"
+        fi
+    fi
+
+    if command -v aspire &> /dev/null; then
+        log_success "Aspire CLI installed"
+    else
+        log_warn "Aspire installer ran but 'aspire' is not yet on PATH"
+    fi
 }
 
 # Creates a demo loader script to launch all required applications and sites
@@ -485,6 +562,35 @@ EOF
 # Main Execution
 # ----------------------------------------
 
+# Install npm packages globally (so MCP servers don't need npx at runtime)
+install_npm_globals() {
+    if [[ ${#npm_global_packages[@]} -eq 0 ]]; then
+        return
+    fi
+
+    # nvm-installed node may not be on PATH yet in this shell; source nvm if available
+    if ! command -v npm &> /dev/null; then
+        export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+        local nvm_sh
+        nvm_sh="$(brew --prefix nvm 2>/dev/null)/nvm.sh"
+        if [[ -s "$nvm_sh" ]]; then
+            # shellcheck disable=SC1090
+            . "$nvm_sh"
+        fi
+    fi
+
+    if ! command -v npm &> /dev/null; then
+        log_warn "npm not available; skipping global npm package install"
+        failed_items+=("npm global packages: npm not on PATH")
+        return
+    fi
+
+    log_info "Installing npm packages globally..."
+    for pkg in "${npm_global_packages[@]}"; do
+        try_install "npm global: $pkg" npm install -g "$pkg"
+    done
+}
+
 # Bootstrap: install homebrew and jq before loading config
 install_homebrew
 install_jq
@@ -492,6 +598,8 @@ load_config
 
 # Install packages
 install_packages
+install_aspire
+install_npm_globals
 configure_vlc
 
 # Launch post-install apps (e.g., Docker)

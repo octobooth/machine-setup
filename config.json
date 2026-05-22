@@ -29,10 +29,8 @@
       {
         "name": "playwright",
         "type": "local",
-        "command": "npx",
-        "args": [
-          "@playwright/mcp@latest"
-        ]
+        "command": "playwright-mcp",
+        "args": []
       },
       {
         "name": "microsoft-learn",
@@ -48,7 +46,41 @@
         "name": "svelte-docs",
         "type": "http",
         "url": "https://mcp.svelte.dev/mcp"
+      },
+      {
+        "name": "aspire",
+        "type": "local",
+        "command": "aspire",
+        "args": [
+          "agent",
+          "mcp"
+        ]
+      },
+      {
+        "name": "azure-devops",
+        "type": "local",
+        "command": "mcp-server-azuredevops",
+        "args": [
+          "<YOUR-ADO-ORG>"
+        ]
+      },
+      {
+        "name": "azure",
+        "type": "local",
+        "command": "azmcp",
+        "args": [
+          "server",
+          "start"
+        ]
       }
+    ],
+    "npm_global_packages": [
+      "@playwright/mcp",
+      "@azure/mcp",
+      "@azure-devops/mcp"
+    ],
+    "placeholders": [
+      "<YOUR-ADO-ORG>"
     ],
     "repos_to_clone": [
       "octobooth/setup-scripts",
@@ -64,7 +96,8 @@
         "vlc",
         "copilot-cli",
         "google-chrome",
-        "github"
+        "github",
+        "github-copilot-app"
       ],
       "formulas": [
         "gh",
@@ -97,8 +130,24 @@
       "VideoLAN.VLC",
       "GitHub.Copilot",
       "Google.Chrome",
-      "GitHub.GitHubDesktop"
+      "GitHub.GitHubDesktop",
+      "OpenJS.NodeJS.LTS"
     ],
+    "visual_studio": {
+      "edition": "Enterprise",
+      "bootstrapper_url": "https://aka.ms/vs/stable/vs_enterprise.exe",
+      "install_path": "C:\\Program Files\\Microsoft Visual Studio\\2026\\Enterprise",
+      "workloads": [
+        "Microsoft.VisualStudio.Workload.NetWeb",
+        "Microsoft.VisualStudio.Workload.Azure",
+        "Microsoft.VisualStudio.Workload.ManagedDesktop"
+      ],
+      "include_recommended": true
+    },
+    "copilot_app": {
+      "url_x64": "https://github.com/github/app/releases/latest/download/GitHub-Copilot-windows-x64-setup.exe",
+      "url_arm64": "https://github.com/github/app/releases/latest/download/GitHub-Copilot-windows-arm64-setup.exe"
+    },
     "editors": [
       {
         "name": "VS Code",
