@@ -403,26 +403,158 @@ configure_editors() {
     done
 }
 
-# Returns 0 if any arg/url of the MCP server at the given index matches a placeholder
-mcp_server_has_placeholder() {
-    local idx="$1"
-
+# Returns 0 if any of the given values (passed as args) contains a placeholder
+mcp_values_have_placeholder() {
     if [[ ${#placeholders[@]} -eq 0 ]]; then
         return 1
     fi
 
-    local values
-    values=$(jq -r ".shared.mcp_servers[$idx] | (.args // []) + [(.url // empty)] | .[]" "$CONFIG_FILE")
-
-    while IFS= read -r value; do
+    for value in "$@"; do
         for placeholder in "${placeholders[@]}"; do
             if [[ "$value" == *"$placeholder"* ]]; then
                 return 0
             fi
         done
-    done <<< "$values"
+    done
 
     return 1
+}
+
+# Path to the per-machine setup state file (separate from checked-in config)
+setup_state_path() {
+    local copilot_home="${COPILOT_HOME:-$HOME/.copilot}"
+    echo "$copilot_home/machine-setup-state.json"
+}
+
+# Reads the setup state file into the global ADO_ORG_VALUE / ADO_ORG_MODE vars.
+# Tolerates missing or corrupt state — warns and continues with defaults.
+load_setup_state() {
+    ADO_ORG_VALUE=""
+    ADO_ORG_MODE=""
+
+    local state_path
+    state_path=$(setup_state_path)
+    [[ -f "$state_path" ]] || return 0
+
+    if ! jq empty "$state_path" 2>/dev/null; then
+        log_warn "Setup state file at $state_path is not valid JSON; ignoring"
+        return 0
+    fi
+
+    ADO_ORG_VALUE=$(jq -r '.inputs.azure_devops_org.value // ""' "$state_path")
+    ADO_ORG_MODE=$(jq -r '.inputs.azure_devops_org.mode // ""' "$state_path")
+}
+
+# Atomically writes the current ADO_ORG_VALUE / ADO_ORG_MODE to the state file.
+save_setup_state() {
+    local state_path
+    state_path=$(setup_state_path)
+    local copilot_home="${COPILOT_HOME:-$HOME/.copilot}"
+    mkdir -p "$copilot_home"
+
+    local existing='{}'
+    if [[ -f "$state_path" ]] && jq empty "$state_path" 2>/dev/null; then
+        existing=$(cat "$state_path")
+    fi
+
+    local updated
+    updated=$(echo "$existing" | jq \
+        --arg value "$ADO_ORG_VALUE" \
+        --arg mode "$ADO_ORG_MODE" \
+        '.inputs //= {} | .inputs.azure_devops_org = {value: $value, mode: $mode}')
+
+    local tmp="${state_path}.tmp.$$"
+    printf '%s\n' "$updated" > "$tmp" || { log_warn "Failed to write setup state"; rm -f "$tmp"; return 0; }
+    if ! jq empty "$tmp" 2>/dev/null; then
+        log_warn "Setup state write produced invalid JSON; discarding"
+        rm -f "$tmp"
+        return 0
+    fi
+    mv "$tmp" "$state_path"
+    chmod 600 "$state_path" 2>/dev/null || true
+}
+
+# Prompts (when TTY) for inputs that vary per machine. Sets ADO_ORG_VALUE
+# and ADO_ORG_MODE ("configured", "skip", or "" = not answered).
+#
+# Precedence:
+#   1. ADO_ORG env var (if set, including empty = explicit skip)
+#   2. Interactive prompt with cached value as default
+#   3. Cached value (when non-interactive)
+#   4. Skip
+prompt_for_inputs() {
+    load_setup_state
+
+    # 1. Env var override (always wins; explicit empty = skip)
+    if [[ -n "${ADO_ORG+x}" ]]; then
+        local trimmed
+        trimmed="${ADO_ORG#"${ADO_ORG%%[![:space:]]*}"}"
+        trimmed="${trimmed%"${trimmed##*[![:space:]]}"}"
+        if [[ -z "$trimmed" ]]; then
+            ADO_ORG_VALUE=""
+            ADO_ORG_MODE="skip"
+            log_info "ADO_ORG is empty in env; Azure DevOps MCP server will be skipped"
+        else
+            ADO_ORG_VALUE="$trimmed"
+            ADO_ORG_MODE="configured"
+            log_info "Using Azure DevOps org from ADO_ORG env var: $ADO_ORG_VALUE"
+        fi
+        save_setup_state
+        return 0
+    fi
+
+    # 2. Interactive prompt (only when both stdin and stdout are TTYs)
+    if [[ -t 0 ]] && [[ -t 1 ]]; then
+        local prompt_label="Azure DevOps organization name"
+        local hint
+        if [[ "$ADO_ORG_MODE" == "configured" ]] && [[ -n "$ADO_ORG_VALUE" ]]; then
+            hint="[current: $ADO_ORG_VALUE; Enter to keep, '-' to clear]"
+        else
+            hint="(leave blank to skip the Azure DevOps MCP server)"
+        fi
+
+        local answer
+        printf '%s %s\n> ' "$prompt_label" "$hint" >&2
+        IFS= read -r answer || answer=""
+
+        local trimmed
+        trimmed="${answer#"${answer%%[![:space:]]*}"}"
+        trimmed="${trimmed%"${trimmed##*[![:space:]]}"}"
+
+        if [[ -z "$trimmed" ]]; then
+            if [[ "$ADO_ORG_MODE" == "configured" ]] && [[ -n "$ADO_ORG_VALUE" ]]; then
+                log_info "Keeping cached Azure DevOps org: $ADO_ORG_VALUE"
+            else
+                ADO_ORG_VALUE=""
+                ADO_ORG_MODE="skip"
+                log_info "Azure DevOps MCP server will be skipped"
+            fi
+        elif [[ "$trimmed" == "-" ]]; then
+            ADO_ORG_VALUE=""
+            ADO_ORG_MODE="skip"
+            log_info "Cleared Azure DevOps org; the MCP server will be skipped"
+        else
+            if [[ "$trimmed" == *" "* ]] || [[ "$trimmed" == *"/"* ]] || [[ "$trimmed" == *":"* ]]; then
+                log_warn "Azure DevOps org '$trimmed' contains unusual characters; accepting anyway"
+            fi
+            ADO_ORG_VALUE="$trimmed"
+            ADO_ORG_MODE="configured"
+            log_success "Azure DevOps org set to: $ADO_ORG_VALUE"
+        fi
+        save_setup_state
+        return 0
+    fi
+
+    # 3. Non-interactive: fall back to cached value if present
+    if [[ "$ADO_ORG_MODE" == "configured" ]] && [[ -n "$ADO_ORG_VALUE" ]]; then
+        log_info "Non-interactive run; using cached Azure DevOps org: $ADO_ORG_VALUE"
+    elif [[ "$ADO_ORG_MODE" == "skip" ]]; then
+        log_info "Non-interactive run; cached state says skip Azure DevOps MCP server"
+    else
+        log_info "Non-interactive run with no cached value; Azure DevOps MCP server will be skipped"
+        ADO_ORG_VALUE=""
+        ADO_ORG_MODE="skip"
+    fi
 }
 
 # Registers MCP servers in Copilot CLI config
@@ -451,8 +583,9 @@ register_mcp_servers() {
         name=$(jq -r ".shared.mcp_servers[$i].name" "$CONFIG_FILE")
         type=$(jq -r ".shared.mcp_servers[$i].type" "$CONFIG_FILE")
 
-        if mcp_server_has_placeholder "$i"; then
-            log_warn "Skipping MCP server '$name' (contains placeholder value — edit config.json and re-run)"
+        # Explicit skip: azure-devops requires a configured org
+        if [[ "$name" == "azure-devops" ]] && [[ "$ADO_ORG_MODE" != "configured" || -z "$ADO_ORG_VALUE" ]]; then
+            log_warn "Skipping MCP server 'azure-devops' (no Azure DevOps org configured — re-run setup to provide one or set ADO_ORG)"
             continue
         fi
 
@@ -460,6 +593,23 @@ register_mcp_servers() {
             local command args
             command=$(jq -r ".shared.mcp_servers[$i].command" "$CONFIG_FILE")
             args=$(jq -c ".shared.mcp_servers[$i].args" "$CONFIG_FILE")
+
+            # Substitute placeholders in args using known inputs
+            if [[ -n "$ADO_ORG_VALUE" ]]; then
+                args=$(echo "$args" | jq --arg v "$ADO_ORG_VALUE" 'map(if . == "<YOUR-ADO-ORG>" then $v else . end)')
+            fi
+
+            # Defensive backstop: refuse to register if any placeholder slipped through
+            local arg_strings
+            arg_strings=$(echo "$args" | jq -r '.[]')
+            local has_ph=0
+            while IFS= read -r v; do
+                if mcp_values_have_placeholder "$v"; then has_ph=1; break; fi
+            done <<< "$arg_strings"
+            if [[ "$has_ph" -eq 1 ]]; then
+                log_warn "Skipping MCP server '$name' (placeholder still present after substitution)"
+                continue
+            fi
 
             existing=$(echo "$existing" | jq \
                 --arg name "$name" \
@@ -470,6 +620,11 @@ register_mcp_servers() {
         else
             local url
             url=$(jq -r ".shared.mcp_servers[$i].url" "$CONFIG_FILE")
+
+            if mcp_values_have_placeholder "$url"; then
+                log_warn "Skipping MCP server '$name' (URL still contains a placeholder)"
+                continue
+            fi
 
             existing=$(echo "$existing" | jq \
                 --arg name "$name" \
@@ -595,6 +750,9 @@ install_npm_globals() {
 install_homebrew
 install_jq
 load_config
+
+# Prompt for per-machine inputs early, so the user isn't stuck waiting later
+prompt_for_inputs
 
 # Install packages
 install_packages

@@ -107,6 +107,160 @@ function Import-Config {
 }
 
 # ----------------------------------------
+# Setup state (per-machine inputs)
+# ----------------------------------------
+
+function Get-SetupStatePath {
+    $copilotHome = if ($env:COPILOT_HOME) { $env:COPILOT_HOME } else { Join-Path $env:USERPROFILE ".copilot" }
+    return (Join-Path $copilotHome "machine-setup-state.json")
+}
+
+# Reads the setup state into $script:AdoOrgValue and $script:AdoOrgMode.
+# Tolerates missing or corrupt state.
+function Get-SetupState {
+    $script:AdoOrgValue = ""
+    $script:AdoOrgMode = ""
+
+    $statePath = Get-SetupStatePath
+    if (-not (Test-Path $statePath)) { return }
+
+    try {
+        $state = Get-Content -Raw -Path $statePath -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+    } catch {
+        Write-Warn "Setup state file at $statePath is not valid JSON; ignoring"
+        return
+    }
+
+    if ($state.PSObject.Properties.Name -contains 'inputs' -and
+        $state.inputs.PSObject.Properties.Name -contains 'azure_devops_org') {
+        $entry = $state.inputs.azure_devops_org
+        if ($entry.PSObject.Properties.Name -contains 'value') { $script:AdoOrgValue = [string]$entry.value }
+        if ($entry.PSObject.Properties.Name -contains 'mode')  { $script:AdoOrgMode  = [string]$entry.mode  }
+    }
+}
+
+# Atomically writes the current $script:AdoOrg* values to the state file.
+function Save-SetupState {
+    $statePath = Get-SetupStatePath
+    $copilotHome = Split-Path -Parent $statePath
+    if (-not (Test-Path $copilotHome)) {
+        New-Item -Path $copilotHome -ItemType Directory -Force | Out-Null
+    }
+
+    $existing = [PSCustomObject]@{ inputs = [PSCustomObject]@{} }
+    if (Test-Path $statePath) {
+        try {
+            $existing = Get-Content -Raw -Path $statePath -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+            if ($null -eq $existing.inputs) {
+                $existing | Add-Member -NotePropertyName inputs -NotePropertyValue ([PSCustomObject]@{}) -Force
+            }
+        } catch {
+            $existing = [PSCustomObject]@{ inputs = [PSCustomObject]@{} }
+        }
+    }
+
+    $entry = [PSCustomObject]@{ value = $script:AdoOrgValue; mode = $script:AdoOrgMode }
+    $existing.inputs | Add-Member -NotePropertyName azure_devops_org -NotePropertyValue $entry -Force
+
+    $tmp = "$statePath.tmp"
+    try {
+        $existing | ConvertTo-Json -Depth 10 | Out-File -FilePath $tmp -Encoding UTF8 -Force
+        # Validate before move
+        $null = Get-Content -Raw -Path $tmp | ConvertFrom-Json
+        Move-Item -Path $tmp -Destination $statePath -Force
+    } catch {
+        Write-Warn "Failed to persist setup state: $_"
+        if (Test-Path $tmp) { Remove-Item $tmp -ErrorAction SilentlyContinue }
+    }
+}
+
+# Prompts (when TTY) for per-machine inputs.
+# Precedence: ADO_ORG env var > interactive prompt > cached value > skip.
+function Read-SetupInputs {
+    Get-SetupState
+
+    # 1. Env var override (explicit empty = skip)
+    if (Test-Path env:ADO_ORG) {
+        $envVal = [string]$env:ADO_ORG
+        $trimmed = $envVal.Trim()
+        if ([string]::IsNullOrEmpty($trimmed)) {
+            $script:AdoOrgValue = ""
+            $script:AdoOrgMode = "skip"
+            Write-Info "ADO_ORG is empty in env; Azure DevOps MCP server will be skipped"
+        } else {
+            $script:AdoOrgValue = $trimmed
+            $script:AdoOrgMode = "configured"
+            Write-Info "Using Azure DevOps org from ADO_ORG env var: $($script:AdoOrgValue)"
+        }
+        Save-SetupState
+        return
+    }
+
+    # 2. Interactive prompt (only when stdin isn't redirected)
+    $interactive = $true
+    try {
+        if ([Console]::IsInputRedirected) { $interactive = $false }
+    } catch {
+        # Some hosts don't expose this; fall through to try Read-Host
+    }
+
+    if ($interactive) {
+        if ($script:AdoOrgMode -eq 'configured' -and -not [string]::IsNullOrEmpty($script:AdoOrgValue)) {
+            $hint = "[current: $($script:AdoOrgValue); Enter to keep, '-' to clear]"
+        } else {
+            $hint = "(leave blank to skip the Azure DevOps MCP server)"
+        }
+
+        $answer = $null
+        try {
+            $answer = Read-Host "Azure DevOps organization name $hint"
+        } catch {
+            Write-Warn "Could not prompt for input; treating Azure DevOps MCP server as skipped"
+            $script:AdoOrgValue = ""
+            $script:AdoOrgMode = "skip"
+            Save-SetupState
+            return
+        }
+
+        $trimmed = if ($null -eq $answer) { "" } else { $answer.Trim() }
+
+        if ([string]::IsNullOrEmpty($trimmed)) {
+            if ($script:AdoOrgMode -eq 'configured' -and -not [string]::IsNullOrEmpty($script:AdoOrgValue)) {
+                Write-Info "Keeping cached Azure DevOps org: $($script:AdoOrgValue)"
+            } else {
+                $script:AdoOrgValue = ""
+                $script:AdoOrgMode = "skip"
+                Write-Info "Azure DevOps MCP server will be skipped"
+            }
+        } elseif ($trimmed -eq '-') {
+            $script:AdoOrgValue = ""
+            $script:AdoOrgMode = "skip"
+            Write-Info "Cleared Azure DevOps org; the MCP server will be skipped"
+        } else {
+            if ($trimmed -match '[\s/:]') {
+                Write-Warn "Azure DevOps org '$trimmed' contains unusual characters; accepting anyway"
+            }
+            $script:AdoOrgValue = $trimmed
+            $script:AdoOrgMode = "configured"
+            Write-Success "Azure DevOps org set to: $($script:AdoOrgValue)"
+        }
+        Save-SetupState
+        return
+    }
+
+    # 3. Non-interactive: fall back to cached value if present
+    if ($script:AdoOrgMode -eq 'configured' -and -not [string]::IsNullOrEmpty($script:AdoOrgValue)) {
+        Write-Info "Non-interactive run; using cached Azure DevOps org: $($script:AdoOrgValue)"
+    } elseif ($script:AdoOrgMode -eq 'skip') {
+        Write-Info "Non-interactive run; cached state says skip Azure DevOps MCP server"
+    } else {
+        Write-Info "Non-interactive run with no cached value; Azure DevOps MCP server will be skipped"
+        $script:AdoOrgValue = ""
+        $script:AdoOrgMode = "skip"
+    }
+}
+
+# ----------------------------------------
 # Function Definitions
 # ----------------------------------------
 
@@ -365,13 +519,32 @@ function Register-MCPServers {
     }
 
     foreach ($server in $config.shared.mcp_servers) {
-        $serverValues = @()
+        # Explicit skip: azure-devops requires a configured org
+        if ($server.name -eq 'azure-devops' -and ($script:AdoOrgMode -ne 'configured' -or [string]::IsNullOrEmpty($script:AdoOrgValue))) {
+            Write-Warn "Skipping MCP server 'azure-devops' (no Azure DevOps org configured — re-run setup to provide one or set ADO_ORG)"
+            continue
+        }
+
+        # Build substituted args/url for this server
+        $substArgs = @()
         if ($server.PSObject.Properties.Name -contains 'args' -and $server.args) {
-            $serverValues += @($server.args)
+            foreach ($a in $server.args) {
+                if ($a -eq '<YOUR-ADO-ORG>' -and -not [string]::IsNullOrEmpty($script:AdoOrgValue)) {
+                    $substArgs += $script:AdoOrgValue
+                } else {
+                    $substArgs += $a
+                }
+            }
         }
+        $substUrl = $null
         if ($server.PSObject.Properties.Name -contains 'url' -and $server.url) {
-            $serverValues += $server.url
+            $substUrl = $server.url
         }
+
+        # Defensive backstop: refuse to register if any placeholder slipped through
+        $serverValues = @()
+        $serverValues += $substArgs
+        if ($null -ne $substUrl) { $serverValues += $substUrl }
 
         $hasPlaceholder = $false
         foreach ($value in $serverValues) {
@@ -382,7 +555,7 @@ function Register-MCPServers {
         }
 
         if ($hasPlaceholder) {
-            Write-Warn "Skipping MCP server '$($server.name)' (contains placeholder value — edit config.json and re-run)"
+            Write-Warn "Skipping MCP server '$($server.name)' (placeholder still present after substitution)"
             continue
         }
 
@@ -391,13 +564,13 @@ function Register-MCPServers {
                 tools   = @("*")
                 type    = $server.type
                 command = $server.command
-                args    = @($server.args)
+                args    = @($substArgs)
             }
         } else {
             [PSCustomObject]@{
                 tools   = @("*")
                 type    = $server.type
-                url     = $server.url
+                url     = $substUrl
                 headers = [PSCustomObject]@{}
             }
         }
@@ -638,6 +811,9 @@ Write-Host "========================================" -ForegroundColor Cyan
 # Bootstrap
 if (-not (Test-Prerequisites)) { return }
 Import-Config
+
+# Prompt for per-machine inputs early
+Read-SetupInputs
 
 # Install packages
 Install-Packages

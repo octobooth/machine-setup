@@ -54,14 +54,22 @@ Some integrations require values that the setup script can't guess for you:
 
 ### Azure DevOps MCP server
 
-The Azure DevOps MCP server entry in `config.json` is registered with a literal placeholder organization (`<YOUR-ADO-ORG>`). The setup scripts detect this placeholder and **skip registering the server** until you supply a real value, so your `~/.copilot/mcp-config.json` won't contain a broken entry.
+The Azure DevOps MCP server needs your organization slug (e.g. `contoso` for `https://dev.azure.com/contoso`). Setup will prompt you for it once and cache the answer.
 
-To enable it:
+**During setup:**
 
-1. Edit `config.json` and replace `<YOUR-ADO-ORG>` in the `azure-devops` entry under `shared.mcp_servers` with your Azure DevOps organization slug (e.g. `contoso` for `https://dev.azure.com/contoso`).
-2. Re-run the setup script. The MCP server will be added to `~/.copilot/mcp-config.json`.
+```
+Azure DevOps organization name (leave blank to skip the Azure DevOps MCP server)
+> contoso
+```
 
-Alternatively, edit `~/.copilot/mcp-config.json` directly.
+- Enter your org slug to register the server.
+- Leave it blank to skip the server entirely (the rest of setup continues).
+- On re-runs, the prompt shows your cached value; press Enter to keep it, type a new value to change it, or `-` to clear it.
+
+**Non-interactive runs** (CI, piped input, etc.) skip the prompt and either use the cached value or skip the server. To set the org without a prompt, export `ADO_ORG=contoso` (or `ADO_ORG=` to explicitly skip) before running setup.
+
+**State file:** the cached value lives at `${COPILOT_HOME:-~/.copilot}/machine-setup-state.json` (Mac/Linux) or `%COPILOT_HOME%\machine-setup-state.json` / `%USERPROFILE%\.copilot\machine-setup-state.json` (Windows). Edit or delete this file to change the cached answer outside setup.
 
 ### Visual Studio (Windows)
 
