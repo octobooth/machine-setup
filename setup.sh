@@ -624,8 +624,8 @@ create_demo_loader
 
 # Print summary and finish
 print_summary
-if [[ ${#FAILED_ITEMS[@]} -gt 0 ]]; then
-    log_warn "Script completed with ${#FAILED_ITEMS[@]} failure(s)"
+if [[ ${#failed_items[@]} -gt 0 ]]; then
+    log_warn "Script completed with ${#failed_items[@]} failure(s)"
     exit 1
 fi
 log_success "Script completed successfully"
