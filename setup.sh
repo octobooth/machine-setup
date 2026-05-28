@@ -134,6 +134,12 @@ load_config() {
 
     demo_sites=()
     while IFS= read -r line; do demo_sites+=("$line"); done < <(jq -r '.shared.demo_sites[]' "$CONFIG_FILE")
+
+    placeholders=()
+    while IFS= read -r line; do placeholders+=("$line"); done < <(jq -r '.shared.placeholders // [] | .[]' "$CONFIG_FILE")
+
+    npm_global_packages=()
+    while IFS= read -r line; do npm_global_packages+=("$line"); done < <(jq -r '.shared.npm_global_packages // [] | .[]' "$CONFIG_FILE")
 }
 
 # ----------------------------------------
@@ -397,6 +403,160 @@ configure_editors() {
     done
 }
 
+# Returns 0 if any of the given values (passed as args) contains a placeholder
+mcp_values_have_placeholder() {
+    if [[ ${#placeholders[@]} -eq 0 ]]; then
+        return 1
+    fi
+
+    for value in "$@"; do
+        for placeholder in "${placeholders[@]}"; do
+            if [[ "$value" == *"$placeholder"* ]]; then
+                return 0
+            fi
+        done
+    done
+
+    return 1
+}
+
+# Path to the per-machine setup state file (separate from checked-in config)
+setup_state_path() {
+    local copilot_home="${COPILOT_HOME:-$HOME/.copilot}"
+    echo "$copilot_home/machine-setup-state.json"
+}
+
+# Reads the setup state file into the global ADO_ORG_VALUE / ADO_ORG_MODE vars.
+# Tolerates missing or corrupt state — warns and continues with defaults.
+load_setup_state() {
+    ADO_ORG_VALUE=""
+    ADO_ORG_MODE=""
+
+    local state_path
+    state_path=$(setup_state_path)
+    [[ -f "$state_path" ]] || return 0
+
+    if ! jq empty "$state_path" 2>/dev/null; then
+        log_warn "Setup state file at $state_path is not valid JSON; ignoring"
+        return 0
+    fi
+
+    ADO_ORG_VALUE=$(jq -r '.inputs.azure_devops_org.value // ""' "$state_path")
+    ADO_ORG_MODE=$(jq -r '.inputs.azure_devops_org.mode // ""' "$state_path")
+}
+
+# Atomically writes the current ADO_ORG_VALUE / ADO_ORG_MODE to the state file.
+save_setup_state() {
+    local state_path
+    state_path=$(setup_state_path)
+    local copilot_home="${COPILOT_HOME:-$HOME/.copilot}"
+    mkdir -p "$copilot_home"
+
+    local existing='{}'
+    if [[ -f "$state_path" ]] && jq empty "$state_path" 2>/dev/null; then
+        existing=$(cat "$state_path")
+    fi
+
+    local updated
+    updated=$(echo "$existing" | jq \
+        --arg value "$ADO_ORG_VALUE" \
+        --arg mode "$ADO_ORG_MODE" \
+        '.inputs //= {} | .inputs.azure_devops_org = {value: $value, mode: $mode}')
+
+    local tmp="${state_path}.tmp.$$"
+    printf '%s\n' "$updated" > "$tmp" || { log_warn "Failed to write setup state"; rm -f "$tmp"; return 0; }
+    if ! jq empty "$tmp" 2>/dev/null; then
+        log_warn "Setup state write produced invalid JSON; discarding"
+        rm -f "$tmp"
+        return 0
+    fi
+    mv "$tmp" "$state_path"
+    chmod 600 "$state_path" 2>/dev/null || true
+}
+
+# Prompts (when TTY) for inputs that vary per machine. Sets ADO_ORG_VALUE
+# and ADO_ORG_MODE ("configured", "skip", or "" = not answered).
+#
+# Precedence:
+#   1. ADO_ORG env var (if set, including empty = explicit skip)
+#   2. Interactive prompt with cached value as default
+#   3. Cached value (when non-interactive)
+#   4. Skip
+prompt_for_inputs() {
+    load_setup_state
+
+    # 1. Env var override (always wins; explicit empty = skip)
+    if [[ -n "${ADO_ORG+x}" ]]; then
+        local trimmed
+        trimmed="${ADO_ORG#"${ADO_ORG%%[![:space:]]*}"}"
+        trimmed="${trimmed%"${trimmed##*[![:space:]]}"}"
+        if [[ -z "$trimmed" ]]; then
+            ADO_ORG_VALUE=""
+            ADO_ORG_MODE="skip"
+            log_info "ADO_ORG is empty in env; Azure DevOps MCP server will be skipped"
+        else
+            ADO_ORG_VALUE="$trimmed"
+            ADO_ORG_MODE="configured"
+            log_info "Using Azure DevOps org from ADO_ORG env var: $ADO_ORG_VALUE"
+        fi
+        save_setup_state
+        return 0
+    fi
+
+    # 2. Interactive prompt (only when both stdin and stdout are TTYs)
+    if [[ -t 0 ]] && [[ -t 1 ]]; then
+        local prompt_label="Azure DevOps organization name"
+        local hint
+        if [[ "$ADO_ORG_MODE" == "configured" ]] && [[ -n "$ADO_ORG_VALUE" ]]; then
+            hint="[current: $ADO_ORG_VALUE; Enter to keep, '-' to clear]"
+        else
+            hint="(leave blank to skip the Azure DevOps MCP server)"
+        fi
+
+        local answer
+        printf '%s %s\n> ' "$prompt_label" "$hint" >&2
+        IFS= read -r answer || answer=""
+
+        local trimmed
+        trimmed="${answer#"${answer%%[![:space:]]*}"}"
+        trimmed="${trimmed%"${trimmed##*[![:space:]]}"}"
+
+        if [[ -z "$trimmed" ]]; then
+            if [[ "$ADO_ORG_MODE" == "configured" ]] && [[ -n "$ADO_ORG_VALUE" ]]; then
+                log_info "Keeping cached Azure DevOps org: $ADO_ORG_VALUE"
+            else
+                ADO_ORG_VALUE=""
+                ADO_ORG_MODE="skip"
+                log_info "Azure DevOps MCP server will be skipped"
+            fi
+        elif [[ "$trimmed" == "-" ]]; then
+            ADO_ORG_VALUE=""
+            ADO_ORG_MODE="skip"
+            log_info "Cleared Azure DevOps org; the MCP server will be skipped"
+        else
+            if [[ "$trimmed" == *" "* ]] || [[ "$trimmed" == *"/"* ]] || [[ "$trimmed" == *":"* ]]; then
+                log_warn "Azure DevOps org '$trimmed' contains unusual characters; accepting anyway"
+            fi
+            ADO_ORG_VALUE="$trimmed"
+            ADO_ORG_MODE="configured"
+            log_success "Azure DevOps org set to: $ADO_ORG_VALUE"
+        fi
+        save_setup_state
+        return 0
+    fi
+
+    # 3. Non-interactive: fall back to cached value if present
+    if [[ "$ADO_ORG_MODE" == "configured" ]] && [[ -n "$ADO_ORG_VALUE" ]]; then
+        log_info "Non-interactive run; using cached Azure DevOps org: $ADO_ORG_VALUE"
+    elif [[ "$ADO_ORG_MODE" == "skip" ]]; then
+        log_info "Non-interactive run; cached state says skip Azure DevOps MCP server"
+    else
+        log_info "Non-interactive run with no cached value; Azure DevOps MCP server will be skipped"
+        ADO_ORG_VALUE=""
+        ADO_ORG_MODE="skip"
+    fi
+}
+
 # Registers MCP servers in Copilot CLI config
 register_mcp_servers() {
     local copilot_home="${COPILOT_HOME:-$HOME/.copilot}"
@@ -423,10 +583,33 @@ register_mcp_servers() {
         name=$(jq -r ".shared.mcp_servers[$i].name" "$CONFIG_FILE")
         type=$(jq -r ".shared.mcp_servers[$i].type" "$CONFIG_FILE")
 
+        # Explicit skip: azure-devops requires a configured org
+        if [[ "$name" == "azure-devops" ]] && [[ "$ADO_ORG_MODE" != "configured" || -z "$ADO_ORG_VALUE" ]]; then
+            log_warn "Skipping MCP server 'azure-devops' (no Azure DevOps org configured — re-run setup to provide one or set ADO_ORG)"
+            continue
+        fi
+
         if [[ "$type" == "local" ]]; then
             local command args
             command=$(jq -r ".shared.mcp_servers[$i].command" "$CONFIG_FILE")
             args=$(jq -c ".shared.mcp_servers[$i].args" "$CONFIG_FILE")
+
+            # Substitute placeholders in args using known inputs
+            if [[ -n "$ADO_ORG_VALUE" ]]; then
+                args=$(echo "$args" | jq --arg v "$ADO_ORG_VALUE" 'map(if . == "<YOUR-ADO-ORG>" then $v else . end)')
+            fi
+
+            # Defensive backstop: refuse to register if any placeholder slipped through
+            local arg_strings
+            arg_strings=$(echo "$args" | jq -r '.[]')
+            local has_ph=0
+            while IFS= read -r v; do
+                if mcp_values_have_placeholder "$v"; then has_ph=1; break; fi
+            done <<< "$arg_strings"
+            if [[ "$has_ph" -eq 1 ]]; then
+                log_warn "Skipping MCP server '$name' (placeholder still present after substitution)"
+                continue
+            fi
 
             existing=$(echo "$existing" | jq \
                 --arg name "$name" \
@@ -437,6 +620,11 @@ register_mcp_servers() {
         else
             local url
             url=$(jq -r ".shared.mcp_servers[$i].url" "$CONFIG_FILE")
+
+            if mcp_values_have_placeholder "$url"; then
+                log_warn "Skipping MCP server '$name' (URL still contains a placeholder)"
+                continue
+            fi
 
             existing=$(echo "$existing" | jq \
                 --arg name "$name" \
@@ -450,6 +638,50 @@ register_mcp_servers() {
 
     echo "$existing" | jq . > "$mcp_config"
     log_success "MCP servers written to $mcp_config"
+}
+
+# Installs the Microsoft Aspire CLI via the official installer script
+install_aspire() {
+    if should_skip_installed && command -v aspire &> /dev/null; then
+        log_success "Already installed: aspire CLI"
+        return
+    fi
+
+    log_info "Installing Aspire CLI..."
+
+    local tmp
+    tmp=$(mktemp)
+    if ! curl -fsSL https://aspire.dev/install.sh -o "$tmp"; then
+        failed_items+=("aspire CLI: download failed")
+        log_error "Failed to download Aspire installer"
+        rm -f "$tmp"
+        return
+    fi
+
+    try_install "aspire CLI: install" bash "$tmp"
+    rm -f "$tmp"
+
+    # Make aspire available in this shell + persist for future shells
+    local aspire_bin="$HOME/.aspire/bin"
+    if [[ -d "$aspire_bin" ]]; then
+        export PATH="$aspire_bin:$PATH"
+
+        local shell_rc="$HOME/.zshrc"
+        if ! grep -q '\.aspire/bin' "$shell_rc" 2>/dev/null; then
+            log_info "Adding Aspire CLI to PATH in $shell_rc..."
+            {
+                echo ''
+                echo '# Aspire CLI'
+                echo 'export PATH="$HOME/.aspire/bin:$PATH"'
+            } >> "$shell_rc"
+        fi
+    fi
+
+    if command -v aspire &> /dev/null; then
+        log_success "Aspire CLI installed"
+    else
+        log_warn "Aspire installer ran but 'aspire' is not yet on PATH"
+    fi
 }
 
 # Creates a demo loader script to launch all required applications and sites
@@ -485,13 +717,47 @@ EOF
 # Main Execution
 # ----------------------------------------
 
+# Install npm packages globally (so MCP servers don't need npx at runtime)
+install_npm_globals() {
+    if [[ ${#npm_global_packages[@]} -eq 0 ]]; then
+        return
+    fi
+
+    # nvm-installed node may not be on PATH yet in this shell; source nvm if available
+    if ! command -v npm &> /dev/null; then
+        export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+        local nvm_sh
+        nvm_sh="$(brew --prefix nvm 2>/dev/null)/nvm.sh"
+        if [[ -s "$nvm_sh" ]]; then
+            # shellcheck disable=SC1090
+            . "$nvm_sh"
+        fi
+    fi
+
+    if ! command -v npm &> /dev/null; then
+        log_warn "npm not available; skipping global npm package install"
+        failed_items+=("npm global packages: npm not on PATH")
+        return
+    fi
+
+    log_info "Installing npm packages globally..."
+    for pkg in "${npm_global_packages[@]}"; do
+        try_install "npm global: $pkg" npm install -g "$pkg"
+    done
+}
+
 # Bootstrap: install homebrew and jq before loading config
 install_homebrew
 install_jq
 load_config
 
+# Prompt for per-machine inputs early, so the user isn't stuck waiting later
+prompt_for_inputs
+
 # Install packages
 install_packages
+install_aspire
+install_npm_globals
 configure_vlc
 
 # Launch post-install apps (e.g., Docker)
@@ -516,8 +782,8 @@ create_demo_loader
 
 # Print summary and finish
 print_summary
-if [[ ${#FAILED_ITEMS[@]} -gt 0 ]]; then
-    log_warn "Script completed with ${#FAILED_ITEMS[@]} failure(s)"
+if [[ ${#failed_items[@]} -gt 0 ]]; then
+    log_warn "Script completed with ${#failed_items[@]} failure(s)"
     exit 1
 fi
 log_success "Script completed successfully"

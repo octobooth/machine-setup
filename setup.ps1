@@ -107,6 +107,160 @@ function Import-Config {
 }
 
 # ----------------------------------------
+# Setup state (per-machine inputs)
+# ----------------------------------------
+
+function Get-SetupStatePath {
+    $copilotHome = if ($env:COPILOT_HOME) { $env:COPILOT_HOME } else { Join-Path $env:USERPROFILE ".copilot" }
+    return (Join-Path $copilotHome "machine-setup-state.json")
+}
+
+# Reads the setup state into $script:AdoOrgValue and $script:AdoOrgMode.
+# Tolerates missing or corrupt state.
+function Get-SetupState {
+    $script:AdoOrgValue = ""
+    $script:AdoOrgMode = ""
+
+    $statePath = Get-SetupStatePath
+    if (-not (Test-Path $statePath)) { return }
+
+    try {
+        $state = Get-Content -Raw -Path $statePath -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+    } catch {
+        Write-Warn "Setup state file at $statePath is not valid JSON; ignoring"
+        return
+    }
+
+    if ($state.PSObject.Properties.Name -contains 'inputs' -and
+        $state.inputs.PSObject.Properties.Name -contains 'azure_devops_org') {
+        $entry = $state.inputs.azure_devops_org
+        if ($entry.PSObject.Properties.Name -contains 'value') { $script:AdoOrgValue = [string]$entry.value }
+        if ($entry.PSObject.Properties.Name -contains 'mode')  { $script:AdoOrgMode  = [string]$entry.mode  }
+    }
+}
+
+# Atomically writes the current $script:AdoOrg* values to the state file.
+function Save-SetupState {
+    $statePath = Get-SetupStatePath
+    $copilotHome = Split-Path -Parent $statePath
+    if (-not (Test-Path $copilotHome)) {
+        New-Item -Path $copilotHome -ItemType Directory -Force | Out-Null
+    }
+
+    $existing = [PSCustomObject]@{ inputs = [PSCustomObject]@{} }
+    if (Test-Path $statePath) {
+        try {
+            $existing = Get-Content -Raw -Path $statePath -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+            if ($null -eq $existing.inputs) {
+                $existing | Add-Member -NotePropertyName inputs -NotePropertyValue ([PSCustomObject]@{}) -Force
+            }
+        } catch {
+            $existing = [PSCustomObject]@{ inputs = [PSCustomObject]@{} }
+        }
+    }
+
+    $entry = [PSCustomObject]@{ value = $script:AdoOrgValue; mode = $script:AdoOrgMode }
+    $existing.inputs | Add-Member -NotePropertyName azure_devops_org -NotePropertyValue $entry -Force
+
+    $tmp = "$statePath.tmp"
+    try {
+        $existing | ConvertTo-Json -Depth 10 | Out-File -FilePath $tmp -Encoding UTF8 -Force
+        # Validate before move
+        $null = Get-Content -Raw -Path $tmp | ConvertFrom-Json
+        Move-Item -Path $tmp -Destination $statePath -Force
+    } catch {
+        Write-Warn "Failed to persist setup state: $_"
+        if (Test-Path $tmp) { Remove-Item $tmp -ErrorAction SilentlyContinue }
+    }
+}
+
+# Prompts (when TTY) for per-machine inputs.
+# Precedence: ADO_ORG env var > interactive prompt > cached value > skip.
+function Read-SetupInputs {
+    Get-SetupState
+
+    # 1. Env var override (explicit empty = skip)
+    if (Test-Path env:ADO_ORG) {
+        $envVal = [string]$env:ADO_ORG
+        $trimmed = $envVal.Trim()
+        if ([string]::IsNullOrEmpty($trimmed)) {
+            $script:AdoOrgValue = ""
+            $script:AdoOrgMode = "skip"
+            Write-Info "ADO_ORG is empty in env; Azure DevOps MCP server will be skipped"
+        } else {
+            $script:AdoOrgValue = $trimmed
+            $script:AdoOrgMode = "configured"
+            Write-Info "Using Azure DevOps org from ADO_ORG env var: $($script:AdoOrgValue)"
+        }
+        Save-SetupState
+        return
+    }
+
+    # 2. Interactive prompt (only when stdin isn't redirected)
+    $interactive = $true
+    try {
+        if ([Console]::IsInputRedirected) { $interactive = $false }
+    } catch {
+        # Some hosts don't expose this; fall through to try Read-Host
+    }
+
+    if ($interactive) {
+        if ($script:AdoOrgMode -eq 'configured' -and -not [string]::IsNullOrEmpty($script:AdoOrgValue)) {
+            $hint = "[current: $($script:AdoOrgValue); Enter to keep, '-' to clear]"
+        } else {
+            $hint = "(leave blank to skip the Azure DevOps MCP server)"
+        }
+
+        $answer = $null
+        try {
+            $answer = Read-Host "Azure DevOps organization name $hint"
+        } catch {
+            Write-Warn "Could not prompt for input; treating Azure DevOps MCP server as skipped"
+            $script:AdoOrgValue = ""
+            $script:AdoOrgMode = "skip"
+            Save-SetupState
+            return
+        }
+
+        $trimmed = if ($null -eq $answer) { "" } else { $answer.Trim() }
+
+        if ([string]::IsNullOrEmpty($trimmed)) {
+            if ($script:AdoOrgMode -eq 'configured' -and -not [string]::IsNullOrEmpty($script:AdoOrgValue)) {
+                Write-Info "Keeping cached Azure DevOps org: $($script:AdoOrgValue)"
+            } else {
+                $script:AdoOrgValue = ""
+                $script:AdoOrgMode = "skip"
+                Write-Info "Azure DevOps MCP server will be skipped"
+            }
+        } elseif ($trimmed -eq '-') {
+            $script:AdoOrgValue = ""
+            $script:AdoOrgMode = "skip"
+            Write-Info "Cleared Azure DevOps org; the MCP server will be skipped"
+        } else {
+            if ($trimmed -match '[\s/:]') {
+                Write-Warn "Azure DevOps org '$trimmed' contains unusual characters; accepting anyway"
+            }
+            $script:AdoOrgValue = $trimmed
+            $script:AdoOrgMode = "configured"
+            Write-Success "Azure DevOps org set to: $($script:AdoOrgValue)"
+        }
+        Save-SetupState
+        return
+    }
+
+    # 3. Non-interactive: fall back to cached value if present
+    if ($script:AdoOrgMode -eq 'configured' -and -not [string]::IsNullOrEmpty($script:AdoOrgValue)) {
+        Write-Info "Non-interactive run; using cached Azure DevOps org: $($script:AdoOrgValue)"
+    } elseif ($script:AdoOrgMode -eq 'skip') {
+        Write-Info "Non-interactive run; cached state says skip Azure DevOps MCP server"
+    } else {
+        Write-Info "Non-interactive run with no cached value; Azure DevOps MCP server will be skipped"
+        $script:AdoOrgValue = ""
+        $script:AdoOrgMode = "skip"
+    }
+}
+
+# ----------------------------------------
 # Function Definitions
 # ----------------------------------------
 
@@ -359,19 +513,64 @@ function Register-MCPServers {
         $mcpConfig = [PSCustomObject]@{ mcpServers = [PSCustomObject]@{} }
     }
 
+    $placeholders = @()
+    if ($config.shared.PSObject.Properties.Name -contains 'placeholders') {
+        $placeholders = @($config.shared.placeholders)
+    }
+
     foreach ($server in $config.shared.mcp_servers) {
+        # Explicit skip: azure-devops requires a configured org
+        if ($server.name -eq 'azure-devops' -and ($script:AdoOrgMode -ne 'configured' -or [string]::IsNullOrEmpty($script:AdoOrgValue))) {
+            Write-Warn "Skipping MCP server 'azure-devops' (no Azure DevOps org configured — re-run setup to provide one or set ADO_ORG)"
+            continue
+        }
+
+        # Build substituted args/url for this server
+        $substArgs = @()
+        if ($server.PSObject.Properties.Name -contains 'args' -and $server.args) {
+            foreach ($a in $server.args) {
+                if ($a -eq '<YOUR-ADO-ORG>' -and -not [string]::IsNullOrEmpty($script:AdoOrgValue)) {
+                    $substArgs += $script:AdoOrgValue
+                } else {
+                    $substArgs += $a
+                }
+            }
+        }
+        $substUrl = $null
+        if ($server.PSObject.Properties.Name -contains 'url' -and $server.url) {
+            $substUrl = $server.url
+        }
+
+        # Defensive backstop: refuse to register if any placeholder slipped through
+        $serverValues = @()
+        $serverValues += $substArgs
+        if ($null -ne $substUrl) { $serverValues += $substUrl }
+
+        $hasPlaceholder = $false
+        foreach ($value in $serverValues) {
+            foreach ($placeholder in $placeholders) {
+                if ($value -like "*$placeholder*") { $hasPlaceholder = $true; break }
+            }
+            if ($hasPlaceholder) { break }
+        }
+
+        if ($hasPlaceholder) {
+            Write-Warn "Skipping MCP server '$($server.name)' (placeholder still present after substitution)"
+            continue
+        }
+
         $serverConfig = if ($server.type -eq "local") {
             [PSCustomObject]@{
                 tools   = @("*")
                 type    = $server.type
                 command = $server.command
-                args    = @($server.args)
+                args    = @($substArgs)
             }
         } else {
             [PSCustomObject]@{
                 tools   = @("*")
                 type    = $server.type
-                url     = $server.url
+                url     = $substUrl
                 headers = [PSCustomObject]@{}
             }
         }
@@ -382,6 +581,186 @@ function Register-MCPServers {
 
     $mcpConfig | ConvertTo-Json -Depth 10 | Out-File -FilePath $mcpConfigPath -Force -Encoding UTF8
     Write-Success "MCP servers written to $mcpConfigPath"
+}
+
+function Install-VisualStudio {
+    if ($null -eq $config.windows.visual_studio) {
+        return
+    }
+
+    $vs = $config.windows.visual_studio
+    $edition = $vs.edition
+    $url = $vs.bootstrapper_url
+    $installPath = $vs.install_path
+
+    if ((Test-ShouldSkipInstalled) -and $installPath -and (Test-Path $installPath)) {
+        Write-Success "Already installed: Visual Studio $edition ($installPath)"
+        return
+    }
+
+    Write-Info "Installing Visual Studio $edition from $url ..."
+
+    $bootstrapper = Join-Path $env:TEMP "vs_$($edition.ToLower()).exe"
+
+    try {
+        Invoke-WebRequest -Uri $url -OutFile $bootstrapper -UseBasicParsing
+    } catch {
+        $script:failedItems += "Visual Studio: bootstrapper download failed"
+        Write-Err "Failed to download Visual Studio bootstrapper: $_"
+        return
+    }
+
+    # Build bootstrapper arguments: --add per workload, plus standard install flags
+    $bootstrapperArgs = @()
+    foreach ($workload in $vs.workloads) {
+        $bootstrapperArgs += "--add"
+        $bootstrapperArgs += $workload
+    }
+    if ($vs.include_recommended) { $bootstrapperArgs += "--includeRecommended" }
+    $bootstrapperArgs += "--quiet"
+    $bootstrapperArgs += "--wait"
+    $bootstrapperArgs += "--norestart"
+    $bootstrapperArgs += "--nocache"
+
+    Write-Info "Running Visual Studio installer (this may take a while)..."
+    try {
+        $proc = Start-Process -FilePath $bootstrapper -ArgumentList $bootstrapperArgs -Wait -PassThru -NoNewWindow
+        # Per Microsoft docs: 0 = success, 3010 = success but reboot required, 1602/1603 = user/install error
+        if ($proc.ExitCode -eq 0) {
+            Write-Success "Visual Studio $edition installed"
+        } elseif ($proc.ExitCode -eq 3010) {
+            Write-Success "Visual Studio $edition installed (reboot required)"
+        } else {
+            $script:failedItems += "Visual Studio: installer exit $($proc.ExitCode)"
+            Write-Err "Visual Studio installer returned exit code $($proc.ExitCode)"
+        }
+    } catch {
+        $script:failedItems += "Visual Studio: $_"
+        Write-Err "Failed to run Visual Studio installer: $_"
+    } finally {
+        Remove-Item $bootstrapper -ErrorAction SilentlyContinue
+    }
+}
+
+function Install-Aspire {
+    if ((Test-ShouldSkipInstalled) -and (Get-Command aspire -ErrorAction SilentlyContinue)) {
+        Write-Success "Already installed: aspire CLI"
+        return
+    }
+
+    Write-Info "Installing Aspire CLI..."
+
+    $tmp = Join-Path $env:TEMP "aspire-install.ps1"
+
+    try {
+        Invoke-WebRequest -Uri "https://aspire.dev/install.ps1" -OutFile $tmp -UseBasicParsing
+    } catch {
+        $script:failedItems += "aspire CLI: download failed"
+        Write-Err "Failed to download Aspire installer: $_"
+        return
+    }
+
+    Invoke-SafeInstall -Description "aspire CLI: install" -Action {
+        & powershell -NoProfile -ExecutionPolicy Bypass -File $tmp 2>&1
+    }
+
+    Remove-Item $tmp -ErrorAction SilentlyContinue
+
+    # Refresh PATH from system + user, and make aspire available in this session
+    $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+    $aspireBin = Join-Path $env:USERPROFILE ".aspire\bin"
+    if ((Test-Path $aspireBin) -and ($env:Path -notlike "*$aspireBin*")) {
+        $env:Path = "$aspireBin;$env:Path"
+    }
+
+    if (Get-Command aspire -ErrorAction SilentlyContinue) {
+        Write-Success "Aspire CLI installed"
+    } else {
+        Write-Warn "Aspire installer ran but 'aspire' is not yet on PATH"
+    }
+}
+
+function Install-NpmGlobals {
+    $packages = $config.shared.npm_global_packages
+    if ($null -eq $packages -or $packages.Count -eq 0) {
+        return
+    }
+
+    # Refresh PATH so npm (installed by winget via OpenJS.NodeJS.LTS) is visible
+    $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+
+    if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
+        Write-Warn "npm not available on PATH; skipping global npm package install"
+        $script:failedItems += "npm global packages: npm not on PATH"
+        return
+    }
+
+    Write-Info "Installing npm packages globally..."
+    foreach ($pkg in $packages) {
+        Invoke-SafeInstall -Description "npm global: $pkg" -Action {
+            npm install -g $pkg 2>&1
+        }
+    }
+}
+
+function Install-CopilotApp {
+    if ($null -eq $config.windows.copilot_app) {
+        return
+    }
+
+    $url = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') {
+        $config.windows.copilot_app.url_arm64
+    } else {
+        $config.windows.copilot_app.url_x64
+    }
+
+    # Common install locations the desktop app may use
+    $installedMarkers = @(
+        (Join-Path $env:LOCALAPPDATA "Programs\github-copilot"),
+        (Join-Path $env:LOCALAPPDATA "Programs\GitHubCopilot"),
+        (Join-Path $env:LOCALAPPDATA "Programs\GitHub Copilot")
+    )
+    if (Test-ShouldSkipInstalled) {
+        foreach ($m in $installedMarkers) {
+            if (Test-Path $m) {
+                Write-Success "Already installed: GitHub Copilot app ($m)"
+                return
+            }
+        }
+    }
+
+    Write-Info "Downloading GitHub Copilot app from $url ..."
+    $installer = Join-Path $env:TEMP "GitHub-Copilot-setup.exe"
+
+    try {
+        Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing
+    } catch {
+        $script:failedItems += "GitHub Copilot app: download failed"
+        Write-Err "Failed to download GitHub Copilot app: $_"
+        return
+    }
+
+    Write-Info "Running GitHub Copilot app installer (silent)..."
+    try {
+        $proc = Start-Process -FilePath $installer -ArgumentList '/S' -Wait -PassThru
+        if ($proc.ExitCode -ne 0) {
+            Write-Warn "Silent install returned exit code $($proc.ExitCode); retrying interactively..."
+            $proc2 = Start-Process -FilePath $installer -Wait -PassThru
+            if ($proc2.ExitCode -ne 0) {
+                $script:failedItems += "GitHub Copilot app: installer exit $($proc2.ExitCode)"
+                Write-Err "GitHub Copilot app installer failed (exit $($proc2.ExitCode))"
+            } else {
+                Write-Success "GitHub Copilot app installed"
+            }
+        } else {
+            Write-Success "GitHub Copilot app installed"
+        }
+    } catch {
+        $script:failedItems += "GitHub Copilot app: $_"
+        Write-Err "Failed to run GitHub Copilot app installer: $_"
+    } finally {
+        Remove-Item $installer -ErrorAction SilentlyContinue
+    }
 }
 
 function New-DemoLoader {
@@ -433,8 +812,14 @@ Write-Host "========================================" -ForegroundColor Cyan
 if (-not (Test-Prerequisites)) { return }
 Import-Config
 
+# Prompt for per-machine inputs early
+Read-SetupInputs
+
 # Install packages
 Install-Packages
+Install-VisualStudio
+Install-Aspire
+Install-NpmGlobals
 Set-VLCConfiguration
 
 # Launch post-install apps
@@ -442,6 +827,7 @@ Start-PostInstallApps
 
 # Setup environments
 Connect-GH
+Install-CopilotApp
 Copy-Repos
 Install-PWAs
 
