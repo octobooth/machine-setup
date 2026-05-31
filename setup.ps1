@@ -19,6 +19,10 @@
     - Internet connection
 #>
 
+param(
+    [switch]$SkipSignIn
+)
+
 # ----------------------------------------
 # Constants
 # ----------------------------------------
@@ -286,6 +290,20 @@ function Install-Packages {
     # Refresh PATH so newly installed tools are available
     $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
 
+    # Defensive fallback: Git for Windows installs to C:\Program Files\Git\cmd.
+    # If the PATH refresh above didn't surface it, add it so git-dependent steps
+    # (gh git protocol, gh extensions) can find git.
+    if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+        $gitCmd = "C:\Program Files\Git\cmd"
+        if (Test-Path (Join-Path $gitCmd "git.exe")) {
+            $env:Path = "$gitCmd;$env:Path"
+            Write-Info "Added $gitCmd to PATH for this session"
+        }
+        else {
+            Write-Warn "git not found on PATH after install; git-dependent steps may fail"
+        }
+    }
+
     Write-Success "Package installation complete"
 }
 
@@ -450,11 +468,193 @@ function Connect-GH {
 
     gh auth status 2>&1 | Out-Null
     if ($LASTEXITCODE -eq 0) {
+        if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+            Write-Warn "git not found on PATH; gh extensions that shell out to git may fail. Install Git for Windows."
+        }
         Install-GHExtensions
         Write-Success "GitHub CLI extensions installed"
     } else {
         Write-Warn "GitHub CLI login required for extensions. Please run 'gh auth login' manually."
     }
+}
+
+# Returns the install-marker directories the GitHub Copilot desktop app may use.
+# Shared by Install-CopilotApp and the sign-in checklist so the two stay in sync.
+function Get-CopilotAppMarkerDir {
+    @(
+        (Join-Path $env:LOCALAPPDATA "Programs\github-copilot"),
+        (Join-Path $env:LOCALAPPDATA "Programs\GitHubCopilot"),
+        (Join-Path $env:LOCALAPPDATA "Programs\GitHub Copilot")
+    )
+}
+
+function Invoke-SignInStep {
+    param(
+        [int]$Index,
+        [int]$Total,
+        [string]$Name,
+        [scriptblock]$Launch,
+        [string]$ManualHint
+    )
+
+    Write-Host ""
+    Write-Host "[$Index/$Total] $Name" -ForegroundColor Cyan
+
+    $launched = $false
+    try {
+        & $Launch
+        $launched = $true
+    } catch {
+        Write-Warn "Could not launch $Name automatically: $_"
+        if ($ManualHint) { Write-Warn "Manual step: $ManualHint" }
+    }
+
+    if ($launched -and $ManualHint) {
+        Write-Info $ManualHint
+    }
+
+    [void](Read-Host "  -> Press Enter once you've signed in to $Name (or to skip)")
+    Write-Success "$Name - confirmed"
+}
+
+function Start-SignInChecklist {
+    if ($SkipSignIn) {
+        Write-Info "Skipping sign-in checklist (-SkipSignIn was specified)."
+        return
+    }
+
+    # Only run interactively (stdin not redirected); matches Read-SetupInputs convention.
+    $interactive = $true
+    try {
+        if ([Console]::IsInputRedirected) { $interactive = $false }
+    } catch {
+        # Some hosts don't expose this; assume interactive and let Read-Host handle it.
+    }
+    if (-not $interactive) {
+        Write-Info "Non-interactive session detected; skipping sign-in checklist."
+        return
+    }
+
+    Write-Host ""
+    Write-Host "========================================" -ForegroundColor Cyan
+    Write-Host "GitHub sign-in checklist"                 -ForegroundColor Cyan
+    Write-Host "Sign in to each surface one at a time."    -ForegroundColor Cyan
+    Write-Host "Order matters: the browser session is the source of truth others inherit." -ForegroundColor Cyan
+    Write-Host "========================================" -ForegroundColor Cyan
+
+    if (-not [string]::IsNullOrWhiteSpace($Env:DEMO_GH_USER)) {
+        Write-Info "Expected demo account: $Env:DEMO_GH_USER  (verify every surface signs in as this user)"
+    } else {
+        Write-Info "Tip: set DEMO_GH_USER to display the expected demo account here."
+    }
+
+    $total = 6
+
+    # ---- Step 1: Web browser (establish the browser session first) ----
+    Invoke-SignInStep -Index 1 -Total $total -Name "Web browser (github.com)" `
+        -ManualHint "Open https://github.com/login and sign in as the demo account." `
+        -Launch {
+            Start-Process "https://github.com/login" | Out-Null
+        }
+
+    # ---- Step 2: GitHub CLI (skip if Connect-GH already authenticated) ----
+    $ghAuthed = $false
+    if (Get-Command gh -ErrorAction SilentlyContinue) {
+        gh auth status 2>&1 | Out-Null
+        if ($LASTEXITCODE -eq 0) { $ghAuthed = $true }
+    }
+
+    if ($ghAuthed) {
+        Write-Host ""
+        Write-Host "[2/$total] GitHub CLI (gh)" -ForegroundColor Cyan
+        Write-Success "GitHub CLI - already authenticated, skipping"
+    } else {
+        Invoke-SignInStep -Index 2 -Total $total -Name "GitHub CLI (gh)" `
+            -ManualHint "Run 'gh auth login --web' and complete the device flow in the browser." `
+            -Launch {
+                if (-not (Get-Command gh -ErrorAction SilentlyContinue)) { throw "gh not found on PATH" }
+                gh auth login --web
+                if ($LASTEXITCODE -ne 0) { throw "gh auth login exited with code $LASTEXITCODE" }
+            }
+    }
+
+    # ---- Step 3: Copilot CLI (first-run device flow via /login) ----
+    Invoke-SignInStep -Index 3 -Total $total -Name "Copilot CLI (copilot)" `
+        -ManualHint "In the Copilot CLI window, run the '/login' slash command to authenticate." `
+        -Launch {
+            $copilotCmd = Get-Command copilot -ErrorAction SilentlyContinue
+            if ($null -eq $copilotCmd) { throw "copilot not found on PATH" }
+            # Launch in a persistent window so the user can run /login and see any errors.
+            Start-Process powershell.exe -ArgumentList @('-NoExit', '-Command', "& '$($copilotCmd.Source)'") | Out-Null
+        }
+
+    # ---- Step 4: VS Code ----
+    Invoke-SignInStep -Index 4 -Total $total -Name "VS Code" `
+        -ManualHint "If Copilot doesn't prompt, sign in via the Accounts menu (bottom-left gear/avatar)." `
+        -Launch {
+            if (-not (Get-Command code -ErrorAction SilentlyContinue)) { throw "code (VS Code) not found on PATH" }
+            & code --command "github.copilot.signIn" 2>&1 | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw "code exited with code $LASTEXITCODE" }
+        }
+
+    # ---- Step 5: VS Code Insiders ----
+    Invoke-SignInStep -Index 5 -Total $total -Name "VS Code Insiders" `
+        -ManualHint "If Copilot doesn't prompt, sign in via the Accounts menu (bottom-left gear/avatar)." `
+        -Launch {
+            if (-not (Get-Command code-insiders -ErrorAction SilentlyContinue)) { throw "code-insiders not found on PATH" }
+            & code-insiders --command "github.copilot.signIn" 2>&1 | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw "code-insiders exited with code $LASTEXITCODE" }
+        }
+
+    # ---- Step 6: Copilot desktop app ----
+    Invoke-SignInStep -Index 6 -Total $total -Name "Copilot app (desktop)" `
+        -ManualHint "Launch the GitHub Copilot app from the Start Menu and sign in inside the app." `
+        -Launch {
+            $markerDirs = Get-CopilotAppMarkerDir
+
+            $exe = $null
+
+            # Prefer well-known executable names before falling back to a filtered search.
+            $preferredNames = @('GitHub Copilot.exe', 'GitHubCopilot.exe', 'Copilot.exe')
+            foreach ($dir in $markerDirs) {
+                if (-not (Test-Path $dir)) { continue }
+                foreach ($name in $preferredNames) {
+                    $candidate = Join-Path $dir $name
+                    if (Test-Path $candidate) { $exe = $candidate; break }
+                }
+                if ($exe) { break }
+            }
+
+            if ($null -eq $exe) {
+                foreach ($dir in $markerDirs) {
+                    if (-not (Test-Path $dir)) { continue }
+                    $match = Get-ChildItem -Path $dir -Filter *.exe -Recurse -File -ErrorAction SilentlyContinue |
+                        Where-Object { $_.Name -notmatch '(?i)(unins|update|setup|crash|helper|elevate)' } |
+                        Select-Object -First 1
+                    if ($match) { $exe = $match.FullName; break }
+                }
+            }
+
+            if ($null -eq $exe) {
+                # Fall back to a Start Menu shortcut if the executable wasn't found.
+                $startMenuDirs = @(
+                    (Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs"),
+                    (Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs")
+                )
+                foreach ($sm in $startMenuDirs) {
+                    if (-not (Test-Path $sm)) { continue }
+                    $lnk = Get-ChildItem -Path $sm -Filter "*GitHub*Copilot*.lnk" -Recurse -File -ErrorAction SilentlyContinue |
+                        Select-Object -First 1
+                    if ($lnk) { $exe = $lnk.FullName; break }
+                }
+            }
+
+            if ($null -eq $exe) { throw "Copilot desktop app executable not found" }
+            Start-Process $exe | Out-Null
+        }
+
+    Write-Host ""
+    Write-Success "Sign-in checklist complete."
 }
 
 function Copy-Repos {
@@ -715,11 +915,7 @@ function Install-CopilotApp {
     }
 
     # Common install locations the desktop app may use
-    $installedMarkers = @(
-        (Join-Path $env:LOCALAPPDATA "Programs\github-copilot"),
-        (Join-Path $env:LOCALAPPDATA "Programs\GitHubCopilot"),
-        (Join-Path $env:LOCALAPPDATA "Programs\GitHub Copilot")
-    )
+    $installedMarkers = Get-CopilotAppMarkerDir
     if (Test-ShouldSkipInstalled) {
         foreach ($m in $installedMarkers) {
             if (Test-Path $m) {
@@ -817,7 +1013,6 @@ Read-SetupInputs
 
 # Install packages
 Install-Packages
-Install-VisualStudio
 Install-Aspire
 Install-NpmGlobals
 Set-VLCConfiguration
@@ -836,6 +1031,13 @@ Initialize-Editors
 
 # Register MCP servers for Copilot CLI
 Register-MCPServers
+
+# Guided GitHub sign-in across all surfaces (browser first so others inherit the session)
+Start-SignInChecklist
+
+# Visual Studio Enterprise install is long and blocking, so run it last (after the
+# quick interactive steps) so the user can walk away while it completes.
+Install-VisualStudio
 
 # Create demo loader script
 New-DemoLoader

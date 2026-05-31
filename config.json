@@ -100,6 +100,7 @@
         "github-copilot-app"
       ],
       "formulas": [
+        "git",
         "gh",
         "python@3.14",
         "nvm"
@@ -123,6 +124,7 @@
   },
   "windows": {
     "packages": [
+      "Git.Git",
       "Microsoft.VisualStudioCode",
       "Microsoft.VisualStudioCode.Insiders",
       "Microsoft.WindowsTerminal",
