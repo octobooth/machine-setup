@@ -34,6 +34,14 @@ should_skip_installed() {
 # Mutable state
 failed_items=()
 
+# When true, the interactive sign-in checklist is skipped
+SKIP_SIGNIN="${SKIP_SIGNIN:-false}"
+for arg in "$@"; do
+    case "$arg" in
+        --skip-signin) SKIP_SIGNIN=true ;;
+    esac
+done
+
 # ----------------------------------------
 # Logging Helpers
 # ----------------------------------------
@@ -341,16 +349,148 @@ authenticate_gh() {
     fi
 }
 
-# Guides user through GitHub web authentication process using Chrome
-authenticate_github_web() {
-    log_info "Opening GitHub.com in Chrome..."
-    open -a "Google Chrome" https://github.com
+# Opens a URL in the platform's default browser
+open_url() {
+    local url="$1"
+    if [[ "$OSTYPE" == darwin* ]]; then
+        open "$url"
+    elif command -v xdg-open &> /dev/null; then
+        xdg-open "$url"
+    else
+        return 1
+    fi
+}
 
-    log_info "Please log in to GitHub.com in Chrome with the demo account"
-    log_info "Press Enter once you have logged in..."
+# Prints a numbered checklist header and waits for the user to confirm.
+# $1 = index, $2 = total, $3 = surface name, $4 = manual hint,
+# remaining args = command to launch the surface (run via "$@").
+signin_step() {
+    local index="$1" total="$2" name="$3" hint="$4"
+    shift 4
+
+    echo ""
+    echo -e "${BLUE}[$index/$total] $name${NC}"
+
+    if "$@"; then
+        [[ -n "$hint" ]] && log_info "$hint"
+    else
+        log_warn "Could not launch $name automatically."
+        [[ -n "$hint" ]] && log_warn "Manual step: $hint"
+    fi
+
+    log_info "Press Enter once you've signed in to $name (or to skip)..."
     read -r
+    log_success "$name - confirmed"
+}
 
-    log_success "GitHub web authentication confirmed"
+# Launch helpers for each surface (return non-zero on failure so signin_step
+# can fall back to the manual hint).
+launch_browser_signin() { open_url "https://github.com/login"; }
+
+launch_copilot_cli_signin() {
+    command -v copilot &> /dev/null || return 1
+    if [[ "$OSTYPE" == darwin* ]]; then
+        # Open the Copilot CLI in a new Terminal window so the user can run /login.
+        osascript -e 'tell application "Terminal" to activate' \
+                  -e 'tell application "Terminal" to do script "copilot"' &> /dev/null
+    else
+        # TODO: verify a reliable terminal launcher across Linux desktops.
+        if command -v x-terminal-emulator &> /dev/null; then
+            x-terminal-emulator -e copilot &> /dev/null &
+        else
+            return 1
+        fi
+    fi
+}
+
+launch_editor_signin() {
+    # $1 = editor command (code / code-insiders)
+    local cmd="$1"
+    command -v "$cmd" &> /dev/null || return 1
+    "$cmd" --command "github.copilot.signIn" &> /dev/null
+}
+
+launch_copilot_app_signin() {
+    if [[ "$OSTYPE" == darwin* ]]; then
+        open -a "GitHub Copilot"
+    else
+        # TODO: verify the Copilot desktop app launch target on Linux.
+        if command -v github-copilot &> /dev/null; then
+            github-copilot &> /dev/null &
+        else
+            return 1
+        fi
+    fi
+}
+
+# Guides the user through signing in to every GitHub surface, one at a time.
+# Order matters: the browser session is established first so the other tools
+# inherit the correct account.
+start_signin_checklist() {
+    if [[ "$SKIP_SIGNIN" == "true" ]]; then
+        log_info "Skipping sign-in checklist (--skip-signin was specified)."
+        return 0
+    fi
+
+    # Only run when both stdin and stdout are TTYs (matches prompt_for_inputs).
+    if [[ ! -t 0 ]] || [[ ! -t 1 ]]; then
+        log_info "Non-interactive session detected; skipping sign-in checklist."
+        return 0
+    fi
+
+    echo ""
+    echo -e "${BLUE}========================================${NC}"
+    echo -e "${BLUE}GitHub sign-in checklist${NC}"
+    echo -e "${BLUE}Sign in to each surface one at a time.${NC}"
+    echo -e "${BLUE}Order matters: the browser session is the source of truth others inherit.${NC}"
+    echo -e "${BLUE}========================================${NC}"
+
+    if [[ -n "${DEMO_GH_USER:-}" ]]; then
+        log_info "Expected demo account: $DEMO_GH_USER  (verify every surface signs in as this user)"
+    else
+        log_info "Tip: set DEMO_GH_USER to display the expected demo account here."
+    fi
+
+    local total=6
+
+    # Step 1: Web browser (establish the browser session first)
+    signin_step 1 "$total" "Web browser (github.com)" \
+        "Open https://github.com/login and sign in as the demo account." \
+        launch_browser_signin
+
+    # Step 2: GitHub CLI (skip if authenticate_gh already signed in)
+    if command -v gh &> /dev/null && gh auth status &> /dev/null; then
+        echo ""
+        echo -e "${BLUE}[2/$total] GitHub CLI (gh)${NC}"
+        log_success "GitHub CLI - already authenticated, skipping"
+    else
+        signin_step 2 "$total" "GitHub CLI (gh)" \
+            "Run 'gh auth login --web' and complete the device flow in the browser." \
+            gh auth login --web
+    fi
+
+    # Step 3: Copilot CLI (first-run device flow via /login)
+    signin_step 3 "$total" "Copilot CLI (copilot)" \
+        "In the Copilot CLI window, run the '/login' slash command to authenticate." \
+        launch_copilot_cli_signin
+
+    # Step 4: VS Code
+    signin_step 4 "$total" "VS Code" \
+        "If Copilot doesn't prompt, sign in via the Accounts menu (bottom-left)." \
+        launch_editor_signin code
+
+    # Step 5: VS Code Insiders
+    signin_step 5 "$total" "VS Code Insiders" \
+        "If Copilot doesn't prompt, sign in via the Accounts menu (bottom-left)." \
+        launch_editor_signin code-insiders
+
+    # Step 6: Copilot desktop app
+    signin_step 6 "$total" "Copilot app (desktop)" \
+        "Launch the GitHub Copilot app and sign in inside the app." \
+        launch_copilot_app_signin
+
+    echo ""
+    log_success "Sign-in checklist complete."
 }
 
 # Assists user in setting up Progressive Web Apps (PWAs)
@@ -763,9 +903,6 @@ configure_vlc
 # Launch post-install apps (e.g., Docker)
 launch_post_install_apps
 
-# Web authentication (after packages so Chrome is available)
-authenticate_github_web
-
 # Setup environments
 authenticate_gh
 clone_repos
@@ -773,6 +910,9 @@ install_pwas
 
 # Install extensions and configure themes
 configure_editors
+
+# Guided GitHub sign-in across all surfaces (browser first so others inherit the session)
+start_signin_checklist
 
 # Register MCP servers for Copilot CLI
 register_mcp_servers
