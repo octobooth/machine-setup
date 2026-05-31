@@ -290,6 +290,20 @@ function Install-Packages {
     # Refresh PATH so newly installed tools are available
     $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
 
+    # Defensive fallback: Git for Windows installs to C:\Program Files\Git\cmd.
+    # If the PATH refresh above didn't surface it, add it so git-dependent steps
+    # (gh git protocol, gh extensions) can find git.
+    if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+        $gitCmd = "C:\Program Files\Git\cmd"
+        if (Test-Path (Join-Path $gitCmd "git.exe")) {
+            $env:Path = "$gitCmd;$env:Path"
+            Write-Info "Added $gitCmd to PATH for this session"
+        }
+        else {
+            Write-Warn "git not found on PATH after install; git-dependent steps may fail"
+        }
+    }
+
     Write-Success "Package installation complete"
 }
 
@@ -454,6 +468,9 @@ function Connect-GH {
 
     gh auth status 2>&1 | Out-Null
     if ($LASTEXITCODE -eq 0) {
+        if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+            Write-Warn "git not found on PATH; gh extensions that shell out to git may fail. Install Git for Windows."
+        }
         Install-GHExtensions
         Write-Success "GitHub CLI extensions installed"
     } else {
