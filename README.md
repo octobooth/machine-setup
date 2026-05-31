@@ -71,6 +71,26 @@ Azure DevOps organization name (leave blank to skip the Azure DevOps MCP server)
 
 **State file:** the cached value lives at `${COPILOT_HOME:-~/.copilot}/machine-setup-state.json` (Mac/Linux) or `%COPILOT_HOME%\machine-setup-state.json` / `%USERPROFILE%\.copilot\machine-setup-state.json` (Windows). Edit or delete this file to change the cached answer outside setup.
 
+### Demo video subfolder
+
+The demo loader opens VLC pointed at your `~/Videos` folder. If you copy the same full set of videos to every machine but organize them into subfolders (e.g. `~/Videos/booth-keynote`, `~/Videos/booth-security`), setup can point this machine's loader at just one of them. Setup prompts you for the subfolder once and caches the answer.
+
+**During setup:**
+
+```
+Video subfolder under ~/Videos to play (blank to play ~/Videos directly)
+> booth-keynote
+```
+
+- Enter a subfolder name to play only `~/Videos/<subfolder>`.
+- Leave it blank to play `~/Videos` directly (the default; identical to previous behavior).
+- On re-runs, the prompt shows your cached value; press Enter to keep it, type a new value to change it, or `-` to clear it back to the `~/Videos` root.
+- If `~/Videos` already contains subfolders, their names are listed in the prompt as a hint.
+
+This is a free-text prompt on purpose: the videos do not need to exist on disk when setup runs (you can drag them in later). If the chosen subfolder isn't present yet, setup warns but continues - just make sure the videos are in place before you run the demo loader.
+
+**Non-interactive runs** use the cached value, or the `~/Videos` root if none is cached. To set the subfolder without a prompt, export `VIDEO_SUBFOLDER=booth-keynote` (or `VIDEO_SUBFOLDER=` for the root) before running setup. The cached value lives in the same state file described above, under `inputs.video_subfolder`.
+
 ### Visual Studio (Windows)
 
 Visual Studio is installed via the official Microsoft bootstrapper (`vs_enterprise.exe`) — not via winget — because winget only publishes manifests for VS 2017/2019/2022. The script downloads the latest Visual Studio 2026 Enterprise bootstrapper from `https://aka.ms/vs/stable/vs_enterprise.exe` (per the [official command-line install docs](https://learn.microsoft.com/en-us/visualstudio/install/use-command-line-parameters-to-install-visual-studio)) and runs it with the configured workloads.

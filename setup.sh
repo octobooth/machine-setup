@@ -571,6 +571,7 @@ setup_state_path() {
 load_setup_state() {
     ADO_ORG_VALUE=""
     ADO_ORG_MODE=""
+    VIDEO_SUBFOLDER_VALUE=""
 
     local state_path
     state_path=$(setup_state_path)
@@ -583,6 +584,8 @@ load_setup_state() {
 
     ADO_ORG_VALUE=$(jq -r '.inputs.azure_devops_org.value // ""' "$state_path")
     ADO_ORG_MODE=$(jq -r '.inputs.azure_devops_org.mode // ""' "$state_path")
+    # Re-sanitize cached value so a hand-edited state file can't inject
+    VIDEO_SUBFOLDER_VALUE=$(sanitize_video_subfolder "$(jq -r '.inputs.video_subfolder.value // ""' "$state_path")")
 }
 
 # Atomically writes the current ADO_ORG_VALUE / ADO_ORG_MODE to the state file.
@@ -601,7 +604,8 @@ save_setup_state() {
     updated=$(echo "$existing" | jq \
         --arg value "$ADO_ORG_VALUE" \
         --arg mode "$ADO_ORG_MODE" \
-        '.inputs //= {} | .inputs.azure_devops_org = {value: $value, mode: $mode}')
+        --arg vsub "$VIDEO_SUBFOLDER_VALUE" \
+        '.inputs //= {} | .inputs.azure_devops_org = {value: $value, mode: $mode} | .inputs.video_subfolder = {value: $vsub}')
 
     local tmp="${state_path}.tmp.$$"
     printf '%s\n' "$updated" > "$tmp" || { log_warn "Failed to write setup state"; rm -f "$tmp"; return 0; }
@@ -614,7 +618,14 @@ save_setup_state() {
     chmod 600 "$state_path" 2>/dev/null || true
 }
 
-# Prompts (when TTY) for inputs that vary per machine. Sets ADO_ORG_VALUE
+# Prompts (when TTY) for inputs that vary per machine.
+prompt_for_inputs() {
+    load_setup_state
+    prompt_for_ado_org
+    prompt_for_video_subfolder
+}
+
+# Prompts (when TTY) for the Azure DevOps org. Sets ADO_ORG_VALUE
 # and ADO_ORG_MODE ("configured", "skip", or "" = not answered).
 #
 # Precedence:
@@ -622,9 +633,7 @@ save_setup_state() {
 #   2. Interactive prompt with cached value as default
 #   3. Cached value (when non-interactive)
 #   4. Skip
-prompt_for_inputs() {
-    load_setup_state
-
+prompt_for_ado_org() {
     # 1. Env var override (always wins; explicit empty = skip)
     if [[ -n "${ADO_ORG+x}" ]]; then
         local trimmed
@@ -694,6 +703,134 @@ prompt_for_inputs() {
         log_info "Non-interactive run with no cached value; Azure DevOps MCP server will be skipped"
         ADO_ORG_VALUE=""
         ADO_ORG_MODE="skip"
+    fi
+}
+
+# Sanitizes a video subfolder value. Echoes a safe relative subfolder, or "" for
+# empty/unsafe input (path traversal, absolute paths, or quote chars). Any
+# warning is sent to stderr so it does not pollute the captured value.
+sanitize_video_subfolder() {
+    local raw="$1"
+    local v
+    v="${raw#"${raw%%[![:space:]]*}"}"
+    v="${v%"${v##*[![:space:]]}"}"
+    [[ -z "$v" ]] && { echo ""; return; }
+    # Normalize backslashes to forward slashes (loader uses POSIX paths)
+    v="${v//\\//}"
+    # Reject path traversal, drive-rooted (C:), UNC-style (//), shell metacharacters
+    # ($ ` " expand inside the double-quoted loader string), or control chars
+    if [[ "$v" == *".."* ]] || [[ "$v" =~ ^[A-Za-z]: ]] || [[ "$v" == //* ]] \
+        || [[ "$v" == *'"'* ]] || [[ "$v" == *'$'* ]] || [[ "$v" == *'`'* ]] \
+        || [[ "$v" == *[[:cntrl:]]* ]]; then
+        log_warn "Video subfolder '$raw' looks unsafe (path traversal, absolute path, or special characters); using ~/Videos root" >&2
+        echo ""
+        return
+    fi
+    # Strip leading/trailing slashes and collapse duplicate separators
+    v="${v#/}"
+    v="${v%/}"
+    while [[ "$v" == *"//"* ]]; do v="${v//\/\//\/}"; done
+    echo "$v"
+}
+
+# Lists immediate subdirectory names under the given dir as a comma-separated
+# string. Hint only; never required and never blocks.
+list_video_subfolders() {
+    local root="$1"
+    [[ -d "$root" ]] || { echo ""; return; }
+    local out="" d name
+    for d in "$root"/*/; do
+        [[ -d "$d" ]] || continue
+        d="${d%/}"
+        name="${d##*/}"
+        if [[ -z "$out" ]]; then out="$name"; else out="$out, $name"; fi
+    done
+    echo "$out"
+}
+
+# Warns (but never fails) when the chosen subfolder is not yet present on disk.
+warn_if_video_subfolder_missing() {
+    local root="$1"
+    [[ -n "$VIDEO_SUBFOLDER_VALUE" ]] || return 0
+    if [[ ! -d "$root/$VIDEO_SUBFOLDER_VALUE" ]]; then
+        log_warn "Videos subfolder '$VIDEO_SUBFOLDER_VALUE' not found yet under ~/Videos; make sure the videos are copied there before running the demo loader."
+    fi
+}
+
+# Prompts (when TTY) for the per-machine video subfolder under ~/Videos.
+# Sets VIDEO_SUBFOLDER_VALUE ("" = play ~/Videos root).
+#
+# Precedence:
+#   1. VIDEO_SUBFOLDER env var (if set; empty/unsafe = root)
+#   2. Interactive prompt with cached value as default
+#   3. Cached value (when non-interactive)
+#   4. Root ("")
+prompt_for_video_subfolder() {
+    local videos_root="$HOME/Videos"
+
+    # 1. Env var override
+    if [[ -n "${VIDEO_SUBFOLDER+x}" ]]; then
+        VIDEO_SUBFOLDER_VALUE=$(sanitize_video_subfolder "$VIDEO_SUBFOLDER")
+        if [[ -z "$VIDEO_SUBFOLDER_VALUE" ]]; then
+            log_info "VIDEO_SUBFOLDER is empty; demo loader will play ~/Videos directly"
+        else
+            log_info "Using video subfolder from VIDEO_SUBFOLDER env var: $VIDEO_SUBFOLDER_VALUE"
+        fi
+        warn_if_video_subfolder_missing "$videos_root"
+        save_setup_state
+        return 0
+    fi
+
+    # 2. Interactive prompt (only when both stdin and stdout are TTYs)
+    if [[ -t 0 ]] && [[ -t 1 ]]; then
+        local hint
+        if [[ -n "$VIDEO_SUBFOLDER_VALUE" ]]; then
+            hint="[current: $VIDEO_SUBFOLDER_VALUE; Enter to keep, '-' to clear to root]"
+        else
+            hint="(blank to play ~/Videos directly)"
+        fi
+        local available
+        available=$(list_video_subfolders "$videos_root")
+        if [[ -n "$available" ]]; then
+            hint="$hint (available: $available)"
+        fi
+
+        local answer
+        printf 'Video subfolder under ~/Videos to play %s\n> ' "$hint" >&2
+        IFS= read -r answer || answer=""
+
+        local trimmed
+        trimmed="${answer#"${answer%%[![:space:]]*}"}"
+        trimmed="${trimmed%"${trimmed##*[![:space:]]}"}"
+
+        if [[ -z "$trimmed" ]]; then
+            if [[ -n "$VIDEO_SUBFOLDER_VALUE" ]]; then
+                log_info "Keeping cached video subfolder: $VIDEO_SUBFOLDER_VALUE"
+            else
+                VIDEO_SUBFOLDER_VALUE=""
+                log_info "Demo loader will play ~/Videos directly"
+            fi
+        elif [[ "$trimmed" == "-" ]]; then
+            VIDEO_SUBFOLDER_VALUE=""
+            log_info "Cleared video subfolder; demo loader will play ~/Videos directly"
+        else
+            VIDEO_SUBFOLDER_VALUE=$(sanitize_video_subfolder "$trimmed")
+            if [[ -z "$VIDEO_SUBFOLDER_VALUE" ]]; then
+                log_info "Demo loader will play ~/Videos directly"
+            else
+                log_success "Video subfolder set to: $VIDEO_SUBFOLDER_VALUE"
+            fi
+        fi
+        warn_if_video_subfolder_missing "$videos_root"
+        save_setup_state
+        return 0
+    fi
+
+    # 3. Non-interactive: fall back to cached value if present
+    if [[ -n "$VIDEO_SUBFOLDER_VALUE" ]]; then
+        log_info "Non-interactive run; using cached video subfolder: $VIDEO_SUBFOLDER_VALUE"
+    else
+        log_info "Non-interactive run; demo loader will play ~/Videos directly"
     fi
 }
 
@@ -846,8 +983,15 @@ open -a "Visual Studio Code"
 open -a "Visual Studio Code - Insiders"
 
 # Open VLC pointing to Videos folder
-open -a VLC "$HOME/Videos"
 EOF
+
+    # Emit the VLC line outside the quoted heredoc so the chosen subfolder is
+    # injected now while $HOME stays literal (resolved at loader runtime).
+    if [[ -n "$VIDEO_SUBFOLDER_VALUE" ]]; then
+        printf 'open -a VLC "$HOME/Videos/%s"\n' "$VIDEO_SUBFOLDER_VALUE" >> "$demo_script"
+    else
+        printf 'open -a VLC "$HOME/Videos"\n' >> "$demo_script"
+    fi
 
     chmod +x "$demo_script"
     log_success "Created demo loader script at $demo_script"

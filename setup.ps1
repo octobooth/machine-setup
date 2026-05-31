@@ -119,11 +119,12 @@ function Get-SetupStatePath {
     return (Join-Path $copilotHome "machine-setup-state.json")
 }
 
-# Reads the setup state into $script:AdoOrgValue and $script:AdoOrgMode.
-# Tolerates missing or corrupt state.
+# Reads the setup state into $script:AdoOrgValue / $script:AdoOrgMode and
+# $script:VideoSubfolder. Tolerates missing or corrupt state.
 function Get-SetupState {
     $script:AdoOrgValue = ""
     $script:AdoOrgMode = ""
+    $script:VideoSubfolder = ""
 
     $statePath = Get-SetupStatePath
     if (-not (Test-Path $statePath)) { return }
@@ -135,15 +136,23 @@ function Get-SetupState {
         return
     }
 
-    if ($state.PSObject.Properties.Name -contains 'inputs' -and
-        $state.inputs.PSObject.Properties.Name -contains 'azure_devops_org') {
-        $entry = $state.inputs.azure_devops_org
-        if ($entry.PSObject.Properties.Name -contains 'value') { $script:AdoOrgValue = [string]$entry.value }
-        if ($entry.PSObject.Properties.Name -contains 'mode')  { $script:AdoOrgMode  = [string]$entry.mode  }
+    if ($state.PSObject.Properties.Name -contains 'inputs') {
+        if ($state.inputs.PSObject.Properties.Name -contains 'azure_devops_org') {
+            $entry = $state.inputs.azure_devops_org
+            if ($entry.PSObject.Properties.Name -contains 'value') { $script:AdoOrgValue = [string]$entry.value }
+            if ($entry.PSObject.Properties.Name -contains 'mode')  { $script:AdoOrgMode  = [string]$entry.mode  }
+        }
+        if ($state.inputs.PSObject.Properties.Name -contains 'video_subfolder') {
+            $videoEntry = $state.inputs.video_subfolder
+            if ($videoEntry.PSObject.Properties.Name -contains 'value') {
+                # Re-sanitize cached value so a hand-edited state file can't inject
+                $script:VideoSubfolder = ConvertTo-SafeVideoSubfolder ([string]$videoEntry.value)
+            }
+        }
     }
 }
 
-# Atomically writes the current $script:AdoOrg* values to the state file.
+# Atomically writes the current per-machine inputs to the state file.
 function Save-SetupState {
     $statePath = Get-SetupStatePath
     $copilotHome = Split-Path -Parent $statePath
@@ -166,6 +175,9 @@ function Save-SetupState {
     $entry = [PSCustomObject]@{ value = $script:AdoOrgValue; mode = $script:AdoOrgMode }
     $existing.inputs | Add-Member -NotePropertyName azure_devops_org -NotePropertyValue $entry -Force
 
+    $videoEntry = [PSCustomObject]@{ value = $script:VideoSubfolder }
+    $existing.inputs | Add-Member -NotePropertyName video_subfolder -NotePropertyValue $videoEntry -Force
+
     $tmp = "$statePath.tmp"
     try {
         $existing | ConvertTo-Json -Depth 10 | Out-File -FilePath $tmp -Encoding UTF8 -Force
@@ -179,10 +191,15 @@ function Save-SetupState {
 }
 
 # Prompts (when TTY) for per-machine inputs.
-# Precedence: ADO_ORG env var > interactive prompt > cached value > skip.
 function Read-SetupInputs {
     Get-SetupState
+    Read-AdoOrgInput
+    Read-VideoSubfolderInput
+}
 
+# Prompts for the Azure DevOps organization.
+# Precedence: ADO_ORG env var > interactive prompt > cached value > skip.
+function Read-AdoOrgInput {
     # 1. Env var override (explicit empty = skip)
     if (Test-Path env:ADO_ORG) {
         $envVal = [string]$env:ADO_ORG
@@ -261,6 +278,132 @@ function Read-SetupInputs {
         Write-Info "Non-interactive run with no cached value; Azure DevOps MCP server will be skipped"
         $script:AdoOrgValue = ""
         $script:AdoOrgMode = "skip"
+    }
+}
+
+# Sanitizes a user-entered video subfolder. Returns "" (use ~/Videos root) for
+# empty or unsafe input (path traversal, absolute/rooted paths, or quote chars).
+function ConvertTo-SafeVideoSubfolder {
+    param([string]$Value)
+    if ($null -eq $Value) { return "" }
+    $v = $Value.Trim()
+    if ([string]::IsNullOrEmpty($v)) { return "" }
+    # Normalize forward slashes to backslashes for uniform handling
+    $v = $v -replace '/', '\'
+    # Reject path traversal, drive-rooted (C:), UNC (\\), shell/PS metacharacters
+    # ($ ` " expand inside the double-quoted loader string), or control chars
+    if ($v -match '\.\.' -or $v -match '^[A-Za-z]:' -or $v.StartsWith('\\') -or
+        $v.Contains('"') -or $v.Contains('$') -or $v.Contains('`') -or $v -match '[\x00-\x1f]') {
+        Write-Warn "Video subfolder '$Value' looks unsafe (path traversal, absolute path, or special characters); using ~/Videos root"
+        return ""
+    }
+    # Strip leading/trailing backslashes and collapse repeated separators
+    $v = $v.Trim('\')
+    $v = $v -replace '\\+', '\'
+    return $v
+}
+
+# Returns a comma-separated list of immediate subdirectory names under $VideosRoot.
+# Hint only; never required and never blocks.
+function Get-VideoSubfolderHint {
+    param([string]$VideosRoot)
+    try {
+        if (-not (Test-Path $VideosRoot)) { return "" }
+        $dirs = Get-ChildItem -Path $VideosRoot -Directory -ErrorAction Stop | Select-Object -ExpandProperty Name
+        if ($dirs) { return ($dirs -join ', ') }
+    } catch {
+        # Listing is a convenience only; ignore any failure
+    }
+    return ""
+}
+
+# Warns (but never fails) when the chosen subfolder is not yet present on disk.
+function Test-VideoSubfolderPresent {
+    param([string]$VideosRoot)
+    if ([string]::IsNullOrEmpty($script:VideoSubfolder)) { return }
+    $target = Join-Path $VideosRoot $script:VideoSubfolder
+    if (-not (Test-Path $target)) {
+        Write-Warn "Videos subfolder '$($script:VideoSubfolder)' not found yet under ~/Videos; make sure the videos are copied there before running the demo loader."
+    }
+}
+
+# Prompts for the per-machine video subfolder under ~/Videos.
+# Precedence: VIDEO_SUBFOLDER env var > interactive prompt > cached value > "" (root).
+function Read-VideoSubfolderInput {
+    $videosRoot = Join-Path $env:USERPROFILE "Videos"
+
+    # 1. Env var override
+    if (Test-Path env:VIDEO_SUBFOLDER) {
+        $script:VideoSubfolder = ConvertTo-SafeVideoSubfolder ([string]$env:VIDEO_SUBFOLDER)
+        if ([string]::IsNullOrEmpty($script:VideoSubfolder)) {
+            Write-Info "VIDEO_SUBFOLDER is empty; demo loader will play ~/Videos directly"
+        } else {
+            Write-Info "Using video subfolder from VIDEO_SUBFOLDER env var: $($script:VideoSubfolder)"
+        }
+        Test-VideoSubfolderPresent $videosRoot
+        Save-SetupState
+        return
+    }
+
+    # 2. Interactive prompt (only when stdin isn't redirected)
+    $interactive = $true
+    try {
+        if ([Console]::IsInputRedirected) { $interactive = $false }
+    } catch {
+        # Some hosts don't expose this; fall through to try Read-Host
+    }
+
+    if ($interactive) {
+        if (-not [string]::IsNullOrEmpty($script:VideoSubfolder)) {
+            $hint = "[current: $($script:VideoSubfolder); Enter to keep, '-' to clear to root]"
+        } else {
+            $hint = "(blank to play ~/Videos directly)"
+        }
+        $available = Get-VideoSubfolderHint $videosRoot
+        if (-not [string]::IsNullOrEmpty($available)) {
+            $hint = "$hint (available: $available)"
+        }
+
+        $answer = $null
+        try {
+            $answer = Read-Host "Video subfolder under ~/Videos to play $hint"
+        } catch {
+            Write-Warn "Could not prompt for video subfolder; demo loader will play ~/Videos"
+            $script:VideoSubfolder = ""
+            Save-SetupState
+            return
+        }
+
+        $trimmed = if ($null -eq $answer) { "" } else { $answer.Trim() }
+
+        if ([string]::IsNullOrEmpty($trimmed)) {
+            if (-not [string]::IsNullOrEmpty($script:VideoSubfolder)) {
+                Write-Info "Keeping cached video subfolder: $($script:VideoSubfolder)"
+            } else {
+                $script:VideoSubfolder = ""
+                Write-Info "Demo loader will play ~/Videos directly"
+            }
+        } elseif ($trimmed -eq '-') {
+            $script:VideoSubfolder = ""
+            Write-Info "Cleared video subfolder; demo loader will play ~/Videos directly"
+        } else {
+            $script:VideoSubfolder = ConvertTo-SafeVideoSubfolder $trimmed
+            if ([string]::IsNullOrEmpty($script:VideoSubfolder)) {
+                Write-Info "Demo loader will play ~/Videos directly"
+            } else {
+                Write-Success "Video subfolder set to: $($script:VideoSubfolder)"
+            }
+        }
+        Test-VideoSubfolderPresent $videosRoot
+        Save-SetupState
+        return
+    }
+
+    # 3. Non-interactive: fall back to cached value if present
+    if (-not [string]::IsNullOrEmpty($script:VideoSubfolder)) {
+        Write-Info "Non-interactive run; using cached video subfolder: $($script:VideoSubfolder)"
+    } else {
+        Write-Info "Non-interactive run; demo loader will play ~/Videos directly"
     }
 }
 
@@ -984,7 +1127,11 @@ function New-DemoLoader {
 
     # Add VLC
     $lines += "# Open VLC"
-    $lines += 'Start-Process "vlc" -ArgumentList "$env:USERPROFILE\Videos"'
+    if (-not [string]::IsNullOrEmpty($script:VideoSubfolder)) {
+        $lines += 'Start-Process "vlc" -ArgumentList "$env:USERPROFILE\Videos\' + $script:VideoSubfolder + '"'
+    } else {
+        $lines += 'Start-Process "vlc" -ArgumentList "$env:USERPROFILE\Videos"'
+    }
     $lines += ""
     $lines += "Write-Host 'Demo environment loaded!' -ForegroundColor Green"
 
