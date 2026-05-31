@@ -461,6 +461,16 @@ function Connect-GH {
     }
 }
 
+# Returns the install-marker directories the GitHub Copilot desktop app may use.
+# Shared by Install-CopilotApp and the sign-in checklist so the two stay in sync.
+function Get-CopilotAppMarkerDir {
+    @(
+        (Join-Path $env:LOCALAPPDATA "Programs\github-copilot"),
+        (Join-Path $env:LOCALAPPDATA "Programs\GitHubCopilot"),
+        (Join-Path $env:LOCALAPPDATA "Programs\GitHub Copilot")
+    )
+}
+
 function Invoke-SignInStep {
     param(
         [int]$Index,
@@ -583,11 +593,7 @@ function Start-SignInChecklist {
     Invoke-SignInStep -Index 6 -Total $total -Name "Copilot app (desktop)" `
         -ManualHint "Launch the GitHub Copilot app from the Start Menu and sign in inside the app." `
         -Launch {
-            $markerDirs = @(
-                (Join-Path $env:LOCALAPPDATA "Programs\github-copilot"),
-                (Join-Path $env:LOCALAPPDATA "Programs\GitHubCopilot"),
-                (Join-Path $env:LOCALAPPDATA "Programs\GitHub Copilot")
-            )
+            $markerDirs = Get-CopilotAppMarkerDir
 
             $exe = $null
 
@@ -892,11 +898,7 @@ function Install-CopilotApp {
     }
 
     # Common install locations the desktop app may use
-    $installedMarkers = @(
-        (Join-Path $env:LOCALAPPDATA "Programs\github-copilot"),
-        (Join-Path $env:LOCALAPPDATA "Programs\GitHubCopilot"),
-        (Join-Path $env:LOCALAPPDATA "Programs\GitHub Copilot")
-    )
+    $installedMarkers = Get-CopilotAppMarkerDir
     if (Test-ShouldSkipInstalled) {
         foreach ($m in $installedMarkers) {
             if (Test-Path $m) {
@@ -994,7 +996,6 @@ Read-SetupInputs
 
 # Install packages
 Install-Packages
-Install-VisualStudio
 Install-Aspire
 Install-NpmGlobals
 Set-VLCConfiguration
@@ -1011,11 +1012,15 @@ Install-PWAs
 # Install extensions and configure themes
 Initialize-Editors
 
+# Register MCP servers for Copilot CLI
+Register-MCPServers
+
 # Guided GitHub sign-in across all surfaces (browser first so others inherit the session)
 Start-SignInChecklist
 
-# Register MCP servers for Copilot CLI
-Register-MCPServers
+# Visual Studio Enterprise install is long and blocking, so run it last (after the
+# quick interactive steps) so the user can walk away while it completes.
+Install-VisualStudio
 
 # Create demo loader script
 New-DemoLoader
