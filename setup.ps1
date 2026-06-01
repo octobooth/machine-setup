@@ -31,7 +31,24 @@ $script:configPath = Join-Path $PSScriptRoot "config.json"
 $script:failedItems = @()
 $script:ForceReinstall = $env:FORCE_REINSTALL -eq "true"
 
+# Per-run install choices for the optional editors. Default to $true (so unattended
+# runs install everything active, unchanged). Overridable via the INSTALL_NEOVIM /
+# INSTALL_JETBRAINS env vars or the interactive prompt. Never persisted to state.
+$script:InstallNeovim = $true
+$script:InstallJetBrains = $true
+
 function Test-ShouldSkipInstalled { return -not $script:ForceReinstall }
+
+# Returns $true if a package entry is "active" (should be installed). An entry is
+# considered disabled (returns $false) when it is null, whitespace-only, or its
+# trimmed value begins with '#'. This lets config.json (which can't have real JSON
+# comments) document and disable packages by prefixing their id with '# '.
+function Test-ActivePackageEntry {
+    param([string]$Entry)
+    if ([string]::IsNullOrWhiteSpace($Entry)) { return $false }
+    if ($Entry.TrimStart().StartsWith("#")) { return $false }
+    return $true
+}
 
 # ----------------------------------------
 # Logging Helpers
@@ -195,6 +212,71 @@ function Read-SetupInputs {
     Get-SetupState
     Read-AdoOrgInput
     Read-VideoSubfolderInput
+    Read-OptionalEditorChoices
+}
+
+# Resolves a yes/no choice. Precedence: env var override (truthy 1/true/yes/y/on,
+# falsy 0/false/no/n/off) > interactive prompt (default yes) > non-interactive
+# default yes (so piped/unattended runs install everything active, unchanged).
+# Unrecognized env values or responses warn and fall back to yes.
+function Read-YesNoChoice {
+    param(
+        [string]$Question,
+        [string]$EnvVarName
+    )
+
+    if (-not [string]::IsNullOrEmpty($EnvVarName)) {
+        $raw = [Environment]::GetEnvironmentVariable($EnvVarName)
+        if ($null -ne $raw) {
+            $norm = $raw.Trim().ToLowerInvariant()
+            if ($norm -in @('1', 'true', 'yes', 'y', 'on'))  { return $true }
+            if ($norm -in @('0', 'false', 'no', 'n', 'off')) { return $false }
+            if (-not [string]::IsNullOrEmpty($norm)) {
+                Write-Warn "Unrecognized value '$raw' for $EnvVarName; ignoring it."
+            }
+        }
+    }
+
+    $interactive = $true
+    try {
+        if ([Console]::IsInputRedirected) { $interactive = $false }
+    } catch {
+        # Some hosts don't expose this; assume interactive and let Read-Host handle it.
+    }
+    if (-not $interactive) { return $true }
+
+    $answer = $null
+    try {
+        $answer = Read-Host "$Question [Y/n]"
+    } catch {
+        return $true
+    }
+
+    $trimmed = if ($null -eq $answer) { "" } else { $answer.Trim().ToLowerInvariant() }
+    if ([string]::IsNullOrEmpty($trimmed)) { return $true }
+    if ($trimmed -in @('y', 'yes')) { return $true }
+    if ($trimmed -in @('n', 'no'))  { return $false }
+    Write-Warn "Unrecognized response '$answer'; defaulting to yes."
+    return $true
+}
+
+# Asks whether to install the optional editors (Neovim, JetBrains IDEs). The
+# results gate the install loop, the Neovim Copilot plugin, and the matching
+# sign-in checklist steps. Choices are per-run only and never persisted.
+function Read-OptionalEditorChoices {
+    $script:InstallNeovim = Read-YesNoChoice -Question "Install Neovim (and auto-configure its GitHub Copilot plugin)?" -EnvVarName "INSTALL_NEOVIM"
+    if ($script:InstallNeovim) {
+        Write-Info "Neovim will be installed."
+    } else {
+        Write-Info "Skipping Neovim (and its Copilot plugin)."
+    }
+
+    $script:InstallJetBrains = Read-YesNoChoice -Question "Install JetBrains IDEs (IntelliJ IDEA, PyCharm, Rider, WebStorm)?" -EnvVarName "INSTALL_JETBRAINS"
+    if ($script:InstallJetBrains) {
+        Write-Info "JetBrains IDEs will be installed."
+    } else {
+        Write-Info "Skipping JetBrains IDEs."
+    }
 }
 
 # Prompts for the Azure DevOps organization.
@@ -418,6 +500,23 @@ function Install-Packages {
     Write-Info "Installing packages via winget..."
 
     foreach ($package in $config.windows.packages) {
+        # Skip disabled/documentation entries (those prefixed with '# ' in config.json).
+        if (-not (Test-ActivePackageEntry $package)) {
+            Write-Info "Skipping disabled package: $package"
+            continue
+        }
+
+        # Honor the interactive install choices for the optional editors.
+        $pkgTrim = $package.Trim()
+        if ((-not $script:InstallNeovim) -and $pkgTrim -eq "Neovim.Neovim") {
+            Write-Info "Skipping Neovim (not selected): $package"
+            continue
+        }
+        if ((-not $script:InstallJetBrains) -and (Test-JetBrainsIdeEntry $package)) {
+            Write-Info "Skipping JetBrains IDE (not selected): $package"
+            continue
+        }
+
         # Chrome may be installed outside of winget (MDM, OEM, manual download, etc.)
         # so we check the filesystem to avoid install conflicts
         if ((Test-ShouldSkipInstalled) -and $package -eq "Google.Chrome" -and (Test-Path "${env:ProgramFiles}\Google\Chrome\Application\chrome.exe")) {
@@ -448,6 +547,75 @@ function Install-Packages {
     }
 
     Write-Success "Package installation complete"
+}
+
+function Install-NeovimCopilot {
+    # Installs the official github/copilot.vim plugin into Neovim's native package
+    # start path so it loads automatically. Idempotent and never fatal.
+    if (-not $script:InstallNeovim) {
+        Write-Info "Neovim was not selected; skipping Copilot plugin setup."
+        return
+    }
+
+    Write-Info "Setting up Neovim GitHub Copilot plugin..."
+
+    if (-not (Get-Command nvim -ErrorAction SilentlyContinue)) {
+        Write-Info "Neovim (nvim) not found on PATH; skipping Copilot plugin setup."
+        return
+    }
+
+    if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+        Write-Warn "git not found on PATH; cannot install Neovim Copilot plugin. Skipping."
+        return
+    }
+
+    $target = Join-Path $env:LOCALAPPDATA "nvim-data\site\pack\github\start\copilot.vim"
+    $parent = Split-Path -Parent $target
+
+    if (-not (Test-Path $parent)) {
+        try {
+            New-Item -Path $parent -ItemType Directory -Force | Out-Null
+        } catch {
+            Write-Warn "Could not create Neovim plugin directory '$parent': $_"
+            $script:failedItems += "Neovim Copilot plugin (mkdir)"
+            return
+        }
+    }
+
+    if (-not (Test-Path $target)) {
+        Invoke-SafeInstall -Description "Neovim Copilot plugin (clone)" -Action {
+            git clone --depth 1 https://github.com/github/copilot.vim $target 2>&1
+        }
+        if (-not (Test-Path (Join-Path $target ".git"))) {
+            Write-Warn "Neovim Copilot plugin clone did not complete; skipping. You can retry later."
+            return
+        }
+    }
+    elseif (Test-Path (Join-Path $target ".git")) {
+        if (Test-ShouldSkipInstalled) {
+            # Already a repo and we're not forcing; refresh best-effort.
+            try {
+                git -C $target pull --ff-only 2>&1 | Out-Null
+                if ($LASTEXITCODE -ne 0) { Write-Warn "Could not update Neovim Copilot plugin (git pull failed); continuing." }
+            } catch {
+                Write-Warn "Could not update Neovim Copilot plugin: $_"
+            }
+        } else {
+            Invoke-SafeInstall -Description "Neovim Copilot plugin (pull)" -Action {
+                git -C $target pull --ff-only 2>&1
+            }
+        }
+    }
+    else {
+        Write-Warn "Neovim Copilot plugin path exists but is not a git repo; leaving it untouched: $target"
+        return
+    }
+
+    if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
+        Write-Warn "Node.js (node) not found on PATH; Neovim Copilot may not work until Node is available."
+    }
+
+    Write-Success "Neovim GitHub Copilot plugin ready"
 }
 
 function Start-PostInstallApps {
@@ -631,6 +799,54 @@ function Get-CopilotAppMarkerDir {
     )
 }
 
+function Get-JetBrainsDisplayName {
+    param([string]$Id)
+    # Map winget JetBrains ids (with the 'JetBrains.' prefix stripped) to friendly
+    # display names. Unknown ids fall back to the raw id so we never crash.
+    $map = @{
+        'IntelliJIDEA.Ultimate'  = 'IntelliJ IDEA Ultimate'
+        'IntelliJIDEA.Community' = 'IntelliJ IDEA Community'
+        'PyCharm.Professional'   = 'PyCharm Professional'
+        'PyCharm.Community'      = 'PyCharm Community'
+        'Rider'                  = 'Rider'
+        'WebStorm'               = 'WebStorm'
+        'GoLand'                 = 'GoLand'
+        'CLion'                  = 'CLion'
+        'PhpStorm'               = 'PhpStorm'
+        'RubyMine'               = 'RubyMine'
+        'DataGrip'               = 'DataGrip'
+        'RustRover'              = 'RustRover'
+    }
+    $suffix = $Id -replace '^JetBrains\.', ''
+    if ($map.ContainsKey($suffix)) { return $map[$suffix] }
+    return $Id
+}
+
+# Returns $true if a package entry is a JetBrains IDE (a 'JetBrains.*' id that is
+# not JetBrains Toolbox). Shared by the install-loop gate and the checklist
+# derivation so commenting out an IDE removes both its install and its step.
+function Test-JetBrainsIdeEntry {
+    param([string]$Entry)
+    if ([string]::IsNullOrWhiteSpace($Entry)) { return $false }
+    $trimmed = $Entry.Trim()
+    if ($trimmed -notlike 'JetBrains.*') { return $false }
+    if ($trimmed -like 'JetBrains.Toolbox*') { return $false }
+    return $true
+}
+
+function Get-ActiveJetBrainsDisplayNames {
+    # Returns friendly display names for the ACTIVE JetBrains IDE entries in
+    # config.windows.packages, excluding JetBrains Toolbox. Commenting out an IDE
+    # in config (prefixing '# ') therefore also removes its checklist step.
+    $names = @()
+    foreach ($pkg in $config.windows.packages) {
+        if (-not (Test-ActivePackageEntry $pkg)) { continue }
+        if (-not (Test-JetBrainsIdeEntry $pkg)) { continue }
+        $names += (Get-JetBrainsDisplayName $pkg)
+    }
+    return $names
+}
+
 function Invoke-SignInStep {
     param(
         [int]$Index,
@@ -643,17 +859,22 @@ function Invoke-SignInStep {
     Write-Host ""
     Write-Host "[$Index/$Total] $Name" -ForegroundColor Cyan
 
-    $launched = $false
-    try {
-        & $Launch
-        $launched = $true
-    } catch {
-        Write-Warn "Could not launch $Name automatically: $_"
-        if ($ManualHint) { Write-Warn "Manual step: $ManualHint" }
-    }
+    if ($null -eq $Launch) {
+        # Manual-only step: nothing to launch, just surface the instructions.
+        if ($ManualHint) { Write-Info $ManualHint }
+    } else {
+        $launched = $false
+        try {
+            & $Launch
+            $launched = $true
+        } catch {
+            Write-Warn "Could not launch $Name automatically: $_"
+            if ($ManualHint) { Write-Warn "Manual step: $ManualHint" }
+        }
 
-    if ($launched -and $ManualHint) {
-        Write-Info $ManualHint
+        if ($launched -and $ManualHint) {
+            Write-Info $ManualHint
+        }
     }
 
     [void](Read-Host "  -> Press Enter once you've signed in to $Name (or to skip)")
@@ -691,68 +912,104 @@ function Start-SignInChecklist {
         Write-Info "Tip: set DEMO_GH_USER to display the expected demo account here."
     }
 
-    $total = 6
+    # Build an ordered list of step descriptors, then iterate so [index/total]
+    # is always correct as steps are added or removed.
+    $steps = @()
 
-    # ---- Step 1: Web browser (establish the browser session first) ----
-    Invoke-SignInStep -Index 1 -Total $total -Name "Web browser (github.com)" `
-        -ManualHint "Open https://github.com/login and sign in as the demo account." `
-        -Launch {
+    # ---- Web browser (establish the browser session first) ----
+    $steps += @{
+        Name       = "Web browser (github.com)"
+        ManualHint = "Open https://github.com/login and sign in as the demo account."
+        Launch     = {
             Start-Process "https://github.com/login" | Out-Null
         }
+    }
 
-    # ---- Step 2: GitHub CLI (skip if Connect-GH already authenticated) ----
+    # ---- GitHub CLI (skip if Connect-GH already authenticated) ----
     $ghAuthed = $false
     if (Get-Command gh -ErrorAction SilentlyContinue) {
         gh auth status 2>&1 | Out-Null
         if ($LASTEXITCODE -eq 0) { $ghAuthed = $true }
     }
-
-    if ($ghAuthed) {
-        Write-Host ""
-        Write-Host "[2/$total] GitHub CLI (gh)" -ForegroundColor Cyan
-        Write-Success "GitHub CLI - already authenticated, skipping"
-    } else {
-        Invoke-SignInStep -Index 2 -Total $total -Name "GitHub CLI (gh)" `
-            -ManualHint "Run 'gh auth login --web' and complete the device flow in the browser." `
-            -Launch {
-                if (-not (Get-Command gh -ErrorAction SilentlyContinue)) { throw "gh not found on PATH" }
-                gh auth login --web
-                if ($LASTEXITCODE -ne 0) { throw "gh auth login exited with code $LASTEXITCODE" }
-            }
+    $steps += @{
+        Name        = "GitHub CLI (gh)"
+        ManualHint  = "Run 'gh auth login --web' and complete the device flow in the browser."
+        Launch      = {
+            if (-not (Get-Command gh -ErrorAction SilentlyContinue)) { throw "gh not found on PATH" }
+            gh auth login --web
+            if ($LASTEXITCODE -ne 0) { throw "gh auth login exited with code $LASTEXITCODE" }
+        }
+        SkipIf      = $ghAuthed
+        SkipMessage = "GitHub CLI - already authenticated, skipping"
     }
 
-    # ---- Step 3: Copilot CLI (first-run device flow via /login) ----
-    Invoke-SignInStep -Index 3 -Total $total -Name "Copilot CLI (copilot)" `
-        -ManualHint "In the Copilot CLI window, run the '/login' slash command to authenticate." `
-        -Launch {
+    # ---- Copilot CLI (first-run device flow via /login) ----
+    $steps += @{
+        Name       = "Copilot CLI (copilot)"
+        ManualHint = "In the Copilot CLI window, run the '/login' slash command to authenticate."
+        Launch     = {
             $copilotCmd = Get-Command copilot -ErrorAction SilentlyContinue
             if ($null -eq $copilotCmd) { throw "copilot not found on PATH" }
             # Launch in a persistent window so the user can run /login and see any errors.
             Start-Process powershell.exe -ArgumentList @('-NoExit', '-Command', "& '$($copilotCmd.Source)'") | Out-Null
         }
+    }
 
-    # ---- Step 4: VS Code ----
-    Invoke-SignInStep -Index 4 -Total $total -Name "VS Code" `
-        -ManualHint "If Copilot doesn't prompt, sign in via the Accounts menu (bottom-left gear/avatar)." `
-        -Launch {
+    # ---- VS Code ----
+    $steps += @{
+        Name       = "VS Code"
+        ManualHint = "If Copilot doesn't prompt, sign in via the Accounts menu (bottom-left gear/avatar)."
+        Launch     = {
             if (-not (Get-Command code -ErrorAction SilentlyContinue)) { throw "code (VS Code) not found on PATH" }
             & code --command "github.copilot.signIn" 2>&1 | Out-Null
             if ($LASTEXITCODE -ne 0) { throw "code exited with code $LASTEXITCODE" }
         }
+    }
 
-    # ---- Step 5: VS Code Insiders ----
-    Invoke-SignInStep -Index 5 -Total $total -Name "VS Code Insiders" `
-        -ManualHint "If Copilot doesn't prompt, sign in via the Accounts menu (bottom-left gear/avatar)." `
-        -Launch {
+    # ---- VS Code Insiders ----
+    $steps += @{
+        Name       = "VS Code Insiders"
+        ManualHint = "If Copilot doesn't prompt, sign in via the Accounts menu (bottom-left gear/avatar)."
+        Launch     = {
             if (-not (Get-Command code-insiders -ErrorAction SilentlyContinue)) { throw "code-insiders not found on PATH" }
             & code-insiders --command "github.copilot.signIn" 2>&1 | Out-Null
             if ($LASTEXITCODE -ne 0) { throw "code-insiders exited with code $LASTEXITCODE" }
         }
+    }
 
-    # ---- Step 6: Copilot desktop app ----
-    Invoke-SignInStep -Index 6 -Total $total -Name "Copilot app (desktop)" `
-        -ManualHint "Launch the GitHub Copilot app from the Start Menu and sign in inside the app." `
-        -Launch {
+    # ---- Neovim (only when selected and nvim is installed) ----
+    if ($script:InstallNeovim -and (Get-Command nvim -ErrorAction SilentlyContinue)) {
+        $steps += @{
+            Name       = "Neovim"
+            ManualHint = "Inside Neovim, run ':Copilot setup' to authenticate. If you signed in to the Copilot CLI above, Neovim may already be signed in via the shared token at %LOCALAPPDATA%\github-copilot."
+            Launch     = {
+                if (-not (Get-Command nvim -ErrorAction SilentlyContinue)) { throw "nvim not found on PATH" }
+                # Prefer Windows Terminal; fall back to a persistent PowerShell window.
+                if (Get-Command wt.exe -ErrorAction SilentlyContinue) {
+                    Start-Process wt.exe -ArgumentList 'nvim', '+":Copilot setup"' | Out-Null
+                } else {
+                    Start-Process powershell.exe -ArgumentList '-NoExit', '-Command', 'nvim +":Copilot setup"' | Out-Null
+                }
+            }
+        }
+    }
+
+    # ---- JetBrains IDEs (dynamic from active config entries; manual-hint only) ----
+    if ($script:InstallJetBrains) {
+        foreach ($jbName in (Get-ActiveJetBrainsDisplayNames)) {
+            $steps += @{
+                Name       = $jbName
+                ManualHint = "Open $jbName, install the GitHub Copilot plugin (Settings/Preferences > Plugins > Marketplace > search 'GitHub Copilot'), then sign in to Copilot inside the IDE."
+                Launch     = $null
+            }
+        }
+    }
+
+    # ---- Copilot desktop app (keep last) ----
+    $steps += @{
+        Name       = "Copilot app (desktop)"
+        ManualHint = "Launch the GitHub Copilot app from the Start Menu and sign in inside the app."
+        Launch     = {
             $markerDirs = Get-CopilotAppMarkerDir
 
             $exe = $null
@@ -795,6 +1052,24 @@ function Start-SignInChecklist {
             if ($null -eq $exe) { throw "Copilot desktop app executable not found" }
             Start-Process $exe | Out-Null
         }
+    }
+
+    $total = $steps.Count
+    for ($i = 0; $i -lt $steps.Count; $i++) {
+        $step  = $steps[$i]
+        $index = $i + 1
+
+        if ($step.ContainsKey('SkipIf') -and $step.SkipIf) {
+            Write-Host ""
+            Write-Host "[$index/$total] $($step.Name)" -ForegroundColor Cyan
+            Write-Success $step.SkipMessage
+            continue
+        }
+
+        $launch = $null
+        if ($step.ContainsKey('Launch')) { $launch = $step.Launch }
+        Invoke-SignInStep -Index $index -Total $total -Name $step.Name -Launch $launch -ManualHint $step.ManualHint
+    }
 
     Write-Host ""
     Write-Success "Sign-in checklist complete."
@@ -1160,6 +1435,7 @@ Read-SetupInputs
 
 # Install packages
 Install-Packages
+Install-NeovimCopilot
 Install-Aspire
 Install-NpmGlobals
 Set-VLCConfiguration
