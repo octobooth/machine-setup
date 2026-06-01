@@ -260,7 +260,7 @@ function Read-YesNoChoice {
     return $true
 }
 
-# Asks whether to install the optional editors (Neovim, JetBrains IDEs). The
+# Asks whether to install the optional editors (Neovim, IDEs). The
 # results gate the install loop, the Neovim Copilot plugin, and the matching
 # sign-in checklist steps. Choices are per-run only and never persisted.
 function Read-OptionalEditorChoices {
@@ -271,11 +271,11 @@ function Read-OptionalEditorChoices {
         Write-Info "Skipping Neovim (and its Copilot plugin)."
     }
 
-    $script:InstallJetBrains = Read-YesNoChoice -Question "Install JetBrains IDEs (IntelliJ IDEA, PyCharm, Rider, WebStorm)?" -EnvVarName "INSTALL_JETBRAINS"
+    $script:InstallJetBrains = Read-YesNoChoice -Question "Install IDEs (PyCharm, Android Studio)?" -EnvVarName "INSTALL_JETBRAINS"
     if ($script:InstallJetBrains) {
-        Write-Info "JetBrains IDEs will be installed."
+        Write-Info "IDEs will be installed."
     } else {
-        Write-Info "Skipping JetBrains IDEs."
+        Write-Info "Skipping IDEs."
     }
 }
 
@@ -512,8 +512,8 @@ function Install-Packages {
             Write-Info "Skipping Neovim (not selected): $package"
             continue
         }
-        if ((-not $script:InstallJetBrains) -and (Test-JetBrainsIdeEntry $package)) {
-            Write-Info "Skipping JetBrains IDE (not selected): $package"
+        if ((-not $script:InstallJetBrains) -and (Test-IdeEntry $package)) {
+            Write-Info "Skipping IDE (not selected): $package"
             continue
         }
 
@@ -799,10 +799,13 @@ function Get-CopilotAppMarkerDir {
     )
 }
 
-function Get-JetBrainsDisplayName {
+function Get-IdeDisplayName {
     param([string]$Id)
-    # Map winget JetBrains ids (with the 'JetBrains.' prefix stripped) to friendly
-    # display names. Unknown ids fall back to the raw id so we never crash.
+    # Map IDE package ids to friendly display names. Covers JetBrains winget ids
+    # (with the 'JetBrains.' prefix stripped) plus Android Studio. Unknown ids fall
+    # back to the raw id so we never crash.
+    $trimmed = $Id.Trim()
+    if ($trimmed -eq 'Google.AndroidStudio') { return 'Android Studio' }
     $map = @{
         'IntelliJIDEA.Ultimate'  = 'IntelliJ IDEA Ultimate'
         'IntelliJIDEA.Community' = 'IntelliJ IDEA Community'
@@ -817,14 +820,13 @@ function Get-JetBrainsDisplayName {
         'DataGrip'               = 'DataGrip'
         'RustRover'              = 'RustRover'
     }
-    $suffix = $Id -replace '^JetBrains\.', ''
+    $suffix = $trimmed -replace '^JetBrains\.', ''
     if ($map.ContainsKey($suffix)) { return $map[$suffix] }
     return $Id
 }
 
 # Returns $true if a package entry is a JetBrains IDE (a 'JetBrains.*' id that is
-# not JetBrains Toolbox). Shared by the install-loop gate and the checklist
-# derivation so commenting out an IDE removes both its install and its step.
+# not JetBrains Toolbox).
 function Test-JetBrainsIdeEntry {
     param([string]$Entry)
     if ([string]::IsNullOrWhiteSpace($Entry)) { return $false }
@@ -834,15 +836,28 @@ function Test-JetBrainsIdeEntry {
     return $true
 }
 
-function Get-ActiveJetBrainsDisplayNames {
-    # Returns friendly display names for the ACTIVE JetBrains IDE entries in
-    # config.windows.packages, excluding JetBrains Toolbox. Commenting out an IDE
-    # in config (prefixing '# ') therefore also removes its checklist step.
+# Returns $true if a package entry is an IDE we gate behind the "Install IDEs"
+# prompt: any JetBrains IDE plus Android Studio (a Google package, not JetBrains).
+# Shared by the install-loop gate and the checklist derivation so commenting out
+# an IDE removes both its install and its sign-in step.
+function Test-IdeEntry {
+    param([string]$Entry)
+    if (Test-JetBrainsIdeEntry $Entry) { return $true }
+    if ([string]::IsNullOrWhiteSpace($Entry)) { return $false }
+    if ($Entry.Trim() -eq 'Google.AndroidStudio') { return $true }
+    return $false
+}
+
+function Get-ActiveIdeDisplayNames {
+    # Returns friendly display names for the ACTIVE IDE entries in
+    # config.windows.packages (JetBrains IDEs plus Android Studio), excluding
+    # JetBrains Toolbox. Commenting out an IDE in config (prefixing '# ')
+    # therefore also removes its checklist step.
     $names = @()
     foreach ($pkg in $config.windows.packages) {
         if (-not (Test-ActivePackageEntry $pkg)) { continue }
-        if (-not (Test-JetBrainsIdeEntry $pkg)) { continue }
-        $names += (Get-JetBrainsDisplayName $pkg)
+        if (-not (Test-IdeEntry $pkg)) { continue }
+        $names += (Get-IdeDisplayName $pkg)
     }
     return $names
 }
@@ -994,9 +1009,9 @@ function Start-SignInChecklist {
         }
     }
 
-    # ---- JetBrains IDEs (dynamic from active config entries; manual-hint only) ----
+    # ---- IDEs (dynamic from active config entries; manual-hint only) ----
     if ($script:InstallJetBrains) {
-        foreach ($jbName in (Get-ActiveJetBrainsDisplayNames)) {
+        foreach ($jbName in (Get-ActiveIdeDisplayNames)) {
             $steps += @{
                 Name       = $jbName
                 ManualHint = "Open $jbName, install the GitHub Copilot plugin (Settings/Preferences > Plugins > Marketplace > search 'GitHub Copilot'), then sign in to Copilot inside the IDE."

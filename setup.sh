@@ -221,9 +221,9 @@ install_packages() {
             continue
         fi
 
-        # Honor the interactive JetBrains install choice.
-        if [[ "$WANT_JETBRAINS" != "true" ]] && is_jetbrains_cask "$(trim_ws "$cask")"; then
-            log_info "Skipping JetBrains IDE (not selected): $cask"
+        # Honor the interactive IDE install choice.
+        if [[ "$WANT_JETBRAINS" != "true" ]] && is_ide_cask "$(trim_ws "$cask")"; then
+            log_info "Skipping IDE (not selected): $cask"
             continue
         fi
 
@@ -550,19 +550,20 @@ launch_neovim_signin() {
     fi
 }
 
-# Returns 0 if the given Homebrew cask is a known JetBrains IDE.
-is_jetbrains_cask() {
+# Returns 0 if the given Homebrew cask is an IDE we gate behind the "Install IDEs"
+# prompt: a known JetBrains IDE plus Android Studio.
+is_ide_cask() {
     case "$1" in
-        intellij-idea|intellij-idea-ce|pycharm|pycharm-ce|rider|webstorm|goland|clion|phpstorm|rubymine|datagrip|rustrover)
+        intellij-idea|intellij-idea-ce|pycharm|pycharm-ce|rider|webstorm|goland|clion|phpstorm|rubymine|datagrip|rustrover|android-studio)
             return 0 ;;
         *)
             return 1 ;;
     esac
 }
 
-# Maps a JetBrains Homebrew cask to a friendly display name. Unknown casks fall
-# back to the raw cask name so we never crash.
-jetbrains_cask_display_name() {
+# Maps an IDE Homebrew cask to a friendly display name. Unknown casks fall back
+# to the raw cask name so we never crash.
+ide_cask_display_name() {
     case "$1" in
         intellij-idea)     echo "IntelliJ IDEA Ultimate" ;;
         intellij-idea-ce)  echo "IntelliJ IDEA Community" ;;
@@ -576,6 +577,7 @@ jetbrains_cask_display_name() {
         rubymine)          echo "RubyMine" ;;
         datagrip)          echo "DataGrip" ;;
         rustrover)         echo "RustRover" ;;
+        android-studio)    echo "Android Studio" ;;
         *)                 echo "$1" ;;
     esac
 }
@@ -660,15 +662,15 @@ start_signin_checklist() {
             "launch_neovim_signin"
     fi
 
-    # JetBrains IDEs (dynamic from active config casks; manual-hint only). Commenting
+    # IDEs (dynamic from active config casks; manual-hint only). Commenting
     # out an IDE in config also removes its checklist step automatically.
     if [[ "$WANT_JETBRAINS" == "true" ]]; then
         local cask jb_name
         for cask in "${brew_casks[@]}"; do
             is_active_package_entry "$cask" || continue
             cask="$(trim_ws "$cask")"
-            is_jetbrains_cask "$cask" || continue
-            jb_name="$(jetbrains_cask_display_name "$cask")"
+            is_ide_cask "$cask" || continue
+            jb_name="$(ide_cask_display_name "$cask")"
             add_signin_step "$jb_name" \
                 "Open $jb_name, install the GitHub Copilot plugin (Settings/Preferences > Plugins > Marketplace > search 'GitHub Copilot'), then sign in to Copilot inside the IDE." \
                 ""
@@ -881,7 +883,7 @@ resolve_optional_editor_choice() {
     esac
 }
 
-# Asks whether to install the optional editors (Neovim, JetBrains IDEs). The
+# Asks whether to install the optional editors (Neovim, IDEs). The
 # results gate the install loop, the Neovim Copilot plugin, and the matching
 # sign-in checklist steps. Choices are per-run only and never persisted.
 prompt_for_optional_editors() {
@@ -899,12 +901,12 @@ prompt_for_optional_editors() {
     local jb_state="unset" jb_raw=""
     if [[ -n "${INSTALL_JETBRAINS+x}" ]]; then jb_state="set"; jb_raw="$INSTALL_JETBRAINS"; fi
     resolve_optional_editor_choice WANT_JETBRAINS \
-        "Install JetBrains IDEs (IntelliJ IDEA, PyCharm, Rider, WebStorm)?" \
+        "Install IDEs (PyCharm, Android Studio)?" \
         "INSTALL_JETBRAINS" "$jb_state" "$jb_raw"
     if [[ "$WANT_JETBRAINS" == "true" ]]; then
-        log_info "JetBrains IDEs will be installed."
+        log_info "IDEs will be installed."
     else
-        log_info "Skipping JetBrains IDEs."
+        log_info "Skipping IDEs."
     fi
 }
 
