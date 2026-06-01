@@ -6,7 +6,7 @@ This repository contains setup scripts for configuring booth machines. The scrip
 
 - Installs and configures Visual Studio Code and Visual Studio Code Insiders.
 - Installs Neovim and automatically sets up the official [GitHub Copilot plugin](https://github.com/github/copilot.vim) (`copilot.vim`).
-- Installs a core set of JetBrains IDEs (IntelliJ IDEA Ultimate, PyCharm Professional, Rider, WebStorm), with additional IDEs available by uncommenting them in `config.json`.
+- Installs a core set of IDEs (PyCharm Professional, JetBrains Rider, and Google Android Studio) active by default, with additional JetBrains IDEs (IntelliJ IDEA Ultimate, WebStorm, and others) available by uncommenting them in `config.json`.
 - Installs GitHub CLI and a suite of GitHub CLI extensions.
 - Installs the GitHub Copilot CLI (`copilot`).
 - Installs the GitHub Copilot desktop app (via the [`github-copilot-app`](https://formulae.brew.sh/cask/github-copilot-app) Homebrew cask on macOS; direct download from the [`github/app`](https://github.com/github/app) releases on Windows).
@@ -25,18 +25,18 @@ The configuration for the setup scripts is stored in the `config.json` file. You
 
 Because `config.json` is JSON and can't carry real comments, packages are enabled/disabled with a `# ` prefix convention: **any package entry whose value starts with `# ` is treated as disabled and skipped** by both setup scripts. To disable a package, prefix its id with `# `; to enable a commented-out one, remove the prefix.
 
-This applies to `windows.packages`, `mac.packages.casks`, and `mac.packages.formulas`. For example, a core set of JetBrains IDEs (IntelliJ IDEA Ultimate, PyCharm Professional, Rider, WebStorm) ships active, while extras (GoLand, CLion, PhpStorm, RubyMine, DataGrip, RustRover) ship commented out - uncomment the ones you want. Out of the box, the active IDEs install and the commented ones don't.
+This applies to `windows.packages`, `mac.packages.casks`, and `mac.packages.formulas`. For example, a core set of IDEs (PyCharm Professional, JetBrains Rider, and Google Android Studio) ships active, while the rest (IntelliJ IDEA Ultimate, WebStorm, GoLand, CLion, PhpStorm, RubyMine, DataGrip, RustRover) ship commented out - uncomment the ones you want. Out of the box, the active IDEs install and the commented ones don't.
 
-### Choosing whether to install Neovim and JetBrains IDEs
+### Choosing whether to install Neovim and IDEs
 
 Both setup scripts ask two quick yes/no questions early in the run:
 
 - `Install Neovim (and auto-configure its GitHub Copilot plugin)?`
-- `Install JetBrains IDEs (IntelliJ IDEA, PyCharm, Rider, WebStorm)?`
+- `Install IDEs (PyCharm, Rider, Android Studio)?`
 
 Answering no skips the relevant packages, skips the Neovim Copilot plugin setup, and omits the matching sign-in checklist steps. Pressing Enter accepts the default (yes). These choices apply to the current run only and are never saved.
 
-**Non-interactive runs** (CI, piped input, etc.) skip the prompts and default to installing both groups, so existing unattended behavior is unchanged. To control them without a prompt, set the `INSTALL_NEOVIM` and/or `INSTALL_JETBRAINS` environment variables to a truthy (`1`, `true`, `yes`, `y`, `on`) or falsy (`0`, `false`, `no`, `n`, `off`) value before running setup - for example, `INSTALL_JETBRAINS=no` to skip the JetBrains IDEs. The `# ` comment-out convention above still applies on top of these choices, so you can disable individual IDEs while keeping the rest.
+**Non-interactive runs** (CI, piped input, etc.) skip the prompts and default to installing both groups, so existing unattended behavior is unchanged. To control them without a prompt, set the `INSTALL_NEOVIM` and/or `INSTALL_JETBRAINS` environment variables to a truthy (`1`, `true`, `yes`, `y`, `on`) or falsy (`0`, `false`, `no`, `n`, `off`) value before running setup - for example, `INSTALL_JETBRAINS=no` to skip the IDEs. (The `INSTALL_JETBRAINS` variable gates the whole IDE bucket, including Android Studio.) The `# ` comment-out convention above still applies on top of these choices, so you can disable individual IDEs while keeping the rest.
 
 ### Neovim + GitHub Copilot
 
@@ -44,10 +44,10 @@ Neovim is installed alongside the editors, and its GitHub Copilot plugin (`githu
 
 ### Sign-in checklist
 
-The interactive sign-in checklist walks you through signing in to each GitHub surface one at a time. It now also covers Neovim and each active JetBrains IDE:
+The interactive sign-in checklist walks you through signing in to each GitHub surface one at a time. It now also covers Neovim and each active IDE:
 
 - **Neovim** (only shown if you chose to install Neovim and `nvim` is on `PATH`): run `:Copilot setup` inside Neovim. If you already signed in to the Copilot CLI earlier in the checklist, Neovim *may* already be signed in via the shared Copilot token (`%LOCALAPPDATA%\github-copilot` on Windows, `~/.config/github-copilot` on macOS/Linux) - this isn't guaranteed, so confirm inside the editor.
-- **JetBrains IDEs** (one step per active IDE, shown only if you chose to install them; derived from `config.json` - commenting an IDE out also removes its step): open the IDE, install the GitHub Copilot plugin (Settings/Preferences > Plugins > Marketplace > search "GitHub Copilot"), then sign in to Copilot inside the IDE. JetBrains generally requires its own in-IDE sign-in.
+- **IDEs** (one step per active IDE - PyCharm Professional, JetBrains Rider, and Google Android Studio by default - shown only if you chose to install them; derived from `config.json` - commenting an IDE out also removes its step): open the IDE, install the GitHub Copilot plugin (Settings/Preferences > Plugins > Marketplace > search "GitHub Copilot"), then sign in to Copilot inside the IDE. These IntelliJ-based IDEs generally require their own in-IDE sign-in.
 
 ## Setup Instructions
 
