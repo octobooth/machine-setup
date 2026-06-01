@@ -5,6 +5,8 @@ This repository contains setup scripts for configuring booth machines. The scrip
 ## Features
 
 - Installs and configures Visual Studio Code and Visual Studio Code Insiders.
+- Installs Neovim and automatically sets up the official [GitHub Copilot plugin](https://github.com/github/copilot.vim) (`copilot.vim`).
+- Installs a core set of JetBrains IDEs (IntelliJ IDEA Ultimate, PyCharm Professional, Rider, WebStorm), with additional IDEs available by uncommenting them in `config.json`.
 - Installs GitHub CLI and a suite of GitHub CLI extensions.
 - Installs the GitHub Copilot CLI (`copilot`).
 - Installs the GitHub Copilot desktop app (via the [`github-copilot-app`](https://formulae.brew.sh/cask/github-copilot-app) Homebrew cask on macOS; direct download from the [`github/app`](https://github.com/github/app) releases on Windows).
@@ -18,6 +20,23 @@ This repository contains setup scripts for configuring booth machines. The scrip
 ## Configuration
 
 The configuration for the setup scripts is stored in the `config.json` file. You can customize the settings by modifying this file.
+
+### Enabling and disabling packages
+
+Because `config.json` is JSON and can't carry real comments, packages are enabled/disabled with a `# ` prefix convention: **any package entry whose value starts with `# ` is treated as disabled and skipped** by both setup scripts. To disable a package, prefix its id with `# `; to enable a commented-out one, remove the prefix.
+
+This applies to `windows.packages`, `mac.packages.casks`, and `mac.packages.formulas`. For example, a core set of JetBrains IDEs (IntelliJ IDEA Ultimate, PyCharm Professional, Rider, WebStorm) ships active, while extras (GoLand, CLion, PhpStorm, RubyMine, DataGrip, RustRover) ship commented out - uncomment the ones you want. Out of the box, the active IDEs install and the commented ones don't.
+
+### Neovim + GitHub Copilot
+
+Neovim is installed alongside the editors, and its GitHub Copilot plugin (`github/copilot.vim`) is cloned automatically into Neovim's native package path (`%LOCALAPPDATA%\nvim-data\site\pack\github\start` on Windows, `${XDG_DATA_HOME:-~/.local/share}/nvim/site/pack/github/start` on macOS/Linux). The plugin requires a Node.js runtime, which both scripts now install (`OpenJS.NodeJS.LTS` on Windows, the `node` formula on macOS). Authentication is handled interactively by the sign-in checklist (below), not at install time.
+
+### Sign-in checklist
+
+The interactive sign-in checklist walks you through signing in to each GitHub surface one at a time. It now also covers Neovim and each active JetBrains IDE:
+
+- **Neovim** (only shown if `nvim` is installed): run `:Copilot setup` inside Neovim. If you already signed in to the Copilot CLI earlier in the checklist, Neovim *may* already be signed in via the shared Copilot token (`%LOCALAPPDATA%\github-copilot` on Windows, `~/.config/github-copilot` on macOS/Linux) - this isn't guaranteed, so confirm inside the editor.
+- **JetBrains IDEs** (one step per active IDE, derived from `config.json` - commenting an IDE out also removes its step): open the IDE, install the GitHub Copilot plugin (Settings/Preferences > Plugins > Marketplace > search "GitHub Copilot"), then sign in to Copilot inside the IDE. JetBrains generally requires its own in-IDE sign-in.
 
 ## Setup Instructions
 

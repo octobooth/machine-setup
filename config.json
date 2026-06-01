@@ -97,13 +97,26 @@
         "copilot-cli",
         "google-chrome",
         "github",
-        "github-copilot-app"
+        "github-copilot-app",
+        "# JetBrains IDEs: prefix any entry with '# ' to disable it",
+        "intellij-idea",
+        "pycharm",
+        "rider",
+        "webstorm",
+        "# goland",
+        "# clion",
+        "# phpstorm",
+        "# rubymine",
+        "# datagrip",
+        "# rustrover"
       ],
       "formulas": [
         "git",
         "gh",
         "python@3.14",
-        "nvm"
+        "nvm",
+        "node",
+        "neovim"
       ]
     },
     "editors": [
@@ -124,6 +137,7 @@
   },
   "windows": {
     "packages": [
+      "# To disable any package below, prefix its id with '# '. Lines starting with # are skipped.",
       "Git.Git",
       "Microsoft.VisualStudioCode",
       "Microsoft.VisualStudioCode.Insiders",
@@ -133,7 +147,19 @@
       "GitHub.Copilot",
       "Google.Chrome",
       "GitHub.GitHubDesktop",
-      "OpenJS.NodeJS.LTS"
+      "OpenJS.NodeJS.LTS",
+      "# Neovim + JetBrains IDEs (prefix any id with '# ' to disable it)",
+      "Neovim.Neovim",
+      "JetBrains.IntelliJIDEA.Ultimate",
+      "JetBrains.PyCharm.Professional",
+      "JetBrains.Rider",
+      "JetBrains.WebStorm",
+      "# JetBrains.GoLand",
+      "# JetBrains.CLion",
+      "# JetBrains.PhpStorm",
+      "# JetBrains.RubyMine",
+      "# JetBrains.DataGrip",
+      "# JetBrains.RustRover"
     ],
     "visual_studio": {
       "edition": "Enterprise",

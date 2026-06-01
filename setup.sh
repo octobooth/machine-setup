@@ -31,6 +31,19 @@ should_skip_installed() {
     [[ "$FORCE_REINSTALL" != "true" ]]
 }
 
+# Returns 0 (true) if a package entry is "active" (should be installed). An entry
+# is treated as disabled (returns non-zero) when it is empty/whitespace-only or its
+# trimmed value begins with '#'. config.json can't carry real JSON comments, so we
+# document and disable packages by prefixing their name with '# '.
+is_active_package_entry() {
+    local entry="$1"
+    # Strip leading whitespace.
+    local trimmed="${entry#"${entry%%[![:space:]]*}"}"
+    [[ -n "$trimmed" ]] || return 1
+    [[ "$trimmed" != \#* ]] || return 1
+    return 0
+}
+
 # Mutable state
 failed_items=()
 
@@ -129,10 +142,10 @@ load_config() {
     while IFS= read -r line; do gh_cli_extensions+=("$line"); done < <(jq -r '.shared.gh_cli_extensions[]' "$CONFIG_FILE")
 
     brew_casks=()
-    while IFS= read -r line; do brew_casks+=("$line"); done < <(jq -r '.mac.packages.casks[]' "$CONFIG_FILE")
+    while IFS= read -r line; do brew_casks+=("$line"); done < <(jq -r '.mac.packages.casks[] | if . == null then "" else . end' "$CONFIG_FILE")
 
     brew_formulas=()
-    while IFS= read -r line; do brew_formulas+=("$line"); done < <(jq -r '.mac.packages.formulas[]' "$CONFIG_FILE")
+    while IFS= read -r line; do brew_formulas+=("$line"); done < <(jq -r '.mac.packages.formulas[] | if . == null then "" else . end' "$CONFIG_FILE")
 
     pwa_names=()
     while IFS= read -r line; do pwa_names+=("$line"); done < <(jq -r '.shared.pwa_sites[].name' "$CONFIG_FILE")
@@ -187,6 +200,12 @@ install_packages() {
     log_info "Installing Brew casks..."
 
     for cask in "${brew_casks[@]}"; do
+        # Skip disabled/documentation entries (those prefixed with '# ' in config.json).
+        if ! is_active_package_entry "$cask"; then
+            log_info "Skipping disabled package: $cask"
+            continue
+        fi
+
         # Chrome may be installed outside of brew (MDM, manual download, etc.)
         # so we check the filesystem to avoid install conflicts
         if should_skip_installed && [[ "$cask" == "google-chrome" ]] && [[ -d "/Applications/Google Chrome.app" ]]; then
@@ -199,6 +218,12 @@ install_packages() {
 
     log_info "Installing Brew formulas..."
     for formula in "${brew_formulas[@]}"; do
+        # Skip disabled/documentation entries (those prefixed with '# ' in config.json).
+        if ! is_active_package_entry "$formula"; then
+            log_info "Skipping disabled package: $formula"
+            continue
+        fi
+
         try_install "brew formula: $formula" brew install "$formula"
     done
 
@@ -226,6 +251,57 @@ install_packages() {
             log_success "nvm config added to $shell_rc"
         fi
     fi
+}
+
+# Installs the official github/copilot.vim plugin into Neovim's native package
+# start path so it loads automatically. Idempotent and never fatal.
+install_neovim_copilot() {
+    log_info "Setting up Neovim GitHub Copilot plugin..."
+
+    if ! command -v nvim &> /dev/null; then
+        log_info "Neovim (nvim) not found on PATH; skipping Copilot plugin setup."
+        return 0
+    fi
+
+    if ! command -v git &> /dev/null; then
+        log_warn "git not found on PATH; cannot install Neovim Copilot plugin. Skipping."
+        return 0
+    fi
+
+    local data_home="${XDG_DATA_HOME:-$HOME/.local/share}"
+    local target="$data_home/nvim/site/pack/github/start/copilot.vim"
+    local parent
+    parent="$(dirname "$target")"
+
+    if [[ ! -d "$parent" ]]; then
+        if ! mkdir -p "$parent"; then
+            log_warn "Could not create Neovim plugin directory '$parent'."
+            failed_items+=("Neovim Copilot plugin (mkdir)")
+            return 0
+        fi
+    fi
+
+    if [[ ! -d "$target" ]]; then
+        if ! git clone --depth 1 https://github.com/github/copilot.vim "$target" 2>&1; then
+            log_warn "Failed to clone Neovim Copilot plugin; continuing."
+            failed_items+=("Neovim Copilot plugin (clone)")
+            return 0
+        fi
+    elif [[ -d "$target/.git" ]]; then
+        # Already a git checkout; refresh best-effort.
+        if ! git -C "$target" pull --ff-only 2>&1; then
+            log_warn "Could not update Neovim Copilot plugin (git pull failed); continuing."
+        fi
+    else
+        log_warn "Neovim Copilot plugin path exists but is not a git repo; leaving it untouched: $target"
+        return 0
+    fi
+
+    if ! command -v node &> /dev/null; then
+        log_warn "Node.js (node) not found on PATH; Neovim Copilot may not work until Node is available."
+    fi
+
+    log_success "Neovim GitHub Copilot plugin ready"
 }
 
 # Installs a suite of GitHub CLI extensions for enhanced functionality
@@ -371,7 +447,10 @@ signin_step() {
     echo ""
     echo -e "${BLUE}[$index/$total] $name${NC}"
 
-    if "$@"; then
+    if [[ $# -eq 0 ]]; then
+        # Manual-only step: nothing to launch, just surface the instructions.
+        [[ -n "$hint" ]] && log_info "$hint"
+    elif "$@"; then
         [[ -n "$hint" ]] && log_info "$hint"
     else
         log_warn "Could not launch $name automatically."
@@ -423,6 +502,52 @@ launch_copilot_app_signin() {
     fi
 }
 
+launch_neovim_signin() {
+    command -v nvim &> /dev/null || return 1
+    if [[ "$OSTYPE" == darwin* ]]; then
+        # Best-effort: open a new Terminal window running Neovim with Copilot setup.
+        osascript -e 'tell application "Terminal" to activate' \
+                  -e 'tell application "Terminal" to do script "nvim +\":Copilot setup\""' &> /dev/null
+    else
+        # TODO: verify a reliable terminal launcher across Linux desktops.
+        if command -v x-terminal-emulator &> /dev/null; then
+            x-terminal-emulator -e nvim +":Copilot setup" &> /dev/null &
+        else
+            return 1
+        fi
+    fi
+}
+
+# Returns 0 if the given Homebrew cask is a known JetBrains IDE.
+is_jetbrains_cask() {
+    case "$1" in
+        intellij-idea|intellij-idea-ce|pycharm|pycharm-ce|rider|webstorm|goland|clion|phpstorm|rubymine|datagrip|rustrover)
+            return 0 ;;
+        *)
+            return 1 ;;
+    esac
+}
+
+# Maps a JetBrains Homebrew cask to a friendly display name. Unknown casks fall
+# back to the raw cask name so we never crash.
+jetbrains_cask_display_name() {
+    case "$1" in
+        intellij-idea)     echo "IntelliJ IDEA Ultimate" ;;
+        intellij-idea-ce)  echo "IntelliJ IDEA Community" ;;
+        pycharm)           echo "PyCharm Professional" ;;
+        pycharm-ce)        echo "PyCharm Community" ;;
+        rider)             echo "Rider" ;;
+        webstorm)          echo "WebStorm" ;;
+        goland)            echo "GoLand" ;;
+        clion)             echo "CLion" ;;
+        phpstorm)          echo "PhpStorm" ;;
+        rubymine)          echo "RubyMine" ;;
+        datagrip)          echo "DataGrip" ;;
+        rustrover)         echo "RustRover" ;;
+        *)                 echo "$1" ;;
+    esac
+}
+
 # Guides the user through signing in to every GitHub surface, one at a time.
 # Order matters: the browser session is established first so the other tools
 # inherit the correct account.
@@ -451,43 +576,99 @@ start_signin_checklist() {
         log_info "Tip: set DEMO_GH_USER to display the expected demo account here."
     fi
 
-    local total=6
+    # Build ordered, parallel arrays of step descriptors so [index/total] is always
+    # correct as steps are added or removed. Each launcher is a command string
+    # ("" for a manual-hint-only step); step_skip marks a step as already done.
+    local step_names=()
+    local step_hints=()
+    local step_launchers=()
+    local step_skip=()
 
-    # Step 1: Web browser (establish the browser session first)
-    signin_step 1 "$total" "Web browser (github.com)" \
+    add_signin_step() {
+        step_names+=("$1")
+        step_hints+=("$2")
+        step_launchers+=("$3")
+        step_skip+=("${4:-false}")
+    }
+
+    # Web browser (establish the browser session first)
+    add_signin_step "Web browser (github.com)" \
         "Open https://github.com/login and sign in as the demo account." \
-        launch_browser_signin
+        "launch_browser_signin"
 
-    # Step 2: GitHub CLI (skip if authenticate_gh already signed in)
+    # GitHub CLI (skip if authenticate_gh already signed in)
+    local gh_skip="false"
     if command -v gh &> /dev/null && gh auth status &> /dev/null; then
-        echo ""
-        echo -e "${BLUE}[2/$total] GitHub CLI (gh)${NC}"
-        log_success "GitHub CLI - already authenticated, skipping"
-    else
-        signin_step 2 "$total" "GitHub CLI (gh)" \
-            "Run 'gh auth login --web' and complete the device flow in the browser." \
-            gh auth login --web
+        gh_skip="true"
+    fi
+    add_signin_step "GitHub CLI (gh)" \
+        "Run 'gh auth login --web' and complete the device flow in the browser." \
+        "gh auth login --web" \
+        "$gh_skip"
+
+    # Copilot CLI (first-run device flow via /login)
+    add_signin_step "Copilot CLI (copilot)" \
+        "In the Copilot CLI window, run the '/login' slash command to authenticate." \
+        "launch_copilot_cli_signin"
+
+    # VS Code
+    add_signin_step "VS Code" \
+        "If Copilot doesn't prompt, sign in via the Accounts menu (bottom-left)." \
+        "launch_editor_signin code"
+
+    # VS Code Insiders
+    add_signin_step "VS Code Insiders" \
+        "If Copilot doesn't prompt, sign in via the Accounts menu (bottom-left)." \
+        "launch_editor_signin code-insiders"
+
+    # Neovim (only when nvim is installed)
+    if command -v nvim &> /dev/null; then
+        add_signin_step "Neovim" \
+            "Inside Neovim, run ':Copilot setup' to authenticate. If you signed in to the Copilot CLI above, Neovim may already be signed in via the shared token at ~/.config/github-copilot." \
+            "launch_neovim_signin"
     fi
 
-    # Step 3: Copilot CLI (first-run device flow via /login)
-    signin_step 3 "$total" "Copilot CLI (copilot)" \
-        "In the Copilot CLI window, run the '/login' slash command to authenticate." \
-        launch_copilot_cli_signin
+    # JetBrains IDEs (dynamic from active config casks; manual-hint only). Commenting
+    # out an IDE in config also removes its checklist step automatically.
+    local cask jb_name
+    for cask in "${brew_casks[@]}"; do
+        is_active_package_entry "$cask" || continue
+        is_jetbrains_cask "$cask" || continue
+        jb_name="$(jetbrains_cask_display_name "$cask")"
+        add_signin_step "$jb_name" \
+            "Open $jb_name, install the GitHub Copilot plugin (Settings/Preferences > Plugins > Marketplace > search 'GitHub Copilot'), then sign in to Copilot inside the IDE." \
+            ""
+    done
 
-    # Step 4: VS Code
-    signin_step 4 "$total" "VS Code" \
-        "If Copilot doesn't prompt, sign in via the Accounts menu (bottom-left)." \
-        launch_editor_signin code
-
-    # Step 5: VS Code Insiders
-    signin_step 5 "$total" "VS Code Insiders" \
-        "If Copilot doesn't prompt, sign in via the Accounts menu (bottom-left)." \
-        launch_editor_signin code-insiders
-
-    # Step 6: Copilot desktop app
-    signin_step 6 "$total" "Copilot app (desktop)" \
+    # Copilot desktop app (keep last)
+    add_signin_step "Copilot app (desktop)" \
         "Launch the GitHub Copilot app and sign in inside the app." \
-        launch_copilot_app_signin
+        "launch_copilot_app_signin"
+
+    local total=${#step_names[@]}
+    local i index name hint launcher skip
+    for (( i=0; i<total; i++ )); do
+        index=$(( i + 1 ))
+        name="${step_names[$i]}"
+        hint="${step_hints[$i]}"
+        launcher="${step_launchers[$i]}"
+        skip="${step_skip[$i]}"
+
+        if [[ "$skip" == "true" ]]; then
+            echo ""
+            echo -e "${BLUE}[$index/$total] $name${NC}"
+            log_success "$name - already authenticated, skipping"
+            continue
+        fi
+
+        if [[ -z "$launcher" ]]; then
+            signin_step "$index" "$total" "$name" "$hint"
+        else
+            local launcher_parts=()
+            read -ra launcher_parts <<< "$launcher"
+            signin_step "$index" "$total" "$name" "$hint" "${launcher_parts[@]}"
+        fi
+    done
 
     echo ""
     log_success "Sign-in checklist complete."
@@ -1040,6 +1221,7 @@ prompt_for_inputs
 
 # Install packages
 install_packages
+install_neovim_copilot
 install_aspire
 install_npm_globals
 configure_vlc
