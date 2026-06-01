@@ -271,7 +271,7 @@ function Read-OptionalEditorChoices {
         Write-Info "Skipping Neovim (and its Copilot plugin)."
     }
 
-    $script:InstallJetBrains = Read-YesNoChoice -Question "Install IDEs (PyCharm, Android Studio)?" -EnvVarName "INSTALL_JETBRAINS"
+    $script:InstallJetBrains = Read-YesNoChoice -Question "Install JetBrains IDEs (PyCharm, Rider) and Android Studio?" -EnvVarName "INSTALL_JETBRAINS"
     if ($script:InstallJetBrains) {
         Write-Info "IDEs will be installed."
     } else {

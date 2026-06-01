@@ -6,7 +6,7 @@ This repository contains setup scripts for configuring booth machines. The scrip
 
 - Installs and configures Visual Studio Code and Visual Studio Code Insiders.
 - Installs Neovim and automatically sets up the official [GitHub Copilot plugin](https://github.com/github/copilot.vim) (`copilot.vim`).
-- Installs a core set of IDEs (PyCharm Professional and Android Studio by default), with more JetBrains IDEs (IntelliJ IDEA Ultimate, Rider, WebStorm, GoLand, CLion, PhpStorm, RubyMine, DataGrip, RustRover) available by uncommenting them in `config.json`.
+- Installs a core set of IDEs (PyCharm Professional, Rider, and Android Studio by default), with more JetBrains IDEs (IntelliJ IDEA Ultimate, WebStorm, GoLand, CLion, PhpStorm, RubyMine, DataGrip, RustRover) available by uncommenting them in `config.json`.
 - Installs GitHub CLI and a suite of GitHub CLI extensions.
 - Installs the GitHub Copilot CLI (`copilot`).
 - Installs the GitHub Copilot desktop app (via the [`github-copilot-app`](https://formulae.brew.sh/cask/github-copilot-app) Homebrew cask on macOS; direct download from the [`github/app`](https://github.com/github/app) releases on Windows).
@@ -25,14 +25,14 @@ The configuration for the setup scripts is stored in the `config.json` file. You
 
 Because `config.json` is JSON and can't carry real comments, packages are enabled/disabled with a `# ` prefix convention: **any package entry whose value starts with `# ` is treated as disabled and skipped** by both setup scripts. To disable a package, prefix its id with `# `; to enable a commented-out one, remove the prefix.
 
-This applies to `windows.packages`, `mac.packages.casks`, and `mac.packages.formulas`. For example, a core set of IDEs (PyCharm Professional and Android Studio) ships active, while the other JetBrains IDEs (IntelliJ IDEA Ultimate, Rider, WebStorm, GoLand, CLion, PhpStorm, RubyMine, DataGrip, RustRover) ship commented out - uncomment the ones you want. Out of the box, the active IDEs install and the commented ones don't.
+This applies to `windows.packages`, `mac.packages.casks`, and `mac.packages.formulas`. For example, a core set of IDEs (PyCharm Professional, Rider, and Android Studio) ships active, while the other JetBrains IDEs (IntelliJ IDEA Ultimate, WebStorm, GoLand, CLion, PhpStorm, RubyMine, DataGrip, RustRover) ship commented out - uncomment the ones you want. Out of the box, the active IDEs install and the commented ones don't.
 
 ### Choosing whether to install Neovim and the IDEs
 
 Both setup scripts ask two quick yes/no questions early in the run:
 
 - `Install Neovim (and auto-configure its GitHub Copilot plugin)?`
-- `Install IDEs (PyCharm, Android Studio)?`
+- `Install JetBrains IDEs (PyCharm, Rider) and Android Studio?`
 
 Answering no skips the relevant packages, skips the Neovim Copilot plugin setup, and omits the matching sign-in checklist steps. Pressing Enter accepts the default (yes). These choices apply to the current run only and are never saved.
 

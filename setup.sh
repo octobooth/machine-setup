@@ -901,7 +901,7 @@ prompt_for_optional_editors() {
     local jb_state="unset" jb_raw=""
     if [[ -n "${INSTALL_JETBRAINS+x}" ]]; then jb_state="set"; jb_raw="$INSTALL_JETBRAINS"; fi
     resolve_optional_editor_choice WANT_JETBRAINS \
-        "Install IDEs (PyCharm, Android Studio)?" \
+        "Install JetBrains IDEs (PyCharm, Rider) and Android Studio?" \
         "INSTALL_JETBRAINS" "$jb_state" "$jb_raw"
     if [[ "$WANT_JETBRAINS" == "true" ]]; then
         log_info "IDEs will be installed."
