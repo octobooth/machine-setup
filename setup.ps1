@@ -31,6 +31,12 @@ $script:configPath = Join-Path $PSScriptRoot "config.json"
 $script:failedItems = @()
 $script:ForceReinstall = $env:FORCE_REINSTALL -eq "true"
 
+# Per-run install choices for the optional editors. Default to $true (so unattended
+# runs install everything active, unchanged). Overridable via the INSTALL_NEOVIM /
+# INSTALL_JETBRAINS env vars or the interactive prompt. Never persisted to state.
+$script:InstallNeovim = $true
+$script:InstallJetBrains = $true
+
 function Test-ShouldSkipInstalled { return -not $script:ForceReinstall }
 
 # Returns $true if a package entry is "active" (should be installed). An entry is
@@ -206,6 +212,71 @@ function Read-SetupInputs {
     Get-SetupState
     Read-AdoOrgInput
     Read-VideoSubfolderInput
+    Read-OptionalEditorChoices
+}
+
+# Resolves a yes/no choice. Precedence: env var override (truthy 1/true/yes/y/on,
+# falsy 0/false/no/n/off) > interactive prompt (default yes) > non-interactive
+# default yes (so piped/unattended runs install everything active, unchanged).
+# Unrecognized env values or responses warn and fall back to yes.
+function Read-YesNoChoice {
+    param(
+        [string]$Question,
+        [string]$EnvVarName
+    )
+
+    if (-not [string]::IsNullOrEmpty($EnvVarName)) {
+        $raw = [Environment]::GetEnvironmentVariable($EnvVarName)
+        if ($null -ne $raw) {
+            $norm = $raw.Trim().ToLowerInvariant()
+            if ($norm -in @('1', 'true', 'yes', 'y', 'on'))  { return $true }
+            if ($norm -in @('0', 'false', 'no', 'n', 'off')) { return $false }
+            if (-not [string]::IsNullOrEmpty($norm)) {
+                Write-Warn "Unrecognized value '$raw' for $EnvVarName; ignoring it."
+            }
+        }
+    }
+
+    $interactive = $true
+    try {
+        if ([Console]::IsInputRedirected) { $interactive = $false }
+    } catch {
+        # Some hosts don't expose this; assume interactive and let Read-Host handle it.
+    }
+    if (-not $interactive) { return $true }
+
+    $answer = $null
+    try {
+        $answer = Read-Host "$Question [Y/n]"
+    } catch {
+        return $true
+    }
+
+    $trimmed = if ($null -eq $answer) { "" } else { $answer.Trim().ToLowerInvariant() }
+    if ([string]::IsNullOrEmpty($trimmed)) { return $true }
+    if ($trimmed -in @('y', 'yes')) { return $true }
+    if ($trimmed -in @('n', 'no'))  { return $false }
+    Write-Warn "Unrecognized response '$answer'; defaulting to yes."
+    return $true
+}
+
+# Asks whether to install the optional editors (Neovim, JetBrains IDEs). The
+# results gate the install loop, the Neovim Copilot plugin, and the matching
+# sign-in checklist steps. Choices are per-run only and never persisted.
+function Read-OptionalEditorChoices {
+    $script:InstallNeovim = Read-YesNoChoice -Question "Install Neovim (and auto-configure its GitHub Copilot plugin)?" -EnvVarName "INSTALL_NEOVIM"
+    if ($script:InstallNeovim) {
+        Write-Info "Neovim will be installed."
+    } else {
+        Write-Info "Skipping Neovim (and its Copilot plugin)."
+    }
+
+    $script:InstallJetBrains = Read-YesNoChoice -Question "Install JetBrains IDEs (IntelliJ IDEA, PyCharm, Rider, WebStorm)?" -EnvVarName "INSTALL_JETBRAINS"
+    if ($script:InstallJetBrains) {
+        Write-Info "JetBrains IDEs will be installed."
+    } else {
+        Write-Info "Skipping JetBrains IDEs."
+    }
 }
 
 # Prompts for the Azure DevOps organization.
@@ -435,6 +506,17 @@ function Install-Packages {
             continue
         }
 
+        # Honor the interactive install choices for the optional editors.
+        $pkgTrim = $package.Trim()
+        if ((-not $script:InstallNeovim) -and $pkgTrim -eq "Neovim.Neovim") {
+            Write-Info "Skipping Neovim (not selected): $package"
+            continue
+        }
+        if ((-not $script:InstallJetBrains) -and (Test-JetBrainsIdeEntry $package)) {
+            Write-Info "Skipping JetBrains IDE (not selected): $package"
+            continue
+        }
+
         # Chrome may be installed outside of winget (MDM, OEM, manual download, etc.)
         # so we check the filesystem to avoid install conflicts
         if ((Test-ShouldSkipInstalled) -and $package -eq "Google.Chrome" -and (Test-Path "${env:ProgramFiles}\Google\Chrome\Application\chrome.exe")) {
@@ -470,6 +552,11 @@ function Install-Packages {
 function Install-NeovimCopilot {
     # Installs the official github/copilot.vim plugin into Neovim's native package
     # start path so it loads automatically. Idempotent and never fatal.
+    if (-not $script:InstallNeovim) {
+        Write-Info "Neovim was not selected; skipping Copilot plugin setup."
+        return
+    }
+
     Write-Info "Setting up Neovim GitHub Copilot plugin..."
 
     if (-not (Get-Command nvim -ErrorAction SilentlyContinue)) {
@@ -735,6 +822,18 @@ function Get-JetBrainsDisplayName {
     return $Id
 }
 
+# Returns $true if a package entry is a JetBrains IDE (a 'JetBrains.*' id that is
+# not JetBrains Toolbox). Shared by the install-loop gate and the checklist
+# derivation so commenting out an IDE removes both its install and its step.
+function Test-JetBrainsIdeEntry {
+    param([string]$Entry)
+    if ([string]::IsNullOrWhiteSpace($Entry)) { return $false }
+    $trimmed = $Entry.Trim()
+    if ($trimmed -notlike 'JetBrains.*') { return $false }
+    if ($trimmed -like 'JetBrains.Toolbox*') { return $false }
+    return $true
+}
+
 function Get-ActiveJetBrainsDisplayNames {
     # Returns friendly display names for the ACTIVE JetBrains IDE entries in
     # config.windows.packages, excluding JetBrains Toolbox. Commenting out an IDE
@@ -742,8 +841,7 @@ function Get-ActiveJetBrainsDisplayNames {
     $names = @()
     foreach ($pkg in $config.windows.packages) {
         if (-not (Test-ActivePackageEntry $pkg)) { continue }
-        if ($pkg -notlike 'JetBrains.*') { continue }
-        if ($pkg -like 'JetBrains.Toolbox*') { continue }
+        if (-not (Test-JetBrainsIdeEntry $pkg)) { continue }
         $names += (Get-JetBrainsDisplayName $pkg)
     }
     return $names
@@ -879,8 +977,8 @@ function Start-SignInChecklist {
         }
     }
 
-    # ---- Neovim (only when nvim is installed) ----
-    if (Get-Command nvim -ErrorAction SilentlyContinue) {
+    # ---- Neovim (only when selected and nvim is installed) ----
+    if ($script:InstallNeovim -and (Get-Command nvim -ErrorAction SilentlyContinue)) {
         $steps += @{
             Name       = "Neovim"
             ManualHint = "Inside Neovim, run ':Copilot setup' to authenticate. If you signed in to the Copilot CLI above, Neovim may already be signed in via the shared token at %LOCALAPPDATA%\github-copilot."
@@ -897,11 +995,13 @@ function Start-SignInChecklist {
     }
 
     # ---- JetBrains IDEs (dynamic from active config entries; manual-hint only) ----
-    foreach ($jbName in (Get-ActiveJetBrainsDisplayNames)) {
-        $steps += @{
-            Name       = $jbName
-            ManualHint = "Open $jbName, install the GitHub Copilot plugin (Settings/Preferences > Plugins > Marketplace > search 'GitHub Copilot'), then sign in to Copilot inside the IDE."
-            Launch     = $null
+    if ($script:InstallJetBrains) {
+        foreach ($jbName in (Get-ActiveJetBrainsDisplayNames)) {
+            $steps += @{
+                Name       = $jbName
+                ManualHint = "Open $jbName, install the GitHub Copilot plugin (Settings/Preferences > Plugins > Marketplace > search 'GitHub Copilot'), then sign in to Copilot inside the IDE."
+                Launch     = $null
+            }
         }
     }
 

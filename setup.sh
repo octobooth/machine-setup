@@ -44,8 +44,23 @@ is_active_package_entry() {
     return 0
 }
 
+# Trims leading and trailing whitespace from $1 and prints the result.
+trim_ws() {
+    local s="$1"
+    s="${s#"${s%%[![:space:]]*}"}"
+    s="${s%"${s##*[![:space:]]}"}"
+    printf '%s' "$s"
+}
+
 # Mutable state
 failed_items=()
+
+# Per-run install choices for the optional editors (Neovim, JetBrains IDEs).
+# Default to true (so unattended runs install everything active, unchanged).
+# Overridable via INSTALL_NEOVIM / INSTALL_JETBRAINS env vars or the interactive
+# prompt. Per-run only; never persisted to setup state.
+WANT_NEOVIM=true
+WANT_JETBRAINS=true
 
 # When true, the interactive sign-in checklist is skipped
 SKIP_SIGNIN="${SKIP_SIGNIN:-false}"
@@ -206,6 +221,12 @@ install_packages() {
             continue
         fi
 
+        # Honor the interactive JetBrains install choice.
+        if [[ "$WANT_JETBRAINS" != "true" ]] && is_jetbrains_cask "$(trim_ws "$cask")"; then
+            log_info "Skipping JetBrains IDE (not selected): $cask"
+            continue
+        fi
+
         # Chrome may be installed outside of brew (MDM, manual download, etc.)
         # so we check the filesystem to avoid install conflicts
         if should_skip_installed && [[ "$cask" == "google-chrome" ]] && [[ -d "/Applications/Google Chrome.app" ]]; then
@@ -221,6 +242,12 @@ install_packages() {
         # Skip disabled/documentation entries (those prefixed with '# ' in config.json).
         if ! is_active_package_entry "$formula"; then
             log_info "Skipping disabled package: $formula"
+            continue
+        fi
+
+        # Honor the interactive Neovim install choice.
+        if [[ "$WANT_NEOVIM" != "true" ]] && [[ "$(trim_ws "$formula")" == "neovim" ]]; then
+            log_info "Skipping Neovim (not selected): $formula"
             continue
         fi
 
@@ -256,6 +283,11 @@ install_packages() {
 # Installs the official github/copilot.vim plugin into Neovim's native package
 # start path so it loads automatically. Idempotent and never fatal.
 install_neovim_copilot() {
+    if [[ "$WANT_NEOVIM" != "true" ]]; then
+        log_info "Neovim was not selected; skipping Copilot plugin setup."
+        return 0
+    fi
+
     log_info "Setting up Neovim GitHub Copilot plugin..."
 
     if ! command -v nvim &> /dev/null; then
@@ -621,8 +653,8 @@ start_signin_checklist() {
         "If Copilot doesn't prompt, sign in via the Accounts menu (bottom-left)." \
         "launch_editor_signin code-insiders"
 
-    # Neovim (only when nvim is installed)
-    if command -v nvim &> /dev/null; then
+    # Neovim (only when selected and nvim is installed)
+    if [[ "$WANT_NEOVIM" == "true" ]] && command -v nvim &> /dev/null; then
         add_signin_step "Neovim" \
             "Inside Neovim, run ':Copilot setup' to authenticate. If you signed in to the Copilot CLI above, Neovim may already be signed in via the shared token at ~/.config/github-copilot." \
             "launch_neovim_signin"
@@ -630,15 +662,18 @@ start_signin_checklist() {
 
     # JetBrains IDEs (dynamic from active config casks; manual-hint only). Commenting
     # out an IDE in config also removes its checklist step automatically.
-    local cask jb_name
-    for cask in "${brew_casks[@]}"; do
-        is_active_package_entry "$cask" || continue
-        is_jetbrains_cask "$cask" || continue
-        jb_name="$(jetbrains_cask_display_name "$cask")"
-        add_signin_step "$jb_name" \
-            "Open $jb_name, install the GitHub Copilot plugin (Settings/Preferences > Plugins > Marketplace > search 'GitHub Copilot'), then sign in to Copilot inside the IDE." \
-            ""
-    done
+    if [[ "$WANT_JETBRAINS" == "true" ]]; then
+        local cask jb_name
+        for cask in "${brew_casks[@]}"; do
+            is_active_package_entry "$cask" || continue
+            cask="$(trim_ws "$cask")"
+            is_jetbrains_cask "$cask" || continue
+            jb_name="$(jetbrains_cask_display_name "$cask")"
+            add_signin_step "$jb_name" \
+                "Open $jb_name, install the GitHub Copilot plugin (Settings/Preferences > Plugins > Marketplace > search 'GitHub Copilot'), then sign in to Copilot inside the IDE." \
+                ""
+        done
+    fi
 
     # Copilot desktop app (keep last)
     add_signin_step "Copilot app (desktop)" \
@@ -804,6 +839,73 @@ prompt_for_inputs() {
     load_setup_state
     prompt_for_ado_org
     prompt_for_video_subfolder
+    prompt_for_optional_editors
+}
+
+# Resolves an install choice into the global named by $1 ("true"/"false").
+# Precedence: env var override > interactive prompt (default yes) > non-interactive
+# default yes (so piped/unattended runs install everything active, unchanged).
+# Per-run only; never persisted. Args:
+#   $1 = output global var name, $2 = question, $3 = env var name (for messages),
+#   $4 = env state ("set"/"unset"), $5 = raw env value.
+resolve_optional_editor_choice() {
+    local out_var="$1" question="$2" env_name="$3" env_state="$4" raw="$5"
+    local norm answer
+
+    if [[ "$env_state" == "set" ]]; then
+        norm="$(printf '%s' "$raw" | tr '[:upper:]' '[:lower:]')"
+        norm="$(trim_ws "$norm")"
+        case "$norm" in
+            1|true|yes|y|on)  printf -v "$out_var" '%s' "true";  return 0 ;;
+            0|false|no|n|off) printf -v "$out_var" '%s' "false"; return 0 ;;
+            "") : ;;
+            *) log_warn "Unrecognized value '$raw' for $env_name; ignoring it." ;;
+        esac
+    fi
+
+    # Only prompt when both stdin and stdout are TTYs (matches prompt_for_inputs).
+    if [[ ! -t 0 ]] || [[ ! -t 1 ]]; then
+        printf -v "$out_var" '%s' "true"
+        return 0
+    fi
+
+    printf '%s [Y/n]\n> ' "$question" >&2
+    IFS= read -r answer || answer=""
+    norm="$(printf '%s' "$answer" | tr '[:upper:]' '[:lower:]')"
+    norm="$(trim_ws "$norm")"
+    case "$norm" in
+        ""|y|yes) printf -v "$out_var" '%s' "true" ;;
+        n|no)     printf -v "$out_var" '%s' "false" ;;
+        *) log_warn "Unrecognized response '$answer'; defaulting to yes."
+           printf -v "$out_var" '%s' "true" ;;
+    esac
+}
+
+# Asks whether to install the optional editors (Neovim, JetBrains IDEs). The
+# results gate the install loop, the Neovim Copilot plugin, and the matching
+# sign-in checklist steps. Choices are per-run only and never persisted.
+prompt_for_optional_editors() {
+    local nv_state="unset" nv_raw=""
+    if [[ -n "${INSTALL_NEOVIM+x}" ]]; then nv_state="set"; nv_raw="$INSTALL_NEOVIM"; fi
+    resolve_optional_editor_choice WANT_NEOVIM \
+        "Install Neovim (and auto-configure its GitHub Copilot plugin)?" \
+        "INSTALL_NEOVIM" "$nv_state" "$nv_raw"
+    if [[ "$WANT_NEOVIM" == "true" ]]; then
+        log_info "Neovim will be installed."
+    else
+        log_info "Skipping Neovim (and its Copilot plugin)."
+    fi
+
+    local jb_state="unset" jb_raw=""
+    if [[ -n "${INSTALL_JETBRAINS+x}" ]]; then jb_state="set"; jb_raw="$INSTALL_JETBRAINS"; fi
+    resolve_optional_editor_choice WANT_JETBRAINS \
+        "Install JetBrains IDEs (IntelliJ IDEA, PyCharm, Rider, WebStorm)?" \
+        "INSTALL_JETBRAINS" "$jb_state" "$jb_raw"
+    if [[ "$WANT_JETBRAINS" == "true" ]]; then
+        log_info "JetBrains IDEs will be installed."
+    else
+        log_info "Skipping JetBrains IDEs."
+    fi
 }
 
 # Prompts (when TTY) for the Azure DevOps org. Sets ADO_ORG_VALUE
