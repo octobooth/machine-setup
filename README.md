@@ -1,6 +1,6 @@
 # Booth Machine Setup
 
-This repository contains setup scripts for configuring booth machines. The scripts install and configure Visual Studio Code, Visual Studio Code Insiders, GitHub CLI, VLC media player, and other necessary tools.
+This repository contains setup scripts for configuring booth machines. The scripts install and configure Visual Studio Code, Visual Studio Code Insiders, GitHub CLI, a media player, and other necessary tools.
 
 ## Features
 
@@ -13,7 +13,7 @@ This repository contains setup scripts for configuring booth machines. The scrip
 - Installs the [Microsoft Aspire](https://aspire.dev) CLI and registers its MCP server with Copilot CLI.
 - Installs Visual Studio Enterprise with Web + Azure + .NET desktop workloads (Windows only).
 - Registers MCP servers (Playwright, Microsoft Learn, Astro docs, Svelte docs, Aspire, Azure, Azure DevOps) in `~/.copilot/mcp-config.json`. Node-based MCP servers (Playwright, Azure, Azure DevOps) are installed globally via `npm install -g` so they launch from their installed binaries rather than fetching via `npx` at runtime.
-- Configures VLC media player settings.
+- Configures VLC media player settings (macOS only; Windows uses the built-in Media Player).
 - Sets up Progressive Web Apps (PWAs) for GitHub tools.
 - Creates a demo loader script to launch all required applications and sites.
 
@@ -64,15 +64,21 @@ The interactive sign-in checklist walks you through signing in to each GitHub su
 
 ### Windows
 
-1. Open PowerShell as an administrator.
-2. Navigate to the repository directory.
-3. Run the setup script to configure the machine:
+1. Install PowerShell 7 if it isn't already present (`winget install Microsoft.PowerShell`).
+2. Open **PowerShell 7** as an administrator (right-click > Run as Administrator). Running as a standard user triggers UAC approval prompts that break the unattended flow.
+3. Allow the script to run in this session:
+
+    ```powershell
+    Set-ExecutionPolicy -Scope Process -ExecutionPolicy Unrestricted
+    ```
+4. Navigate to the repository directory.
+5. Run the setup script to configure the machine:
 
     ```powershell
     .\setup.ps1
     ```
-4. A script will be created on the Desktop to load up the necessary applications.
-5. Store any booth videos in the `C:\Users\<YourUsername>\Videos` folder for easier loading from VLC.
+6. A script will be created on the Desktop to load up the necessary applications.
+7. Store any booth videos in the `C:\Users\<YourUsername>\Videos` folder; the demo loader opens this folder so you can play them in the built-in Media Player.
 
 ## License
 
@@ -103,7 +109,7 @@ Azure DevOps organization name (leave blank to skip the Azure DevOps MCP server)
 
 ### Demo video subfolder
 
-The demo loader opens VLC pointed at your `~/Videos` folder. If you copy the same full set of videos to every machine but organize them into subfolders (e.g. `~/Videos/booth-keynote`, `~/Videos/booth-security`), setup can point this machine's loader at just one of them. Setup prompts you for the subfolder once and caches the answer.
+The demo loader opens your `~/Videos` folder (in VLC on macOS, or in Explorer on Windows so you can play videos in the built-in Media Player). If you copy the same full set of videos to every machine but organize them into subfolders (e.g. `~/Videos/booth-keynote`, `~/Videos/booth-security`), setup can point this machine's loader at just one of them. Setup prompts you for the subfolder once and caches the answer.
 
 **During setup:**
 

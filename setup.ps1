@@ -14,6 +14,7 @@
 .NOTES
     Requires:
     - Windows 10/11
+    - PowerShell 7 or later (run from 'pwsh', not Windows PowerShell 5.1)
     - winget package manager
     - Administrative privileges
     - Internet connection
@@ -94,13 +95,23 @@ function Write-Summary {
 # ----------------------------------------
 
 function Test-Prerequisites {
-    # Check for admin privileges
+    # Require PowerShell 7+. Windows PowerShell 5.1 (the in-box default) trips over
+    # several install steps, so fail fast with guidance instead of failing midway.
+    if ($PSVersionTable.PSVersion.Major -lt 7) {
+        Write-Err "PowerShell 7 or later is required (detected $($PSVersionTable.PSVersion))."
+        Write-Err "Install it with 'winget install Microsoft.PowerShell', then re-run this script from 'pwsh'."
+        return $false
+    }
+    Write-Success "Running on PowerShell $($PSVersionTable.PSVersion)"
+
+    # Require Administrator. Running as a standard user forces UAC approval prompts
+    # that break the unattended flow, so make it a hard requirement.
     $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
     if ($isAdmin) {
         Write-Success "Running with Administrator privileges"
     } else {
-        Write-Warn "Not running with Administrator privileges. Some operations may fail."
-        Write-Warn "Consider restarting with 'Run as Administrator'"
+        Write-Err "Administrator privileges are required. Right-click PowerShell 7 and choose 'Run as Administrator', then re-run this script."
+        return $false
     }
 
     # Verify config.json exists
@@ -714,26 +725,6 @@ function Install-GHExtensions {
             gh extension install $ext 2>&1
         }
     }
-}
-
-function Set-VLCConfiguration {
-    Write-Info "Configuring VLC settings..."
-    $vlcConfigPath = "$env:APPDATA\vlc\vlcrc"
-
-    if ((Test-ShouldSkipInstalled) -and (Test-Path $vlcConfigPath)) {
-        if (Select-String -Path $vlcConfigPath -Pattern "Setup-script-configured=true" -Quiet) {
-            Write-Info "VLC settings already configured, skipping..."
-            return
-        }
-    } else {
-        New-Item -Path (Split-Path $vlcConfigPath) -ItemType Directory -Force | Out-Null
-        New-Item -Path $vlcConfigPath -ItemType File -Force | Out-Null
-    }
-
-    Add-Content -Path $vlcConfigPath -Value "# Setup-script-configured=true"
-    Add-Content -Path $vlcConfigPath -Value $config.shared.vlc_settings
-
-    Write-Success "VLC settings configured - please restart VLC"
 }
 
 function Set-EditorTheme {
@@ -1408,12 +1399,12 @@ function New-DemoLoader {
     }
     $lines += ""
 
-    # Add VLC
-    $lines += "# Open VLC"
+    # Add Videos folder
+    $lines += "# Open the Videos folder in Explorer (double-click a video to play in the native Media Player)"
     if (-not [string]::IsNullOrEmpty($script:VideoSubfolder)) {
-        $lines += 'Start-Process "vlc" -ArgumentList "$env:USERPROFILE\Videos\' + $script:VideoSubfolder + '"'
+        $lines += 'Start-Process explorer.exe -ArgumentList "$env:USERPROFILE\Videos\' + $script:VideoSubfolder + '"'
     } else {
-        $lines += 'Start-Process "vlc" -ArgumentList "$env:USERPROFILE\Videos"'
+        $lines += 'Start-Process explorer.exe -ArgumentList "$env:USERPROFILE\Videos"'
     }
     $lines += ""
     $lines += "Write-Host 'Demo environment loaded!' -ForegroundColor Green"
@@ -1446,7 +1437,6 @@ Install-Packages
 Install-NeovimCopilot
 Install-Aspire
 Install-NpmGlobals
-Set-VLCConfiguration
 
 # Launch post-install apps
 Start-PostInstallApps
