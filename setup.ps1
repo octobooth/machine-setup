@@ -536,7 +536,8 @@ function Install-Packages {
         }
 
         Invoke-SafeInstall -Description "winget: $package" -Action {
-            winget install --id $package -e --accept-source-agreements --accept-package-agreements --silent 2>&1
+            # These packages use the community source; avoid unrelated Microsoft Store certificate failures.
+            winget install --id $package -e --source winget --accept-source-agreements --accept-package-agreements --silent 2>&1
         }
     }
 

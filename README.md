@@ -80,6 +80,18 @@ The interactive sign-in checklist walks you through signing in to each GitHub su
 6. A script will be created on the Desktop to load up the necessary applications.
 7. Store any booth videos in the `C:\Users\<YourUsername>\Videos` folder; the demo loader opens this folder so you can play them in the built-in Media Player.
 
+#### WinGet certificate errors
+
+Exit code `-1978335138` (`0x8A15005E`) means the server certificate did not match WinGet's expected certificate pins. This can occur when WinGet queries the Microsoft Store (`msstore`) source; see [microsoft/winget-cli#3109](https://github.com/microsoft/winget-cli/issues/3109). The setup script explicitly uses `--source winget` for `windows.packages`, so entries must be available from that source.
+
+If you're running an older copy of the script, add `--source winget` to its `winget install` command or use the updated script. To retry VS Code on its own:
+
+```powershell
+winget install --id Microsoft.VisualStudioCode -e --source winget --accept-source-agreements --accept-package-agreements
+```
+
+This avoids the Store lookup without disabling certificate validation. If the certificate error persists, update App Installer through Microsoft Store and check whether a corporate proxy or VPN is intercepting HTTPS traffic; don't disable certificate pinning to work around it.
+
 ## License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
