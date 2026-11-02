@@ -108,7 +108,7 @@ bash scripts/wipe-accounts.sh --from 5     # resume at octobooth-5
 
   Anything else, including lowercase `wipe`, shows a warning and asks again.
 - **Finishing up.** At the end it prints a summary and, if anything was skipped or failed, the exact command to finish it.
-- **Booth machines.** After a wipe, the clones in each booth machine's `~/repos` folder point at deleted repos. Remove them, or reset the machine with [setup](../README.md#setup-instructions).
+- **Booth machines.** After a wipe, local clones of deleted booth-account repos in `~/repos` still remain. Remove those demo folders explicitly; rerunning [setup](../README.md#setup-instructions) does not remove or reset them. Keep shared checkouts such as `machine-setup` and `repo-setup-scripts`.
 
 The `admin-tasks` README has every option.
 
