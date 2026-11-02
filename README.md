@@ -4,6 +4,8 @@
 
 This repository contains setup scripts for configuring booth machines. The scripts install and configure the GitHub Copilot app, Visual Studio Code, Visual Studio Code Insiders, GitHub CLI, VLC media player, Node.js, PowerShell 7 (Windows), iTerm2 (macOS), and related tooling from a shared `config.json`.
 
+**Running a booth?** The [booth playbook](docs/booth-playbook.md) covers the whole event: setting up machines, running demos, and cleaning up the booth accounts afterwards (weekly automatic cleanup and the full post-event reset).
+
 ## Features
 
 - Installs the GitHub Copilot app (`github-copilot-app` cask / `GitHub.CopilotApp` winget package) and Copilot CLI.
