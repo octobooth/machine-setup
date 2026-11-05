@@ -246,7 +246,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 .\install-demo-launcher.ps1
 ```
 
-Both are safe to re-run. To pick up changes in `config.json` (new apps, extensions, or repos), run setup again instead (`bash setup.sh` or `.\setup.ps1`). Already-finished steps are skipped. See [Demo Launcher](../README.md#demo-launcher) for what the install scripts do.
+Both are safe to re-run. To also pick up changes in `config.json` (new apps, extensions, or repos), run setup again (`bash setup.sh` or `.\setup.ps1`) in addition to the launcher update above. Already-finished steps are skipped. See [Demo Launcher](../README.md#demo-launcher) for what the install scripts do.
 
 ## Part 2: During the event: run demos
 
