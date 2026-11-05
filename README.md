@@ -45,7 +45,7 @@ Fonts: the `font-monaspace` cask installs Monaspace, and `font-mona-sans` instal
 
 `mac.dock_apps` lists app names (the `.app` bundle in `/Applications`, without `.app`) that `setup.sh` adds to the Dock with the `dockutil` formula. Apps already in the Dock are skipped, even with `FORCE_REINSTALL=true`, so reruns don't add duplicates. This includes Chrome when it was installed outside Homebrew and already pinned. Setup also turns off **Show suggested and recent apps in Dock** and restarts the Dock once if anything changed. It doesn't remove anything, so Downloads and Trash stay.
 
-`windows.taskbar_pins` lists apps that `setup.ps1` pins to the Windows taskbar, in left-to-right order. Each `app_id` is the **AppID** shown by `Get-StartApps`. IDs that contain `!` are packaged apps (such as Windows Terminal), and the rest are desktop apps. A desktop app that doesn't set its own AppID, such as VLC, is listed by its path, with a known-folder GUID in place of the folder: `{6D809377-6AF0-444B-8957-A3773F02200E}` is Program Files. To check an ID on a set-up machine, run `Get-StartApps | Where-Object Name -like '*VLC*'`. Windows has no API to pin apps directly, so setup uses Microsoft's [taskbar layout policy](https://learn.microsoft.com/windows/configuration/taskbar/pinned-apps). It writes a layout XML to `%LOCALAPPDATA%\machine-setup\TaskbarLayout.xml`, points the current user's `StartLayoutFile` policy (`HKCU\Software\Policies\Microsoft\Windows\Explorer`) at it, and restarts Explorer so the pins show up. This needs an elevated (Administrator) prompt. Policy pins appear after the default and manually pinned apps, and Windows may pin them again if they're unpinned. On Windows 10, the policy also locks the Start tiles. Later runs skip this step unless the list changes or `FORCE_REINSTALL` is `"true"`.
+`windows.taskbar_pins` lists apps that `setup.ps1` pins to the Windows taskbar, in left-to-right order. Each `app_id` is the **AppID** shown by `Get-StartApps`. IDs that contain `!` are packaged apps (such as Windows Terminal), and the rest are desktop apps. A desktop app that doesn't set its own AppID, such as VLC, is listed by its path, with a known-folder GUID in place of the folder: `{6D809377-6AF0-444B-8957-A3773F02200E}` is Program Files. To check an ID on a set-up machine, run `Get-StartApps | Where-Object Name -like '*VLC*'`. Windows has no API to pin apps directly, so setup uses Microsoft's [taskbar layout policy](https://learn.microsoft.com/windows/configuration/taskbar/pinned-apps). It writes a layout XML to `%LOCALAPPDATA%\machine-setup\TaskbarLayout.xml`, points the current user's `StartLayoutFile` policy (`HKCU\Software\Policies\Microsoft\Windows\Explorer`) at it, and restarts Explorer so the pins show up. This needs an elevated (Administrator) prompt. Without one, setup skips the pins with a warning and lists them in the final summary instead of failing. Policy pins appear after the default and manually pinned apps, and Windows may pin them again if they're unpinned. On Windows 10, the policy also locks the Start tiles. Later runs skip this step unless the list changes or `FORCE_REINSTALL` is `"true"`.
 
 `shared.gh_auth_scopes` lists the extra scopes the GitHub CLI login needs: `codespace` (the Tailspin Toys demo creates a Codespace), `delete_repo` (the Demo Launcher's cleanup deletes demo repos), `project` (the Copilot Airways demo creates a GitHub Project, and cleanup deletes it), and `workflow` (demo repos include GitHub Actions workflows, and GitHub rejects pushes that add or change `.github/workflows` files without it). A new login requests them, and an existing login missing any of them is upgraded with `gh auth refresh`, which opens a browser to approve. Both scripts ignore `GH_TOKEN`/`GITHUB_TOKEN` for these steps so the stored login is the one updated. To do it by hand, see [GitHub CLI login](#github-cli-login).
 
@@ -167,7 +167,7 @@ These steps assume a brand-new Windows 10 or 11 machine with nothing installed b
 
 #### 1. Open an administrator PowerShell
 
-Right-click **Start** and choose **Terminal (Admin)** (Windows 11) or **Windows PowerShell (Admin)** (Windows 10), then approve the User Account Control prompt. Run every command below in this window. `setup.ps1` warns, and some installs can fail, when it isn't run as an administrator.
+Right-click **Start** and choose **Terminal (Admin)** (Windows 11) or **Windows PowerShell (Admin)** (Windows 10), then approve the User Account Control prompt. Run every command below in this window. If `setup.ps1` isn't run as an administrator, it shows a warning and pauses: press Enter to continue anyway, or Ctrl+C to stop and reopen **Terminal (Admin)**. Without admin, setup skips the taskbar pins and lists them in the final summary, and some installs can fail.
 
 #### 2. Make sure winget works
 
@@ -218,16 +218,16 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
    2. **GitHub.com in Edge.** The script opens Microsoft Edge and pauses. Sign in to GitHub.com as **the booth account**, then press Enter.
    3. **GitHub CLI login.** The GitHub CLI shows a one-time code. Press Enter to open the browser, enter the code, and approve the login (or scope upgrade) while signed in as the booth account. See [GitHub CLI login](#github-cli-login).
 4. Setup then installs GitHub CLI extensions, clones the demo repos into `$HOME\repos`, installs VS Code extensions and the theme, and registers MCP servers for Copilot CLI.
-5. At the end, setup prints a summary of anything that failed. Fix the cause and run `.\setup.ps1` again; finished steps are skipped. For `winget` errors, see [Troubleshooting Windows package installs](#troubleshooting-windows-package-installs).
+5. At the end, setup prints a summary of anything that failed. Fix the cause and run `.\setup.ps1` again; finished steps and `winget` packages that are already installed are skipped. For `winget` errors, see [Troubleshooting Windows package installs](#troubleshooting-windows-package-installs).
 
-Set `$env:NONINTERACTIVE = "true"` before running `setup.ps1` to skip GitHub browser login, CLI login, and scope refresh. Existing CLI credentials (including `GH_TOKEN` or `GITHUB_TOKEN`) are used to install extensions and clone repositories. Without usable credentials, those steps are deferred with warnings; authenticate with `gh auth login` and rerun setup to complete them. Set `$env:FORCE_REINSTALL = "true"` to redo steps that are normally skipped on reruns.
+Set `$env:NONINTERACTIVE = "true"` before running `setup.ps1` to skip GitHub browser login, CLI login, scope refresh, and the pause when setup isn't running as an administrator. Existing CLI credentials (including `GH_TOKEN` or `GITHUB_TOKEN`) are used to install extensions and clone repositories. Without usable credentials, those steps are deferred with warnings; authenticate with `gh auth login` and rerun setup to complete them. Set `$env:FORCE_REINSTALL = "true"` to redo steps that are normally skipped on reruns, including `winget` installs of packages that are already installed. See [Re-running on a Windows machine that's already set up](#re-running-on-a-windows-machine-thats-already-set-up).
 
 #### 6. After setup
 
 - Close the window and open a new terminal so it picks up the updated `PATH`. Check PowerShell 7 with `pwsh --version`. Windows Terminal adds a **PowerShell** profile for it, and Windows PowerShell 5.1 stays installed alongside it. Run future scripts with `pwsh`.
 - Store booth videos in `C:\Users\<YourUsername>\Videos` and open them from VLC on the taskbar.
 - To update the Demo Launcher later, run `.\install-demo-launcher.ps1` (see [Install or update the canvas on Windows](#install-or-update-the-canvas-on-windows)).
-- To add the taskbar pins on a machine that ran setup before they existed, pull the latest and run `.\setup.ps1` again, or run only that step from an Administrator prompt in the repo folder:
+- To add the taskbar pins on a machine that ran setup before they existed, or after a run from a window that wasn't elevated, pull the latest and run `.\setup.ps1` again from **Terminal (Admin)**. You can also run only that step from an Administrator prompt in the repo folder:
 
   ```powershell
   . .\setup.ps1; Import-Config; Set-TaskbarPins
@@ -264,6 +264,23 @@ Do this in both VS Code and VS Code Insiders, so GitHub Copilot uses the booth a
 #### 10. Check the machine is ready
 
 Go through [Check that the machine is ready](#check-that-the-machine-is-ready).
+
+#### Re-running on a Windows machine that's already set up
+
+Run `.\setup.ps1` again from **Terminal (Admin)**. You don't need to reset the machine first. Steps that are already done are skipped:
+
+- Before installing each package in `windows.packages`, setup runs `winget list --id <id> -e --source winget`. If the package is found, setup logs `Already installed: <id>` and moves on without running `winget install`. Like Homebrew on macOS, reruns don't upgrade installed packages. To update one, run `winget upgrade --id <id> -e --source winget`. If `winget list` returns an unexpected error, setup runs `winget install` as before.
+- VLC settings are skipped once `%APPDATA%\vlc\vlcrc` has setup's marker. Taskbar pins are skipped when the layout and policy already match `config.json`.
+- VS Code and VS Code Insiders extensions, and GitHub CLI extensions, that are already installed are skipped. Repos already in `$HOME\repos` aren't cloned again.
+- The GitHub CLI login only asks for missing scopes. The GitHub.com sign-in pause in Edge still runs, so press Enter if you're already signed in.
+
+If you run setup from a window that isn't elevated, it warns and pauses at the start. Press Enter to continue anyway. Setup then skips the taskbar pins instead of failing with `Requested registry access is not allowed`, and its final summary lists them under **Skipped because setup wasn't run as Administrator**. Rerun from **Terminal (Admin)** to finish them.
+
+To redo everything, including reinstalling packages, run:
+
+```powershell
+$env:FORCE_REINSTALL = "true"; .\setup.ps1; Remove-Item Env:\FORCE_REINSTALL
+```
 
 ### Check that the machine is ready
 

@@ -15,8 +15,12 @@
     Requires:
     - Windows 10/11
     - winget package manager
-    - Administrative privileges
+    - Administrative privileges (Terminal (Admin)). Without them, setup warns,
+      pauses, and skips steps that need elevation, such as the taskbar pins.
     - Internet connection
+
+    Reruns skip steps that are already done, including winget packages that are
+    already installed. Set $env:FORCE_REINSTALL = "true" to redo them.
 #>
 
 # ----------------------------------------
@@ -25,6 +29,8 @@
 
 $script:configPath = Join-Path $PSScriptRoot "config.json"
 $script:failedItems = @()
+$script:adminSkippedItems = @()
+$script:IsAdmin = $null # Set by Test-Prerequisites, or on first use by an admin-only step
 $script:ForceReinstall = $env:FORCE_REINSTALL -eq "true"
 $script:NonInteractive = $env:NONINTERACTIVE -eq "true"
 
@@ -38,6 +44,15 @@ $script:WingetSuccessExitCodes = @(
     3010,        # ERROR_SUCCESS_REBOOT_REQUIRED (installer succeeded, reboot needed)
     1641         # ERROR_SUCCESS_REBOOT_INITIATED
 )
+
+# Install exit codes that mean the package was already there, so nothing was installed.
+$script:WingetAlreadyInstalledExitCodes = @(
+    -1978335189, # 0x8A15002B APPINSTALLER_CLI_ERROR_UPDATE_NOT_APPLICABLE
+    -1978335135  # 0x8A150061 APPINSTALLER_CLI_ERROR_PACKAGE_ALREADY_INSTALLED
+)
+
+# `winget list` exit code when no installed package matches the query.
+$script:WingetNoPackageFoundExitCode = -1978335212 # 0x8A150014 APPINSTALLER_CLI_ERROR_NO_APPLICATIONS_FOUND
 
 function Test-ShouldSkipInstalled { return -not $script:ForceReinstall }
 
@@ -82,20 +97,46 @@ function Write-Summary {
         }
         Write-Host ""
     }
+    if ($script:adminSkippedItems.Count -gt 0) {
+        Write-Host ""
+        Write-Warn "Skipped because setup wasn't run as Administrator:"
+        foreach ($item in $script:adminSkippedItems) {
+            Write-Warn "  - $item"
+        }
+        Write-Warn "To finish them, open Terminal (Admin) and run .\setup.ps1 again."
+        Write-Host ""
+    }
 }
 
 # ----------------------------------------
 # Bootstrap
 # ----------------------------------------
 
+function Test-IsAdmin {
+    $principal = [Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()
+    return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+function Write-NotAdminWarning {
+    Write-Host ""
+    Write-Host "============================================================" -ForegroundColor Yellow
+    Write-Warn "setup.ps1 is NOT running as Administrator."
+    Write-Warn "Setup will skip the taskbar pins, and some installs may fail or ask for approval."
+    Write-Warn "To run everything: close this window, right-click Start, choose"
+    Write-Warn "Terminal (Admin), approve the prompt, and run .\setup.ps1 again."
+    Write-Host "============================================================" -ForegroundColor Yellow
+    Write-Host ""
+    if (-not $script:NonInteractive) {
+        Read-Host "Press Enter to continue without Administrator, or Ctrl+C to stop" | Out-Null
+    }
+}
+
 function Test-Prerequisites {
-    # Check for admin privileges
-    $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-    if ($isAdmin) {
+    $script:IsAdmin = Test-IsAdmin
+    if ($script:IsAdmin) {
         Write-Success "Running with Administrator privileges"
     } else {
-        Write-Warn "Not running with Administrator privileges. Some operations may fail."
-        Write-Warn "Consider restarting with 'Run as Administrator'"
+        Write-NotAdminWarning
     }
 
     # Verify config.json exists
@@ -126,17 +167,44 @@ function Import-Config {
 # Function Definitions
 # ----------------------------------------
 
-# Note: winget install is idempotent — no need to pre-check installed packages.
+# Returns $true when installed, $false when not found, and $null when winget
+# can't tell (any other exit code), so the caller falls back to installing.
+# Only the exit code is used: winget truncates long IDs in its table output.
+function Test-WingetPackageInstalled {
+    param([string]$PackageId)
+
+    try {
+        winget list --id $PackageId -e --source winget --accept-source-agreements 2>&1 | Out-Null
+        $exitCode = $LASTEXITCODE
+    }
+    catch {
+        return $null
+    }
+
+    if ($exitCode -eq 0) { return $true }
+    if ($exitCode -eq $script:WingetNoPackageFoundExitCode) { return $false }
+    return $null
+}
+
 function Install-WingetPackage {
     param([string]$PackageId)
 
     $description = "winget: $PackageId"
+
+    if ((Test-ShouldSkipInstalled) -and ((Test-WingetPackageInstalled -PackageId $PackageId) -eq $true)) {
+        Write-Success "Already installed: $PackageId"
+        return
+    }
+
     try {
         # Use the winget source to avoid unrelated Microsoft Store certificate failures.
         $output = winget install --id $PackageId -e --source winget --accept-source-agreements --accept-package-agreements --silent 2>&1
         $exitCode = $LASTEXITCODE
 
-        if ($script:WingetSuccessExitCodes -contains $exitCode) {
+        if ($script:WingetAlreadyInstalledExitCodes -contains $exitCode) {
+            Write-Success "Already installed: $PackageId"
+        }
+        elseif ($script:WingetSuccessExitCodes -contains $exitCode) {
             Write-Success "Installed: $PackageId"
         }
         else {
@@ -152,7 +220,7 @@ function Install-WingetPackage {
 }
 
 function Install-Packages {
-    Write-Info "Installing packages via winget..."
+    Write-Info "Installing packages via winget (already-installed packages are skipped)..."
 
     foreach ($package in $config.windows.packages) {
         Install-WingetPackage -PackageId $package
@@ -262,6 +330,15 @@ function Set-TaskbarPins {
 
     if ($alreadyApplied -and (Test-ShouldSkipInstalled)) {
         Write-Success "Taskbar pins already configured"
+        return
+    }
+
+    # The StartLayoutFile policy lives under HKCU\Software\Policies, which only
+    # an elevated process can write.
+    if ($null -eq $script:IsAdmin) { $script:IsAdmin = Test-IsAdmin }
+    if (-not $script:IsAdmin) {
+        $script:adminSkippedItems += "taskbar pins"
+        Write-Warn "Skipping taskbar pins: they need Administrator. Open Terminal (Admin) and run .\setup.ps1 again."
         return
     }
 
@@ -704,6 +781,10 @@ function Invoke-Main {
     if ($script:failedItems.Count -gt 0) {
         Write-Warn "Script completed with $($script:failedItems.Count) failure(s)"
         exit 1
+    }
+    if ($script:adminSkippedItems.Count -gt 0) {
+        Write-Warn "Script completed, but $($script:adminSkippedItems.Count) step(s) need Administrator (see above)"
+        return
     }
     Write-Success "Script completed successfully"
 }

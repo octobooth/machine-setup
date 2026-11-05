@@ -16,6 +16,7 @@ Describe 'setup.ps1' {
 
     BeforeEach {
         $script:failedItems = @()
+        $script:adminSkippedItems = @()
         Remove-Item Function:\gh -ErrorAction SilentlyContinue
         Remove-Item Function:\winget -ErrorAction SilentlyContinue
     }
@@ -70,44 +71,99 @@ Describe 'setup.ps1' {
         $script:failedItems | Should -Contain 'example failure'
     }
 
-    It 'Install-WingetPackage explicitly selects the winget source' {
-        $wingetLog = Join-Path $TestDrive 'winget.log'
-        function global:winget {
-            Set-Content -Path $wingetLog -Value ($args -join ' ')
-            $global:LASTEXITCODE = 0
+    Context 'Install-WingetPackage' {
+        BeforeEach {
+            $script:savedForce = $script:ForceReinstall
+            $script:ForceReinstall = $false
+            $script:wingetLog = Join-Path $TestDrive "winget-$([guid]::NewGuid().ToString('N')).log"
+            $script:wingetListExitCode = -1978335212 # NO_APPLICATIONS_FOUND
+            $script:wingetInstallExitCode = 0
+            function global:winget {
+                Add-Content -Path $script:wingetLog -Value ($args -join ' ')
+                if ($args[0] -eq 'list') {
+                    $global:LASTEXITCODE = $script:wingetListExitCode
+                }
+                else {
+                    $global:LASTEXITCODE = $script:wingetInstallExitCode
+                }
+            }
         }
 
-        Install-WingetPackage -PackageId 'Microsoft.VisualStudioCode'
+        AfterEach {
+            $script:ForceReinstall = $script:savedForce
+            Remove-Variable -Name wingetLog, wingetListExitCode, wingetInstallExitCode -Scope Script -ErrorAction SilentlyContinue
+        }
 
-        (Get-Content -Path $wingetLog -Raw).Trim() | Should -Be 'install --id Microsoft.VisualStudioCode -e --source winget --accept-source-agreements --accept-package-agreements --silent'
-        $script:failedItems | Should -BeNullOrEmpty
-    }
+        It 'checks the winget source and installs a package that is not installed' {
+            Install-WingetPackage -PackageId 'Microsoft.VisualStudioCode'
 
-    It 'Install-WingetPackage treats "already installed" exit code as success' {
-        function global:winget { $global:LASTEXITCODE = -1978335135 }
+            @(Get-Content -Path $script:wingetLog) | Should -Be @(
+                'list --id Microsoft.VisualStudioCode -e --source winget --accept-source-agreements'
+                'install --id Microsoft.VisualStudioCode -e --source winget --accept-source-agreements --accept-package-agreements --silent'
+            )
+            Should -Invoke Write-Success -Times 1 -Exactly -ParameterFilter { $Message -eq 'Installed: Microsoft.VisualStudioCode' }
+            $script:failedItems | Should -BeNullOrEmpty
+        }
 
-        Install-WingetPackage -PackageId 'Example.Package'
+        It 'skips a package that is already installed' {
+            $script:wingetListExitCode = 0
 
-        $script:failedItems | Should -Not -Contain 'winget: Example.Package'
-        Remove-Item Function:\winget -ErrorAction SilentlyContinue
-    }
+            Install-WingetPackage -PackageId 'Example.Package'
 
-    It 'Install-WingetPackage treats reboot-required exit code as success' {
-        function global:winget { $global:LASTEXITCODE = 3010 }
+            @(Get-Content -Path $script:wingetLog) | Should -Not -Match '^install '
+            Should -Invoke Write-Success -Times 1 -Exactly -ParameterFilter { $Message -eq 'Already installed: Example.Package' }
+            Should -Invoke Write-Success -Times 0 -Exactly -ParameterFilter { $Message -like 'Installed:*' }
+            $script:failedItems | Should -BeNullOrEmpty
+        }
 
-        Install-WingetPackage -PackageId 'Example.Package'
+        It 'installs without checking when FORCE_REINSTALL is set' {
+            $script:wingetListExitCode = 0
+            $script:ForceReinstall = $true
 
-        $script:failedItems | Should -Not -Contain 'winget: Example.Package'
-        Remove-Item Function:\winget -ErrorAction SilentlyContinue
-    }
+            Install-WingetPackage -PackageId 'Example.Package'
 
-    It 'Install-WingetPackage records genuine winget failures' {
-        function global:winget { $global:LASTEXITCODE = -1978335231 }
+            @(Get-Content -Path $script:wingetLog) | Should -Be @(
+                'install --id Example.Package -e --source winget --accept-source-agreements --accept-package-agreements --silent'
+            )
+        }
 
-        Install-WingetPackage -PackageId 'Example.Package'
+        It 'falls back to installing when winget list returns an unexpected exit code' {
+            $script:wingetListExitCode = -1978335138
 
-        $script:failedItems | Should -Contain 'winget: Example.Package'
-        Remove-Item Function:\winget -ErrorAction SilentlyContinue
+            Install-WingetPackage -PackageId 'Example.Package'
+
+            @(Get-Content -Path $script:wingetLog) | Should -Contain 'install --id Example.Package -e --source winget --accept-source-agreements --accept-package-agreements --silent'
+            $script:failedItems | Should -BeNullOrEmpty
+        }
+
+        It 'reports "already installed" install exit codes as already installed, not failures' -ForEach @(
+            @{ Code = -1978335135 }, # PACKAGE_ALREADY_INSTALLED
+            @{ Code = -1978335189 }  # UPDATE_NOT_APPLICABLE
+        ) {
+            $script:wingetInstallExitCode = $Code
+
+            Install-WingetPackage -PackageId 'Example.Package'
+
+            Should -Invoke Write-Success -Times 1 -Exactly -ParameterFilter { $Message -eq 'Already installed: Example.Package' }
+            Should -Invoke Write-Success -Times 0 -Exactly -ParameterFilter { $Message -like 'Installed:*' }
+            $script:failedItems | Should -BeNullOrEmpty
+        }
+
+        It 'treats reboot-required exit code as success' {
+            $script:wingetInstallExitCode = 3010
+
+            Install-WingetPackage -PackageId 'Example.Package'
+
+            $script:failedItems | Should -BeNullOrEmpty
+        }
+
+        It 'records genuine winget failures' {
+            $script:wingetInstallExitCode = -1978335231
+
+            Install-WingetPackage -PackageId 'Example.Package'
+
+            $script:failedItems | Should -Contain 'winget: Example.Package'
+        }
     }
 
     It 'Install-GHExtension treats an already-installed extension as success' {
@@ -211,9 +267,12 @@ Describe 'setup.ps1' {
         BeforeEach {
             $script:savedPolicyKey = $script:TaskbarPolicyKey
             $script:savedForce = $script:ForceReinstall
+            $script:savedIsAdmin = $script:IsAdmin
             $testId = [guid]::NewGuid().ToString('N')
             $script:TaskbarPolicyKey = "TestRegistry:\Policies\$testId\Explorer"
             $script:ForceReinstall = $false
+            $script:IsAdmin = $true
+            $script:adminSkippedItems = @()
             $env:SETUP_SCRIPT_TASKBAR_LAYOUT_PATH = Join-Path $TestDrive "$testId\TaskbarLayout.xml"
             Mock Restart-Explorer { }
             if (-not (Get-Command Get-StartApps -ErrorAction SilentlyContinue)) {
@@ -225,6 +284,8 @@ Describe 'setup.ps1' {
         AfterEach {
             $script:TaskbarPolicyKey = $script:savedPolicyKey
             $script:ForceReinstall = $script:savedForce
+            $script:IsAdmin = $script:savedIsAdmin
+            $script:adminSkippedItems = @()
             Remove-Item Env:\SETUP_SCRIPT_TASKBAR_LAYOUT_PATH -ErrorAction SilentlyContinue
         }
 
@@ -258,6 +319,96 @@ Describe 'setup.ps1' {
             Set-TaskbarPins
 
             Should -Invoke Restart-Explorer -Times 2 -Exactly
+        }
+
+        It 'skips without touching the registry when not running as Administrator' {
+            $script:IsAdmin = $false
+
+            Set-TaskbarPins
+
+            Test-Path $script:TaskbarPolicyKey | Should -BeFalse
+            Test-Path $env:SETUP_SCRIPT_TASKBAR_LAYOUT_PATH | Should -BeFalse
+            Should -Invoke Restart-Explorer -Times 0 -Exactly
+            Should -Invoke Write-Warn -Times 1 -Exactly -ParameterFilter { $Message -like '*Terminal (Admin)*' }
+            $script:adminSkippedItems | Should -Be @('taskbar pins')
+            $script:failedItems | Should -BeNullOrEmpty
+        }
+
+        It 'checks for Administrator itself when run outside Invoke-Main' {
+            $script:IsAdmin = $null
+            Mock Test-IsAdmin { $false }
+
+            Set-TaskbarPins
+
+            Should -Invoke Test-IsAdmin -Times 1 -Exactly
+            $script:adminSkippedItems | Should -Be @('taskbar pins')
+        }
+
+        It 'still reports already-configured pins when not running as Administrator' {
+            Set-TaskbarPins
+            $script:IsAdmin = $false
+
+            Set-TaskbarPins
+
+            Should -Invoke Write-Success -Times 1 -Exactly -ParameterFilter { $Message -eq 'Taskbar pins already configured' }
+            $script:adminSkippedItems | Should -BeNullOrEmpty
+        }
+    }
+
+    Context 'Administrator checks' {
+        BeforeEach {
+            $script:savedNonInteractive = $script:NonInteractive
+            $script:savedIsAdmin = $script:IsAdmin
+            $script:adminSkippedItems = @()
+            Mock Read-Host { '' }
+            function global:winget { 'v1.0.0'; $global:LASTEXITCODE = 0 }
+        }
+
+        AfterEach {
+            $script:NonInteractive = $script:savedNonInteractive
+            $script:IsAdmin = $script:savedIsAdmin
+            $script:adminSkippedItems = @()
+        }
+
+        It 'warns prominently and pauses when not running as Administrator' {
+            $script:NonInteractive = $false
+            Mock Test-IsAdmin { $false }
+
+            Test-Prerequisites | Should -BeTrue
+
+            $script:IsAdmin | Should -BeFalse
+            Should -Invoke Write-Warn -ParameterFilter { $Message -like '*NOT running as Administrator*' }
+            Should -Invoke Read-Host -Times 1 -Exactly
+        }
+
+        It 'does not pause when NONINTERACTIVE is set' {
+            $script:NonInteractive = $true
+            Mock Test-IsAdmin { $false }
+
+            Test-Prerequisites | Should -BeTrue
+
+            Should -Invoke Write-Warn -ParameterFilter { $Message -like '*NOT running as Administrator*' }
+            Should -Invoke Read-Host -Times 0 -Exactly
+        }
+
+        It 'does not warn or pause when running as Administrator' {
+            $script:NonInteractive = $false
+            Mock Test-IsAdmin { $true }
+
+            Test-Prerequisites | Should -BeTrue
+
+            $script:IsAdmin | Should -BeTrue
+            Should -Invoke Write-Warn -Times 0 -Exactly -ParameterFilter { $Message -like '*NOT running as Administrator*' }
+            Should -Invoke Read-Host -Times 0 -Exactly
+        }
+
+        It 'Write-Summary lists admin-skipped steps with rerun instructions' {
+            $script:adminSkippedItems = @('taskbar pins')
+
+            Write-Summary
+
+            Should -Invoke Write-Warn -ParameterFilter { $Message -eq '  - taskbar pins' }
+            Should -Invoke Write-Warn -ParameterFilter { $Message -like '*Terminal (Admin)*' }
         }
     }
 
