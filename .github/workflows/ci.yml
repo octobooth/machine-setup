@@ -27,7 +27,6 @@ jobs:
             (.shared.vs_code_extensions | type == "array") and
             (.shared.gh_cli_extensions | type == "array") and
             (.shared.pwa_sites | type == "array") and
-            (.shared.demo_sites | type == "array") and
             (.shared.mcp_servers | type == "array") and
             (.shared.gh_auth_scopes | type == "array") and
             (.shared.repos_to_clone | type == "array") and

@@ -1,10 +1,19 @@
 # Booth Machine Setup
 
+_Last updated by [@filmgirl](https://github.com/filmgirl) on November 5, 2026_
+
 ![CI](https://github.com/octobooth-demos/machine-setup/actions/workflows/ci.yml/badge.svg)
 
-This repository contains setup scripts for configuring booth machines. The scripts install and configure the GitHub Copilot app, Visual Studio Code, Visual Studio Code Insiders, GitHub CLI, VLC media player, Node.js, PowerShell 7 (Windows), iTerm2 (macOS), and related tooling from a shared `config.json`.
+> [!IMPORTANT]
+> **Setting up or running a booth? Start with the [booth playbook](docs/booth-playbook.md).** It walks through the whole event step by step:
+>
+> 1. [Before the event: set up each booth machine](docs/booth-playbook.md#part-1-before-the-event-set-up-each-booth-machine) (macOS and Windows, with the commands to type)
+> 2. [During the event: run demos](docs/booth-playbook.md#part-2-during-the-event-run-demos)
+> 3. [After the event: clean up and reset](docs/booth-playbook.md#part-3-after-the-event-clean-up-and-reset) the booth accounts and machines
+>
+> Cleaning up demo repos any time: [Clean up demo repos](docs/booth-playbook.md#clean-up-demo-repos). Deleting every repo in the booth accounts (org admins): [How to clean all Octobooth repos](docs/booth-playbook.md#how-to-clean-all-octobooth-repos).
 
-**Running a booth?** The [booth playbook](docs/booth-playbook.md) covers the whole event: setting up machines, running demos, and cleaning up the booth accounts afterwards (weekly automatic cleanup and the full post-event reset).
+This repository contains setup scripts for configuring booth machines. The scripts install and configure the GitHub Copilot app, Visual Studio Code, Visual Studio Code Insiders, GitHub CLI, VLC media player, Node.js, PowerShell 7 (Windows), iTerm2 (macOS), and related tooling from a shared `config.json`.
 
 ## Features
 
@@ -15,11 +24,10 @@ This repository contains setup scripts for configuring booth machines. The scrip
 - Installs PowerShell 7 (`Microsoft.PowerShell` winget package) on Windows alongside the built-in Windows PowerShell 5.1, so later steps and scripts can call `pwsh`.
 - Installs iTerm2 on macOS, sets its default profile to follow the macOS appearance (GitHub Light Default in light mode, GitHub Dark Default in dark mode) with Monaspace Neon Frozen 14 (ligatures on, thin strokes off), and switches it to the Minimal theme.
 - Installs the SF Mono, Monaspace (including the Frozen variants), and Mona Sans fonts on macOS.
-- Adds Google Chrome, the GitHub Copilot app, VS Code, VS Code Insiders, and iTerm2 to the macOS Dock and hides suggested and recent apps there.
-- Pins VS Code, VS Code Insiders, the GitHub Copilot app, and Windows Terminal to the Windows taskbar.
+- Adds Google Chrome, the GitHub Copilot app, VS Code, VS Code Insiders, iTerm2, and VLC to the macOS Dock and hides suggested and recent apps there.
+- Pins VS Code, VS Code Insiders, the GitHub Copilot app, Windows Terminal, and VLC to the Windows taskbar.
 - Makes Google Chrome the default browser on macOS (via `defaultbrowser`), including when Chrome was already installed.
 - Configures VLC media player settings.
-- Creates a demo loader script to launch the required applications and sites.
 - Registers shared MCP servers for Copilot CLI.
 - Clones the demo repos into `~/repos` and, on macOS, installs the Demo Launcher canvas for every Copilot session. `install-demo-launcher.sh` (macOS/Linux) and `install-demo-launcher.ps1` (Windows) do just that step on a machine that is already set up (see [Demo Launcher](#demo-launcher)).
 
@@ -27,7 +35,7 @@ This repository contains setup scripts for configuring booth machines. The scrip
 
 `config.json` is the single source of truth for both setup scripts.
 
-- `shared`: settings used by both platforms, including VS Code extensions, GitHub CLI extensions, GitHub CLI auth scopes, demo sites, VLC settings, MCP servers, and repos to clone.
+- `shared`: settings used by both platforms, including VS Code extensions, GitHub CLI extensions, GitHub CLI auth scopes, VLC settings, MCP servers, and repos to clone.
 - `mac`: Homebrew packages, editor binaries, iTerm2 theme settings, the Monaspace Frozen font version, Dock apps, and post-install apps for `setup.sh`.
 - `windows`: `winget` packages, editor commands, taskbar pins, and post-install apps for `setup.ps1`.
 
@@ -37,7 +45,7 @@ Fonts: the `font-monaspace` cask installs Monaspace, and `font-mona-sans` instal
 
 `mac.dock_apps` lists app names (the `.app` bundle in `/Applications`, without `.app`) that `setup.sh` adds to the Dock with the `dockutil` formula. Apps already in the Dock are skipped, even with `FORCE_REINSTALL=true`, so reruns don't add duplicates. This includes Chrome when it was installed outside Homebrew and already pinned. Setup also turns off **Show suggested and recent apps in Dock** and restarts the Dock once if anything changed. It doesn't remove anything, so Downloads and Trash stay.
 
-`windows.taskbar_pins` lists apps that `setup.ps1` pins to the Windows taskbar, in left-to-right order. Each `app_id` is the **AppID** shown by `Get-StartApps`. IDs that contain `!` are packaged apps (such as Windows Terminal), and the rest are desktop apps. Windows has no API to pin apps directly, so setup uses Microsoft's [taskbar layout policy](https://learn.microsoft.com/windows/configuration/taskbar/pinned-apps). It writes a layout XML to `%LOCALAPPDATA%\machine-setup\TaskbarLayout.xml`, points the current user's `StartLayoutFile` policy (`HKCU\Software\Policies\Microsoft\Windows\Explorer`) at it, and restarts Explorer so the pins show up. This needs an elevated (Administrator) prompt. Policy pins appear after the default and manually pinned apps, and Windows may pin them again if they're unpinned. On Windows 10, the policy also locks the Start tiles. Later runs skip this step unless the list changes or `FORCE_REINSTALL` is `"true"`.
+`windows.taskbar_pins` lists apps that `setup.ps1` pins to the Windows taskbar, in left-to-right order. Each `app_id` is the **AppID** shown by `Get-StartApps`. IDs that contain `!` are packaged apps (such as Windows Terminal), and the rest are desktop apps. A desktop app that doesn't set its own AppID, such as VLC, is listed by its path, with a known-folder GUID in place of the folder: `{6D809377-6AF0-444B-8957-A3773F02200E}` is Program Files. To check an ID on a set-up machine, run `Get-StartApps | Where-Object Name -like '*VLC*'`. Windows has no API to pin apps directly, so setup uses Microsoft's [taskbar layout policy](https://learn.microsoft.com/windows/configuration/taskbar/pinned-apps). It writes a layout XML to `%LOCALAPPDATA%\machine-setup\TaskbarLayout.xml`, points the current user's `StartLayoutFile` policy (`HKCU\Software\Policies\Microsoft\Windows\Explorer`) at it, and restarts Explorer so the pins show up. This needs an elevated (Administrator) prompt. Policy pins appear after the default and manually pinned apps, and Windows may pin them again if they're unpinned. On Windows 10, the policy also locks the Start tiles. Later runs skip this step unless the list changes or `FORCE_REINSTALL` is `"true"`.
 
 `shared.gh_auth_scopes` lists the extra scopes the GitHub CLI login needs: `codespace` (the Tailspin Toys demo creates a Codespace), `delete_repo` (the Demo Launcher's cleanup deletes demo repos), `project` (the Copilot Airways demo creates a GitHub Project, and cleanup deletes it), and `workflow` (demo repos include GitHub Actions workflows, and GitHub rejects pushes that add or change `.github/workflows` files without it). A new login requests them, and an existing login missing any of them is upgraded with `gh auth refresh`, which opens a browser to approve. Both scripts ignore `GH_TOKEN`/`GITHUB_TOKEN` for these steps so the stored login is the one updated. To do it by hand, see [GitHub CLI login](#github-cli-login).
 
@@ -45,7 +53,9 @@ Fonts: the `font-monaspace` cask installs Monaspace, and `font-mona-sans` instal
 
 ## Setup Instructions
 
-Clone this repo so you can update the scripts before each run. A ZIP download never updates, so an old copy keeps running old scripts. Both platforms then share the [GitHub CLI login](#github-cli-login) checks below.
+These are the same steps as [Part 1 of the booth playbook](docs/booth-playbook.md#part-1-before-the-event-set-up-each-booth-machine), which also covers booth day and cleanup. This section adds extra detail on re-running setup and on individual steps.
+
+Clone this repo so you can update the scripts before each run. A ZIP download never updates, so an old copy keeps running old scripts. Both platforms then share the [GitHub CLI login](#github-cli-login) checks and [Check that the machine is ready](#check-that-the-machine-is-ready) below.
 
 ### macOS setup
 
@@ -73,20 +83,60 @@ Clone this repo so you can update the scripts before each run. A ZIP download ne
 
 #### 2. Run setup
 
-1. Open a terminal and go to `~/repos/machine-setup` (or the extracted `machine-setup-main` folder).
-2. Run the setup script:
+1. Quit iTerm2 if it's open. iTerm2 overwrites setup's changes to its settings when it quits.
+2. If the GitHub CLI is already installed (for example, you're re-running setup), check which account it's logged in to:
 
    ```bash
+   gh auth status
+   ```
+
+   If it shows an account other than this machine's booth account, log it out with `gh auth logout -h github.com`. Setup only logs in when the GitHub CLI isn't logged in, so it would otherwise keep the wrong account. On a new Mac, `gh` isn't installed yet; skip this.
+3. Go to the repo (or the extracted `machine-setup-main` folder if you used the ZIP) and run the setup script:
+
+   ```bash
+   cd ~/repos/machine-setup
    bash setup.sh
    ```
 
-   The script first checks for the Xcode Command Line Tools, which `git` (used to clone the demo repos) and Homebrew need. If they're missing, it opens the installer: click **Install**, and the script waits until it finishes (up to 30 minutes; set `XCODE_CLT_TIMEOUT` in seconds to change this). If the install fails or times out, run `xcode-select --install`, finish the installer, and run `bash setup.sh` again.
+4. Answer the prompts as they come up:
+   1. **Xcode Command Line Tools.** `git` and Homebrew need them. If they're missing, the installer opens: click **Install**, and the script waits until it finishes (up to 30 minutes; set `XCODE_CLT_TIMEOUT` in seconds to change this). If the install fails or times out, run `xcode-select --install`, finish the installer, and run `bash setup.sh` again.
+   2. **Your Mac password.** The Homebrew installer and the SF Mono font ask for it. Type it and press Enter (nothing shows while you type). If the Homebrew installer asks you to press RETURN to continue, press Enter.
+   3. **GitHub.com in Chrome.** The script opens Chrome and pauses. Sign in to GitHub.com as **the booth account**, then press Enter.
+   4. **Default browser.** If Chrome isn't the default browser yet, macOS asks whether to change it. Click **Use “Google Chrome”**, then press Enter. This also works if Chrome was installed before setup ran. If Chrome is already the default, the script skips this step.
+   5. **GitHub CLI login.** The GitHub CLI shows a one-time code. Press Enter to open the browser, enter the code, and approve the login (or scope upgrade) while signed in as the booth account. See [GitHub CLI login](#github-cli-login).
+5. At the end, setup prints a summary of anything that failed. Fix the cause and run `bash setup.sh` again; finished steps are skipped.
+6. Setup adds Google Chrome, the GitHub Copilot app, VS Code, VS Code Insiders, iTerm2, and VLC to the Dock.
+7. Store booth videos in `$HOME/Videos` and open them from VLC in the Dock.
 
-3. The script pauses so you can sign in to GitHub.com in Chrome with the booth/demo account.
-4. If Chrome isn't the default browser yet, macOS asks whether to change it. Click **Use “Google Chrome”**, then press Enter. This also works if Chrome was installed before setup ran. If Chrome is already the default, the script skips this step.
-5. Approve the GitHub CLI login (or scope upgrade) in the browser when prompted.
-6. A launcher script that also opens the GitHub Copilot app is created on the Desktop.
-7. Store booth videos in `$HOME/Videos` so the launcher opens them in VLC.
+#### 3. Set up the Demo Launcher
+
+Setup already cloned `~/repos/repo-setup-scripts` and installed the Demo Launcher for every Copilot session.
+
+1. Open the GitHub Copilot app and sign in with the booth account.
+2. Add the existing local folder `~/repos/repo-setup-scripts` as a project. Use the local folder, not the repo's URL: adding it by URL makes the app clone a second copy, and only `~/repos/repo-setup-scripts` is updated by `install-demo-launcher.sh` and used by the installed Demo Launcher.
+3. Start a session in the repo-setup-scripts project. Then right-click that session in the Copilot app and choose **Pin** so it's easy to find on booth day.
+4. Ask Copilot to "open the demo launcher" in any session. If that doesn't work, ask from a session in the repo-setup-scripts project.
+
+More detail: [Demo Launcher](#demo-launcher).
+
+#### 4. Add Chrome bookmarks
+
+In Chrome, still signed in to GitHub.com as the booth account, open each page below and press **Cmd+D** to bookmark it:
+
+- `https://github.com/octobooth-N`: the booth account's profile, using this machine's number (for example `https://github.com/octobooth-1`).
+- `https://github.com/octobooth-demos`: the `octobooth-demos` org.
+
+#### 5. Sign in to VS Code and VS Code Insiders
+
+Do this in both VS Code and VS Code Insiders, so GitHub Copilot uses the booth account:
+
+1. Open the app and click the **Accounts** icon at the bottom of the Activity Bar (the left edge). Sign in with GitHub, and approve it in the browser while signed in as the booth account.
+2. Click **Accounts** again and check it shows `octobooth-N`, not a personal account. If it shows another account, sign out of that account there and sign in again as the booth account.
+3. Check that GitHub Copilot is signed in and active: the Copilot icon in the Status Bar (the bottom edge) doesn't show a sign-in or error warning, and Copilot Chat answers a message.
+
+#### 6. Check the machine is ready
+
+Go through [Check that the machine is ready](#check-that-the-machine-is-ready).
 
 #### Re-running on a Mac that's already set up
 
@@ -131,7 +181,7 @@ If the command isn't found, open Microsoft Store, search for **App Installer**, 
 
 #### 3. Install Git and get the setup scripts
 
-`setup.ps1` installs Git too, but you need it once now to clone this repo:
+`setup.ps1` installs Git too, but you need it once now to clone the machine-setup repo:
 
 ```powershell
 winget install --id Git.Git -e --source winget --accept-source-agreements --accept-package-agreements
@@ -156,34 +206,76 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 
 #### 5. Run setup
 
-```powershell
-.\setup.ps1
-```
+1. If the GitHub CLI is already installed (for example, you're re-running setup), check which account it's logged in to with `gh auth status`. If it shows an account other than this machine's booth account, log it out with `gh auth logout -h github.com`. Setup only logs in when the GitHub CLI isn't logged in, so it would otherwise keep the wrong account. On a new machine, `gh` isn't installed yet; skip this.
+2. Run the setup script:
 
-What to expect:
+   ```powershell
+   .\setup.ps1
+   ```
 
-1. `winget` installs everything in `windows.packages` in [`config.json`](config.json). PowerShell 7 (`Microsoft.PowerShell`) is installed first, followed by VS Code, VS Code Insiders, Windows Terminal, Git, GitHub CLI, Node.js LTS, Python, VLC, Copilot CLI, the GitHub Copilot app, and GitHub Desktop. This takes a while, and some installers briefly show their own windows.
-2. The script refreshes `PATH` after the installs, so the rest of the run can use `pwsh`, `gh`, `code`, and the other new tools. It then configures VLC and pins VS Code, VS Code Insiders, the GitHub Copilot app, and Windows Terminal to the taskbar. The taskbar briefly disappears while Explorer restarts.
-3. It pauses so you can sign in to GitHub.com in Microsoft Edge with the booth/demo account. Press Enter when you're signed in.
-4. Approve the GitHub CLI login (or scope upgrade) in the browser when prompted. See [GitHub CLI login](#github-cli-login).
-5. It installs GitHub CLI extensions, clones the demo repos into `$HOME\repos`, installs VS Code extensions and the theme, and registers MCP servers for Copilot CLI.
-6. A launcher script (`load-demos.ps1`) is created on the Desktop.
-7. A summary at the end lists anything that failed. Fix the cause and run `.\setup.ps1` again; finished steps are skipped.
+3. Answer the prompts as they come up:
+   1. **Installs.** `winget` installs everything in `windows.packages` in [`config.json`](config.json). PowerShell 7 (`Microsoft.PowerShell`) is installed first, followed by VS Code, VS Code Insiders, Windows Terminal, Git, GitHub CLI, Node.js LTS, Python, VLC, Copilot CLI, the GitHub Copilot app, and GitHub Desktop. This takes a while, and some installers briefly show their own windows. Setup then configures VLC and pins VS Code, VS Code Insiders, the GitHub Copilot app, Windows Terminal, and VLC to the taskbar. The taskbar briefly disappears while Explorer restarts.
+   2. **GitHub.com in Edge.** The script opens Microsoft Edge and pauses. Sign in to GitHub.com as **the booth account**, then press Enter.
+   3. **GitHub CLI login.** The GitHub CLI shows a one-time code. Press Enter to open the browser, enter the code, and approve the login (or scope upgrade) while signed in as the booth account. See [GitHub CLI login](#github-cli-login).
+4. Setup then installs GitHub CLI extensions, clones the demo repos into `$HOME\repos`, installs VS Code extensions and the theme, and registers MCP servers for Copilot CLI.
+5. At the end, setup prints a summary of anything that failed. Fix the cause and run `.\setup.ps1` again; finished steps are skipped. For `winget` errors, see [Troubleshooting Windows package installs](#troubleshooting-windows-package-installs).
+
+Set `$env:NONINTERACTIVE = "true"` before running `setup.ps1` to skip GitHub browser login, CLI login, and scope refresh. Existing CLI credentials (including `GH_TOKEN` or `GITHUB_TOKEN`) are used to install extensions and clone repositories. Without usable credentials, those steps are deferred with warnings; authenticate with `gh auth login` and rerun setup to complete them. Set `$env:FORCE_REINSTALL = "true"` to redo steps that are normally skipped on reruns.
 
 #### 6. After setup
 
 - Close the window and open a new terminal so it picks up the updated `PATH`. Check PowerShell 7 with `pwsh --version`. Windows Terminal adds a **PowerShell** profile for it, and Windows PowerShell 5.1 stays installed alongside it. Run future scripts with `pwsh`.
-- Store booth videos in `C:\Users\<YourUsername>\Videos` so the launcher opens them in VLC.
-- Set up the [Demo Launcher](#windows-repo-setup-scripts-project). To update it later, run `.\install-demo-launcher.ps1` (see [Install or update the canvas on Windows](#install-or-update-the-canvas-on-windows)).
+- Store booth videos in `C:\Users\<YourUsername>\Videos` and open them from VLC on the taskbar.
+- To update the Demo Launcher later, run `.\install-demo-launcher.ps1` (see [Install or update the canvas on Windows](#install-or-update-the-canvas-on-windows)).
 - To add the taskbar pins on a machine that ran setup before they existed, pull the latest and run `.\setup.ps1` again, or run only that step from an Administrator prompt in the repo folder:
 
   ```powershell
   . .\setup.ps1; Import-Config; Set-TaskbarPins
   ```
 
-  To check it, look for the four icons on the taskbar, and run `Get-ItemProperty HKCU:\Software\Policies\Microsoft\Windows\Explorer` to see `StartLayoutFile` and `LockedStartLayout`. To apply it again after editing the pins, run `$script:ForceReinstall = $true; Set-TaskbarPins` in the same window. To undo it, run `Remove-ItemProperty HKCU:\Software\Policies\Microsoft\Windows\Explorer -Name StartLayoutFile, LockedStartLayout`, restart Explorer, and unpin the icons.
+  To check it, look for the five icons on the taskbar, and run `Get-ItemProperty HKCU:\Software\Policies\Microsoft\Windows\Explorer` to see `StartLayoutFile` and `LockedStartLayout`. To apply it again after editing the pins, run `$script:ForceReinstall = $true; Set-TaskbarPins` in the same window. To undo it, run `Remove-ItemProperty HKCU:\Software\Policies\Microsoft\Windows\Explorer -Name StartLayoutFile, LockedStartLayout`, restart Explorer, and unpin the icons.
 
-Set `$env:NONINTERACTIVE = "true"` before running `setup.ps1` to skip GitHub browser login, CLI login, and scope refresh. Existing CLI credentials (including `GH_TOKEN` or `GITHUB_TOKEN`) are used to install extensions and clone repositories. Without usable credentials, those steps are deferred with warnings; authenticate with `gh auth login` and rerun setup to complete them. Set `$env:FORCE_REINSTALL = "true"` to redo steps that are normally skipped on reruns.
+#### 7. Set up the Demo Launcher
+
+Setup already cloned `$HOME\repos\repo-setup-scripts`. On Windows, the Demo Launcher loads from that project.
+
+1. Open the GitHub Copilot app and sign in with the booth account.
+2. Add the existing local folder `$HOME\repos\repo-setup-scripts` as a project. Use the local folder, not the repo's URL: adding it by URL makes the app clone a second copy, and only `$HOME\repos\repo-setup-scripts` is updated by `install-demo-launcher.ps1`.
+3. Start a session in the repo-setup-scripts project. Then right-click that session in the Copilot app and choose **Pin** so it's easy to find on booth day.
+4. In the pinned repo-setup-scripts session, ask Copilot to "open the demo launcher".
+
+More detail: [Windows: repo-setup-scripts project](#windows-repo-setup-scripts-project).
+
+#### 8. Add Edge favorites
+
+Setup signed in to GitHub.com in Microsoft Edge, and Chrome isn't installed on Windows, so use Edge. Edge calls bookmarks favorites. In Edge, still signed in to GitHub.com as the booth account, open each page below and press **Ctrl+D** to bookmark it:
+
+- `https://github.com/octobooth-N`: the booth account's profile, using this machine's number (for example `https://github.com/octobooth-1`).
+- `https://github.com/octobooth-demos`: the `octobooth-demos` org.
+
+#### 9. Sign in to VS Code and VS Code Insiders
+
+Do this in both VS Code and VS Code Insiders, so GitHub Copilot uses the booth account:
+
+1. Open the app and click the **Accounts** icon at the bottom of the Activity Bar (the left edge). Sign in with GitHub, and approve it in the browser while signed in as the booth account.
+2. Click **Accounts** again and check it shows `octobooth-N`, not a personal account. If it shows another account, sign out of that account there and sign in again as the booth account.
+3. Check that GitHub Copilot is signed in and active: the Copilot icon in the Status Bar (the bottom edge) doesn't show a sign-in or error warning, and Copilot Chat answers a message.
+
+#### 10. Check the machine is ready
+
+Go through [Check that the machine is ready](#check-that-the-machine-is-ready).
+
+### Check that the machine is ready
+
+Check each item on every booth machine. `N` is this machine's booth account number.
+
+1. **GitHub CLI.** Run `gh auth status`. It should show `octobooth-N` as the active account, with `codespace`, `delete_repo`, `project`, and `workflow` in its token scopes. If not, follow [GitHub CLI login](#github-cli-login). If `GH_TOKEN` or `GITHUB_TOKEN` is set, unset it.
+2. **Demo repos.** `~/repos` (`$HOME\repos` on Windows) contains `repo-setup-scripts`, `tailspin-toys`, and `security-octo-supply` (the `repos_to_clone` list in [`config.json`](config.json)).
+3. **Copilot app.** It's signed in as `octobooth-N`, the repo-setup-scripts project is added from the local `~/repos/repo-setup-scripts` folder (`$HOME\repos\repo-setup-scripts` on Windows), a repo-setup-scripts session is pinned (right-click the session and choose **Pin**), and "open the demo launcher" opens the launcher.
+4. **VS Code and VS Code Insiders.** In each, **Accounts** shows `octobooth-N`, and GitHub Copilot is signed in and active.
+5. **Bookmarks.** The browser (Chrome on macOS, Edge on Windows) has bookmarks for `https://github.com/octobooth-N` and `https://github.com/octobooth-demos`.
+6. **Dock or taskbar.** On macOS, the Dock has Google Chrome, the GitHub Copilot app, VS Code, VS Code Insiders, iTerm2, and VLC. On Windows, the taskbar has VS Code, VS Code Insiders, the GitHub Copilot app, Windows Terminal, and VLC. Machines set up with an older version of the setup scripts may still have a `load-demos.sh` or `load-demos.ps1` script on the Desktop. Setup no longer creates it, and nothing uses it, so you can delete it.
+7. **Weekly cleanup.** In a browser signed in as the booth account, open `https://github.com/octobooth-N/demo-cleanup/actions`. It should have a **Weekly demo cleanup** workflow with green runs. If the repo is missing or runs fail, ask an org admin to [set up the weekly cleanup](docs/booth-playbook.md#set-up-or-repair-the-weekly-cleanup) for that account.
 
 ### GitHub CLI login
 
@@ -230,7 +322,7 @@ If the error persists, update App Installer through Microsoft Store and check wh
 
 ## Demo Launcher
 
-[`octobooth-demos/repo-setup-scripts`](https://github.com/octobooth-demos/repo-setup-scripts) (cloned to `~/repos/repo-setup-scripts`) ships a **Demo Launcher** canvas for the GitHub Copilot app. It creates booth demos in the background with `create-repo.sh`/`create-repo.ps1`, opens sessions for them in the Copilot app, and cleans up old demo repos.
+[`octobooth-demos/repo-setup-scripts`](https://github.com/octobooth-demos/repo-setup-scripts) (cloned to `~/repos/repo-setup-scripts`) ships a **Demo Launcher** canvas for the GitHub Copilot app. It creates booth demos in the background with `create-repo.sh`/`create-repo.ps1`, opens sessions for them in the Copilot app, and cleans up old demo repos (see [From the Demo Launcher](docs/booth-playbook.md#from-the-demo-launcher)). For using it on booth day, see [During the event](docs/booth-playbook.md#part-2-during-the-event-run-demos) in the booth playbook.
 
 ### macOS (and Linux): installed loader and project
 
@@ -238,8 +330,9 @@ On booth machines, do both. The loader makes the launcher available in any sessi
 
 1. On macOS, run `setup.sh`. On Linux, or a Mac that's already set up, run `install-demo-launcher.sh` (see below). Either one clones the repo to `~/repos/repo-setup-scripts` and runs its `install.sh`.
 2. Open the GitHub Copilot app and sign in with the booth/demo account.
-3. Add the existing local folder `~/repos/repo-setup-scripts` as a project. Don't clone it again: then the loader and the project use the same checkout, and one `bash install-demo-launcher.sh` (or `git -C ~/repos/repo-setup-scripts pull`) plus an app restart updates both.
-4. Ask Copilot to "open the demo launcher" in any session. If that doesn't work, ask from a session in the repo-setup-scripts project.
+3. Add the existing local folder `~/repos/repo-setup-scripts` as a project. Don't add it by URL or clone it again, which makes a second copy: then the loader and the project use the same checkout, and one `bash install-demo-launcher.sh` (or `git -C ~/repos/repo-setup-scripts pull`) plus an app restart updates both.
+4. Start a session in that project, right-click the session in the Copilot app, and choose **Pin**.
+5. Ask Copilot to "open the demo launcher" in any session. If that doesn't work, ask from a session in the repo-setup-scripts project.
 
 `setup.sh` fast-forwards an existing `~/repos/repo-setup-scripts` checkout (`git pull --ff-only`) and runs the repo's `.github/extensions/demo-launcher/install.sh` when present. That writes a loader to `${COPILOT_HOME:-~/.copilot}/extensions/demo-launcher/extension.mjs` that imports the launcher from the checkout, so later pulls update it.
 
@@ -248,8 +341,9 @@ On booth machines, do both. The loader makes the launcher available in any sessi
 `install.sh` is macOS/Linux only, so on Windows the canvas loads from the repo-setup-scripts project. `setup.ps1` clones it to `$HOME\repos\repo-setup-scripts`.
 
 1. Open the GitHub Copilot app and sign in with the booth/demo account.
-2. Add the existing local folder `$HOME\repos\repo-setup-scripts` as a project. Don't clone it again, so the update steps below keep the project current.
-3. Start a session in that project and ask Copilot to "open the demo launcher".
+2. Add the existing local folder `$HOME\repos\repo-setup-scripts` as a project. Don't add it by URL or clone it again, which makes a second copy, so the update steps below keep the project current.
+3. Start a session in that project, right-click the session in the Copilot app, and choose **Pin**.
+4. In the pinned session, ask Copilot to "open the demo launcher".
 
 #### Install or update the canvas on Windows
 

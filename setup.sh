@@ -194,9 +194,6 @@ load_config() {
     pwa_urls=()
     while IFS= read -r line; do pwa_urls+=("$line"); done < <(jq -r '.shared.pwa_sites[].url' "$CONFIG_FILE")
 
-    demo_sites=()
-    while IFS= read -r line; do demo_sites+=("$line"); done < <(jq -r '.shared.demo_sites[]' "$CONFIG_FILE")
-
     gh_auth_scopes=()
     while IFS= read -r line; do gh_auth_scopes+=("$line"); done < <(jq -r '.shared.gh_auth_scopes // [] | .[]' "$CONFIG_FILE")
 }
@@ -965,39 +962,6 @@ register_mcp_servers() {
     log_success "MCP servers written to $mcp_config"
 }
 
-# Creates a demo loader script to launch all required applications and sites
-create_demo_loader() {
-    log_info "Creating demo loader script..."
-    local demo_script="$HOME/Desktop/load-demos.sh"
-    mkdir -p "$(dirname "$demo_script")"
-
-    # Create the script header
-    cat > "$demo_script" << 'EOF'
-#!/bin/bash
-
-EOF
-
-    # Add the sites dynamically
-    echo "# Open all required sites in Chrome" >> "$demo_script"
-    printf 'open -a "Google Chrome" %s\n\n' "$(printf '"%s" ' "${demo_sites[@]}")" >> "$demo_script"
-
-    # Add the remaining standard content
-    cat >> "$demo_script" << 'EOF'
-# Open the GitHub Copilot app
-open -a "GitHub Copilot"
-
-# Open VS Code and VS Code Insiders
-open -a "Visual Studio Code"
-open -a "Visual Studio Code - Insiders"
-
-# Open VLC pointing to Videos folder
-open -a VLC "$HOME/Videos"
-EOF
-
-    chmod +x "$demo_script"
-    log_success "Created demo loader script at $demo_script"
-}
-
 # ----------------------------------------
 # Main Execution
 # ----------------------------------------
@@ -1037,9 +1001,6 @@ main() {
 
     # Register MCP servers for Copilot CLI
     register_mcp_servers
-
-    # Create demo loader script
-    create_demo_loader
 
     # Print summary and finish
     print_summary
