@@ -640,59 +640,6 @@ function Register-MCPServers {
     Write-Success "MCP servers written to $mcpConfigPath"
 }
 
-function Get-DesktopPath {
-    if ($env:SETUP_SCRIPT_DESKTOP_PATH) {
-        return $env:SETUP_SCRIPT_DESKTOP_PATH
-    }
-
-    $desktopPath = [Environment]::GetFolderPath([Environment+SpecialFolder]::Desktop)
-    if ($desktopPath) {
-        return $desktopPath
-    }
-
-    if ($env:USERPROFILE) {
-        return (Join-Path $env:USERPROFILE "Desktop")
-    }
-
-    return [Environment]::GetFolderPath("Desktop")
-}
-
-function New-DemoLoader {
-    Write-Info "Creating demo loader script..."
-    $desktopPath = Get-DesktopPath
-    $demoScript = Join-Path $desktopPath "load-demos.ps1"
-    New-Item -Path $desktopPath -ItemType Directory -Force | Out-Null
-
-    $lines = @()
-    $lines += "Write-Host 'Loading demo environment...' -ForegroundColor Blue"
-    $lines += ""
-
-    # Add demo sites
-    $lines += "# Open demo sites"
-    foreach ($url in $config.shared.demo_sites) {
-        $lines += "Start-Process '$url'"
-        $lines += "Start-Sleep -Seconds 1"
-    }
-    $lines += ""
-
-    # Add editors from config
-    $lines += "# Open editors"
-    foreach ($editor in $config.windows.editors) {
-        $lines += "& $($editor.command)"
-    }
-    $lines += ""
-
-    # Add VLC
-    $lines += "# Open VLC"
-    $lines += 'Start-Process "vlc" -ArgumentList "$env:USERPROFILE\Videos"'
-    $lines += ""
-    $lines += "Write-Host 'Demo environment loaded!' -ForegroundColor Green"
-
-    $lines -join "`n" | Out-File -FilePath $demoScript -Force -Encoding UTF8
-
-    Write-Success "Created demo loader script at $demoScript"
-}
-
 # ----------------------------------------
 # Main Execution
 # ----------------------------------------
@@ -751,9 +698,6 @@ function Invoke-Main {
 
     # Register MCP servers for Copilot CLI
     Register-MCPServers
-
-    # Create demo loader script
-    New-DemoLoader
 
     # Print summary and finish
     Write-Summary

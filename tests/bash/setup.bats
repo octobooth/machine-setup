@@ -15,7 +15,6 @@ load_script() {
 @test "sourcing setup.sh does not execute main" {
     load_script
 
-    [[ ! -f "$HOME/Desktop/load-demos.sh" ]]
     [[ ! -f "$COPILOT_HOME/mcp-config.json" ]]
 }
 
@@ -53,22 +52,6 @@ load_script() {
     run jq -r '.mcpServers["microsoft-learn"].url' "$mcp_config"
     [ "$status" -eq 0 ]
     [ "$output" = "https://learn.microsoft.com/api/mcp" ]
-}
-
-@test "create_demo_loader writes the launcher script to Desktop" {
-    load_script
-    load_config
-
-    create_demo_loader
-
-    local demo_script="$HOME/Desktop/load-demos.sh"
-    [[ -f "$demo_script" ]]
-
-    run grep -F 'open -a "Google Chrome" "https://github.com"' "$demo_script"
-    [ "$status" -eq 0 ]
-
-    run grep -F 'open -a VLC "$HOME/Videos"' "$demo_script"
-    [ "$status" -eq 0 ]
 }
 
 @test "try_install records failures without exiting" {
@@ -515,16 +498,6 @@ STUB
     [ "$status" -eq 0 ]
 }
 
-@test "create_demo_loader opens the GitHub Copilot app" {
-    load_script
-    load_config
-
-    create_demo_loader
-
-    run grep -F 'open -a "GitHub Copilot"' "$HOME/Desktop/load-demos.sh"
-    [ "$status" -eq 0 ]
-}
-
 # gh stub: reports the scopes in GH_SCOPES and logs every call with the
 # GH_TOKEN/GITHUB_TOKEN values it saw
 stub_gh_auth() {
@@ -833,7 +806,7 @@ STUB
     [ "$status" -eq 0 ]
 
     run jq -r '.mac.dock_apps | join(",")' "$REPO_ROOT/config.json"
-    [ "$output" = "Google Chrome,GitHub Copilot,Visual Studio Code,Visual Studio Code - Insiders,iTerm" ]
+    [ "$output" = "Google Chrome,GitHub Copilot,Visual Studio Code,Visual Studio Code - Insiders,iTerm,VLC" ]
 }
 
 @test "configure_dock adds apps, hides recents, and restarts the Dock once" {
@@ -863,7 +836,7 @@ STUB
 
     run configure_dock
     [ "$status" -eq 0 ]
-    [ "$(wc -l < "$DOCK_FILE" | tr -d ' ')" = "5" ]
+    [ "$(wc -l < "$DOCK_FILE" | tr -d ' ')" = "$(jq '.mac.dock_apps | length' "$REPO_ROOT/config.json")" ]
 
     run grep -E 'dockutil --add|defaults write|killall' "$DOCK_LOG"
     [ "$status" -ne 0 ]
@@ -898,7 +871,7 @@ STUB
 
     run grep -cxF "iTerm" "$DOCK_FILE"
     [ "$output" = "0" ]
-    [ "$(wc -l < "$DOCK_FILE" | tr -d ' ')" = "4" ]
+    [ "$(wc -l < "$DOCK_FILE" | tr -d ' ')" = "$(( $(jq '.mac.dock_apps | length' "$REPO_ROOT/config.json") - 1 ))" ]
 }
 
 @test "configure_dock doesn't duplicate Chrome when it's already in the Dock" {

@@ -10,7 +10,7 @@ A step-by-step walkthrough for running a booth: set up each booth machine before
 
 1. **[Before the event](#part-1-before-the-event-set-up-each-booth-machine)**: on each machine, sign in as its booth account, run setup, set up the Demo Launcher project and pin its session, add browser bookmarks, sign in to VS Code and VS Code Insiders, and [check the machine is ready](#check-that-the-machine-is-ready).
 2. **[Each booth day](#before-each-booth-day-update-the-machine)**: pull the latest scripts and update the Demo Launcher.
-3. **[During the event](#part-2-during-the-event-run-demos)**: open the demo loader and the Demo Launcher, and create demos.
+3. **[During the event](#part-2-during-the-event-run-demos)**: open the pinned apps and the Demo Launcher, and create demos.
 4. **[After the event](#part-3-after-the-event-clean-up-and-reset)**: delete the demo repos in the booth accounts and the org, clear the booth machines' demo folders, and have an org admin reset the booth accounts.
 
 Any time, [Clean up demo repos](#clean-up-demo-repos) covers the everyday cleanups: the Demo Launcher, the weekly cleanup in each booth account, and the org's nightly cleanup and `/cleanup` command. [How to clean all Octobooth repos](#how-to-clean-all-octobooth-repos) is for org admins.
@@ -85,8 +85,8 @@ If `git` still doesn't work, the README has a [ZIP fallback](../README.md#1-get-
    4. **Default browser.** If Chrome isn't the default browser yet, macOS asks whether to change it. Click **Use “Google Chrome”**, then press Enter. This also works if Chrome was installed before setup ran. If Chrome is already the default, the script skips this step.
    5. **GitHub CLI login.** The GitHub CLI shows a one-time code. Press Enter to open the browser, enter the code, and approve the login (or scope upgrade) while signed in as the booth account. See [GitHub CLI login](../README.md#github-cli-login).
 5. At the end, setup prints a summary of anything that failed. Fix the cause and run `bash setup.sh` again; finished steps are skipped.
-6. A launcher script (`load-demos.sh`) that also opens the GitHub Copilot app is created on the Desktop.
-7. Store booth videos in `$HOME/Videos` so the launcher opens them in VLC.
+6. Setup adds Google Chrome, the GitHub Copilot app, VS Code, VS Code Insiders, iTerm2, and VLC to the Dock.
+7. Store booth videos in `$HOME/Videos` and open them from VLC in the Dock.
 
 #### 3. Set up the Demo Launcher
 
@@ -171,17 +171,17 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
    ```
 
 3. Answer the prompts as they come up:
-   1. **Installs.** `winget` installs everything in `windows.packages` in [`config.json`](../config.json). PowerShell 7 (`Microsoft.PowerShell`) is installed first, followed by VS Code, VS Code Insiders, Windows Terminal, Git, GitHub CLI, Node.js LTS, Python, VLC, Copilot CLI, the GitHub Copilot app, and GitHub Desktop. This takes a while, and some installers briefly show their own windows. Setup then configures VLC and pins VS Code, VS Code Insiders, the GitHub Copilot app, and Windows Terminal to the taskbar. The taskbar briefly disappears while Explorer restarts.
+   1. **Installs.** `winget` installs everything in `windows.packages` in [`config.json`](../config.json). PowerShell 7 (`Microsoft.PowerShell`) is installed first, followed by VS Code, VS Code Insiders, Windows Terminal, Git, GitHub CLI, Node.js LTS, Python, VLC, Copilot CLI, the GitHub Copilot app, and GitHub Desktop. This takes a while, and some installers briefly show their own windows. Setup then configures VLC and pins VS Code, VS Code Insiders, the GitHub Copilot app, Windows Terminal, and VLC to the taskbar. The taskbar briefly disappears while Explorer restarts.
    2. **GitHub.com in Edge.** The script opens Microsoft Edge and pauses. Sign in to GitHub.com as **the booth account**, then press Enter.
    3. **GitHub CLI login.** The GitHub CLI shows a one-time code. Press Enter to open the browser, enter the code, and approve the login (or scope upgrade) while signed in as the booth account. See [GitHub CLI login](../README.md#github-cli-login).
-4. Setup then installs GitHub CLI extensions, clones the demo repos into `$HOME\repos`, installs VS Code extensions and the theme, registers MCP servers for Copilot CLI, and creates a launcher script (`load-demos.ps1`) on the Desktop.
+4. Setup then installs GitHub CLI extensions, clones the demo repos into `$HOME\repos`, installs VS Code extensions and the theme, and registers MCP servers for Copilot CLI.
 5. At the end, setup prints a summary of anything that failed. Fix the cause and run `.\setup.ps1` again; finished steps are skipped. For `winget` errors, see [Troubleshooting Windows package installs](../README.md#troubleshooting-windows-package-installs).
 
 #### 6. After setup
 
 - Close the window and open a new terminal so it picks up the updated `PATH`. Check PowerShell 7 with `pwsh --version`. Windows Terminal adds a **PowerShell** profile for it, and Windows PowerShell 5.1 stays installed alongside it. Run future scripts with `pwsh`.
 - To update the Demo Launcher later, see [Before each booth day: update the machine](#before-each-booth-day-update-the-machine).
-- Store booth videos in `C:\Users\<YourUsername>\Videos` so the launcher opens them in VLC.
+- Store booth videos in `C:\Users\<YourUsername>\Videos` and open them from VLC on the taskbar.
 
 #### 7. Set up the Demo Launcher
 
@@ -222,7 +222,7 @@ Check each item on every booth machine. `N` is this machine's booth account numb
 3. **Copilot app.** It's signed in as `octobooth-N`, the repo-setup-scripts project is added from the local `~/repos/repo-setup-scripts` folder (`$HOME\repos\repo-setup-scripts` on Windows), a repo-setup-scripts session is pinned (right-click the session and choose **Pin**), and "open the demo launcher" opens the launcher.
 4. **VS Code and VS Code Insiders.** In each, **Accounts** shows `octobooth-N`, and GitHub Copilot is signed in and active.
 5. **Bookmarks.** The browser (Chrome on macOS, Edge on Windows) has bookmarks for `https://github.com/octobooth-N` and `https://github.com/octobooth-demos`.
-6. **Demo loader.** `load-demos.sh` (macOS) or `load-demos.ps1` (Windows) is on the Desktop.
+6. **Dock or taskbar.** On macOS, the Dock has Google Chrome, the GitHub Copilot app, VS Code, VS Code Insiders, iTerm2, and VLC. On Windows, the taskbar has VS Code, VS Code Insiders, the GitHub Copilot app, Windows Terminal, and VLC. Machines set up with an older version of the setup scripts may still have a `load-demos.sh` or `load-demos.ps1` script on the Desktop. Setup no longer creates it, and nothing uses it, so you can delete it.
 7. **Weekly cleanup.** In a browser signed in as the booth account, open `https://github.com/octobooth-N/demo-cleanup/actions`. It should have a **Weekly demo cleanup** workflow with green runs. If the repo is missing or runs fail, ask an org admin to [set up the weekly cleanup](#set-up-or-repair-the-weekly-cleanup) for that account.
 
 ### Before each booth day: update the machine
@@ -250,18 +250,7 @@ Both are safe to re-run. To pick up changes in `config.json` (new apps, extensio
 
 ## Part 2: During the event: run demos
 
-1. **Open the demo environment.** Run the demo loader on the Desktop. It opens the demo sites, the GitHub Copilot app (macOS), VS Code, VS Code Insiders, and VLC with your booth videos.
-
-   ```bash
-   ~/Desktop/load-demos.sh
-   ```
-
-   On Windows, in PowerShell:
-
-   ```powershell
-   pwsh -ExecutionPolicy Bypass -File "$([Environment]::GetFolderPath('Desktop'))\load-demos.ps1"
-   ```
-
+1. **Open the demo apps.** Open the GitHub Copilot app, VS Code, VS Code Insiders, and VLC from the Dock (macOS) or taskbar (Windows). Open your booth videos in VLC from `~/Videos` (`C:\Users\<YourUsername>\Videos` on Windows). In the browser (Chrome on macOS, Edge on Windows), use the bookmarks for the booth account and `octobooth-demos`.
 2. **Open the Demo Launcher.** Ask Copilot to "open the demo launcher" (on Windows, from a session in the repo-setup-scripts project).
 3. **Create demos from the launcher.** It creates each demo repo in the background and opens a session for it. The launcher, the demo list, and per-demo notes are documented in the `repo-setup-scripts` README (org members only).
 

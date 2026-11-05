@@ -21,9 +21,6 @@
       "github-samples/gh-game"
     ],
     "pwa_sites": [],
-    "demo_sites": [
-      "https://github.com"
-    ],
     "vlc_settings": "osd=0 # Hide filename display\nloop=1 # Enable loop by default\nvideo-title-show=0 # Hide filename display",
     "mcp_servers": [
       {
@@ -119,7 +116,8 @@
       "GitHub Copilot",
       "Visual Studio Code",
       "Visual Studio Code - Insiders",
-      "iTerm"
+      "iTerm",
+      "VLC"
     ],
     "monaspace_frozen_version": "1.400"
   },
@@ -166,6 +164,10 @@
       {
         "name": "Terminal",
         "app_id": "Microsoft.WindowsTerminal_8wekyb3d8bbwe!App"
+      },
+      {
+        "name": "VLC media player",
+        "app_id": "{6D809377-6AF0-444B-8957-A3773F02200E}\\VideoLAN\\VLC\\vlc.exe"
       }
     ],
     "post_install_launch": []

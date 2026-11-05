@@ -18,13 +18,11 @@ Describe 'setup.ps1' {
         $script:failedItems = @()
         Remove-Item Function:\gh -ErrorAction SilentlyContinue
         Remove-Item Function:\winget -ErrorAction SilentlyContinue
-        Remove-Item Env:\SETUP_SCRIPT_DESKTOP_PATH -ErrorAction SilentlyContinue
     }
 
     AfterEach {
         Remove-Item Function:\gh -ErrorAction SilentlyContinue
         Remove-Item Function:\winget -ErrorAction SilentlyContinue
-        Remove-Item Env:\SETUP_SCRIPT_DESKTOP_PATH -ErrorAction SilentlyContinue
     }
 
     It 'Set-EditorTheme merges the configured theme into settings.json' {
@@ -64,19 +62,6 @@ Describe 'setup.ps1' {
         $mcpConfig = Get-Content -Raw -Path (Join-Path $env:COPILOT_HOME 'mcp-config.json') | ConvertFrom-Json
         $mcpConfig.someOtherSetting | Should -BeTrue
         $mcpConfig.mcpServers.playwright.command | Should -Be 'npx'
-    }
-
-    It 'New-DemoLoader writes the launcher script to the Desktop path' {
-        $desktopPath = Join-Path $TestDrive 'Desktop'
-        $env:SETUP_SCRIPT_DESKTOP_PATH = $desktopPath
-
-        New-DemoLoader
-
-        $demoScript = Join-Path $desktopPath 'load-demos.ps1'
-        Test-Path $demoScript | Should -BeTrue
-        $content = Get-Content -Raw -Path $demoScript
-        $content | Should -Match "Start-Process 'https://github.com'"
-        $content | Should -Match 'Start-Process "vlc" -ArgumentList "\$env:USERPROFILE\\Videos"'
     }
 
     It 'Invoke-SafeInstall records native command failures' {
@@ -249,7 +234,8 @@ Describe 'setup.ps1' {
             [xml]$layout = Get-Content -Raw -Path $env:SETUP_SCRIPT_TASKBAR_LAYOUT_PATH
             $pinList = $layout.LayoutModificationTemplate.CustomTaskbarLayoutCollection.TaskbarLayout.TaskbarPinList
             @($pinList.DesktopApp.DesktopApplicationID) | Should -Be @(
-                'Microsoft.VisualStudioCode', 'Microsoft.VisualStudioCodeInsiders', 'com.github.githubapp')
+                'Microsoft.VisualStudioCode', 'Microsoft.VisualStudioCodeInsiders', 'com.github.githubapp',
+                '{6D809377-6AF0-444B-8957-A3773F02200E}\VideoLAN\VLC\vlc.exe')
             $pinList.UWA.AppUserModelID | Should -Be 'Microsoft.WindowsTerminal_8wekyb3d8bbwe!App'
 
             $policy = Get-ItemProperty -Path $script:TaskbarPolicyKey
@@ -290,8 +276,7 @@ Describe 'setup.ps1' {
             Mock Copy-Repos { }
             Mock Initialize-Editors { }
             Mock Register-MCPServers { }
-            Mock New-DemoLoader { }
-            Mock Write-Summary { }
+                Mock Write-Summary { }
             Mock Get-Command { $true } -ParameterFilter { $Name -eq 'gh' }
         }
 
