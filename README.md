@@ -8,6 +8,8 @@
 > 1. [Before the event: set up each booth machine](docs/booth-playbook.md#part-1-before-the-event-set-up-each-booth-machine) (macOS and Windows, with the commands to type)
 > 2. [During the event: run demos](docs/booth-playbook.md#part-2-during-the-event-run-demos)
 > 3. [After the event: clean up and reset](docs/booth-playbook.md#part-3-after-the-event-clean-up-and-reset) the booth accounts and machines
+>
+> Cleaning up demo repos any time: [Clean up demo repos](docs/booth-playbook.md#clean-up-demo-repos). Deleting every repo in the booth accounts (org admins): [How to clean all Octobooth repos](docs/booth-playbook.md#how-to-clean-all-octobooth-repos).
 
 This repository contains setup scripts for configuring booth machines. The scripts install and configure the GitHub Copilot app, Visual Studio Code, Visual Studio Code Insiders, GitHub CLI, VLC media player, Node.js, PowerShell 7 (Windows), iTerm2 (macOS), and related tooling from a shared `config.json`.
 
@@ -272,7 +274,7 @@ Check each item on every booth machine. `N` is this machine's booth account numb
 4. **VS Code and VS Code Insiders.** In each, **Accounts** shows `octobooth-N`, and GitHub Copilot is signed in and active.
 5. **Bookmarks.** The browser (Chrome on macOS, Edge on Windows) has bookmarks for `https://github.com/octobooth-N` and `https://github.com/octobooth-demos`.
 6. **Demo loader.** `load-demos.sh` (macOS) or `load-demos.ps1` (Windows) is on the Desktop.
-7. **Weekly cleanup.** In a browser signed in as the booth account, open `https://github.com/octobooth-N/demo-cleanup/actions`. It should have a **Weekly demo cleanup** workflow with green runs. If the repo is missing or runs fail, [set up the weekly cleanup](docs/booth-playbook.md#set-up-or-repair-the-weekly-cleanup) for that account.
+7. **Weekly cleanup.** In a browser signed in as the booth account, open `https://github.com/octobooth-N/demo-cleanup/actions`. It should have a **Weekly demo cleanup** workflow with green runs. If the repo is missing or runs fail, ask an org admin to [set up the weekly cleanup](docs/booth-playbook.md#set-up-or-repair-the-weekly-cleanup) for that account.
 
 ### GitHub CLI login
 
@@ -319,7 +321,7 @@ If the error persists, update App Installer through Microsoft Store and check wh
 
 ## Demo Launcher
 
-[`octobooth-demos/repo-setup-scripts`](https://github.com/octobooth-demos/repo-setup-scripts) (cloned to `~/repos/repo-setup-scripts`) ships a **Demo Launcher** canvas for the GitHub Copilot app. It creates booth demos in the background with `create-repo.sh`/`create-repo.ps1`, opens sessions for them in the Copilot app, and cleans up old demo repos. For using it on booth day, see [During the event](docs/booth-playbook.md#part-2-during-the-event-run-demos) in the booth playbook.
+[`octobooth-demos/repo-setup-scripts`](https://github.com/octobooth-demos/repo-setup-scripts) (cloned to `~/repos/repo-setup-scripts`) ships a **Demo Launcher** canvas for the GitHub Copilot app. It creates booth demos in the background with `create-repo.sh`/`create-repo.ps1`, opens sessions for them in the Copilot app, and cleans up old demo repos (see [From the Demo Launcher](docs/booth-playbook.md#from-the-demo-launcher)). For using it on booth day, see [During the event](docs/booth-playbook.md#part-2-during-the-event-run-demos) in the booth playbook.
 
 ### macOS (and Linux): installed loader and project
 

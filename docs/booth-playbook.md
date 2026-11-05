@@ -9,9 +9,9 @@ A step-by-step walkthrough for running a booth: set up each booth machine before
 1. **[Before the event](#part-1-before-the-event-set-up-each-booth-machine)**: on each machine, sign in as its booth account, run setup, set up and pin the Demo Launcher project, add browser bookmarks, sign in to VS Code and VS Code Insiders, and [check the machine is ready](#check-that-the-machine-is-ready).
 2. **[Each booth day](#before-each-booth-day-update-the-machine)**: pull the latest scripts and update the Demo Launcher.
 3. **[During the event](#part-2-during-the-event-run-demos)**: open the demo loader and the Demo Launcher, and create demos.
-4. **[After the event](#part-3-after-the-event-clean-up-and-reset)**: wipe the booth accounts, clear the booth machines' demo folders, and clean up the org's demo repos.
+4. **[After the event](#part-3-after-the-event-clean-up-and-reset)**: delete the demo repos in the booth accounts and the org, clear the booth machines' demo folders, and have an org admin reset the booth accounts.
 
-Between events, the [weekly cleanup](#weekly-cleanup-in-each-booth-account) and [org nightly cleanup](#org-nightly-cleanup) delete old demo repos automatically.
+Any time, [Clean up demo repos](#clean-up-demo-repos) covers the everyday cleanups: the Demo Launcher, the weekly cleanup in each booth account, and the org's nightly cleanup and `/cleanup` command. [How to clean all Octobooth repos](#how-to-clean-all-octobooth-repos) is for org admins.
 
 ## Where things live
 
@@ -221,7 +221,7 @@ Check each item on every booth machine. `N` is this machine's booth account numb
 4. **VS Code and VS Code Insiders.** In each, **Accounts** shows `octobooth-N`, and GitHub Copilot is signed in and active.
 5. **Bookmarks.** The browser (Chrome on macOS, Edge on Windows) has bookmarks for `https://github.com/octobooth-N` and `https://github.com/octobooth-demos`.
 6. **Demo loader.** `load-demos.sh` (macOS) or `load-demos.ps1` (Windows) is on the Desktop.
-7. **Weekly cleanup.** In a browser signed in as the booth account, open `https://github.com/octobooth-N/demo-cleanup/actions`. It should have a **Weekly demo cleanup** workflow with green runs. If the repo is missing or runs fail, [set up the weekly cleanup](#set-up-or-repair-the-weekly-cleanup) for that account.
+7. **Weekly cleanup.** In a browser signed in as the booth account, open `https://github.com/octobooth-N/demo-cleanup/actions`. It should have a **Weekly demo cleanup** workflow with green runs. If the repo is missing or runs fail, ask an org admin to [set up the weekly cleanup](#set-up-or-repair-the-weekly-cleanup) for that account.
 
 ### Before each booth day: update the machine
 
@@ -263,67 +263,60 @@ Both are safe to re-run. To pick up changes in `config.json` (new apps, extensio
 2. **Open the Demo Launcher.** Ask Copilot to "open the demo launcher" (on Windows, from a session in the repo-setup-scripts project).
 3. **Create demos from the launcher.** It creates each demo repo in the background and opens a session for it. The launcher, the demo list, and per-demo notes are documented in the `repo-setup-scripts` README (org members only).
 
-Each demo repo gets the `demo-generated` topic, which is how the cleanups below find it. To clear out demo repos before the automatic cleanups run (for example, between booth days), [run the weekly cleanup sooner](#run-it-sooner-just-a-browser) with `older_than_days` set to `0`, and for org demos, run the [org nightly cleanup](#org-nightly-cleanup) sooner.
+Each demo repo gets the `demo-generated` topic, which is how every cleanup finds it. Old demo repos are deleted automatically, but you can clear them out sooner (for example, at the end of a booth day): see [Clean up demo repos](#clean-up-demo-repos).
 
 ## Part 3: After the event: clean up and reset
 
 Do these in order.
 
-### Step 1: Wipe the booth accounts
+### Step 1: Delete the demo repos
 
-`admin-tasks/scripts/wipe-accounts.sh` deletes **every** repo in each booth account, demo or not, except `demo-cleanup`. It goes one account at a time: log in (or switch) → list that account's repos → you confirm → delete → next account. It doesn't touch the org's repos or the booth machines' local folders.
+Booth staff can do this; see [Clean up demo repos](#clean-up-demo-repos) for each option.
 
-You need a Mac or Linux machine, the GitHub CLI, and access to `admin-tasks`.
-
-#### Prepare a fresh Mac
-
-1. Install [Homebrew](https://brew.sh), then the GitHub CLI: `brew install gh`.
-2. Log in as yourself (an `octobooth-demos` org member) so you can download the admin scripts:
-
-   ```bash
-   gh auth login -h github.com
-   gh repo clone octobooth-demos/admin-tasks && cd admin-tasks
-   ```
-
-   If `admin-tasks` is already on the machine, run `cd admin-tasks && git pull` instead.
-
-#### Run the wipe
-
-```bash
-bash scripts/wipe-accounts.sh --dry-run    # list what would be deleted, change nothing
-bash scripts/wipe-accounts.sh              # walk through octobooth-1..10
-bash scripts/wipe-accounts.sh --from 5     # resume at octobooth-5
-```
-
-- **Logins.** For each booth account the GitHub CLI isn't logged in to yet, the script walks you through a browser login. Sign in to github.com as that account (a private window is easiest), press Enter, and paste the one-time code it shows. Type `s` to skip an account. Logins are remembered, so later runs don't ask again.
-- **Confirming.** For each account it lists the repos, numbered. Type:
-  - `WIPE` (in capitals) to delete them.
-  - `k` to keep some, by number or name.
-  - `s` to skip the account.
-  - `q` to stop.
-
-  Anything else, including lowercase `wipe`, shows a warning and asks again.
-- **Finishing up.** At the end it prints a summary and, if anything was skipped or failed, the exact command to finish it.
-
-The `admin-tasks` README has every option.
+1. **Each booth account.** On each booth machine, use the Demo Launcher's [Clean up](#from-the-demo-launcher) section with **Any age**, and tick **Also delete local clones**. Or, from a browser signed in as that account, [run the weekly cleanup](#run-it-sooner-just-a-browser) with `older_than_days` set to `0`.
+2. **The `octobooth-demos` org.** Open an issue in `repo-setup-scripts` and comment `/cleanup --all --confirm`. See [Org nightly cleanup](#org-nightly-cleanup).
 
 ### Step 2: Clear the booth machines' demo folders
 
-After a wipe, local clones of deleted booth-account repos in `~/repos` still remain on each booth machine. Remove those demo folders explicitly; rerunning [setup](../README.md#setup-instructions) does not remove or reset them. Keep shared checkouts such as `machine-setup` and `repo-setup-scripts`.
+Local clones of deleted demo repos in `~/repos` stay on each booth machine unless you ticked **Also delete local clones** in the launcher. Remove those demo folders explicitly; rerunning [setup](../README.md#setup-instructions) does not remove or reset them. Keep shared checkouts such as `machine-setup`, `repo-setup-scripts`, `tailspin-toys`, and `security-octo-supply`.
 
-### Step 3: Clean up the org's demo repos
+### Step 3: Reset the booth accounts (org admins)
 
-Demo repos in the `octobooth-demos` org (ChatOps and the security demos) aren't touched by the wipe. They're deleted automatically after 72 hours, or right away: open an issue in `repo-setup-scripts` and comment `/cleanup --all --confirm`. See [Org nightly cleanup](#org-nightly-cleanup).
+To delete **every** repo in the booth accounts, not just demo repos, an org admin follows [How to clean all Octobooth repos](#how-to-clean-all-octobooth-repos).
 
-## Reference: how demo repos get cleaned up
+## Clean up demo repos
 
-| Repos | Cleanup | When | Needs |
-| --- | --- | --- | --- |
-| Demo repos in each booth account | [Weekly cleanup](#weekly-cleanup-in-each-booth-account), a workflow that runs **in that account** | Mondays 08:00 UTC: `demo-generated` repos more than 7 days old. Or run it sooner yourself. | Nothing, it's automatic. To run it sooner: a browser signed in as that account. |
-| Demo repos in the `octobooth-demos` org | [Org nightly cleanup](#org-nightly-cleanup) | Nightly 08:00 UTC: `demo-generated` repos more than 72 hours old | Nothing, it's automatic. To run it sooner: org member with write access to `repo-setup-scripts`. |
-| **Everything** in the booth accounts | [Wipe the booth accounts](#step-1-wipe-the-booth-accounts) | When you run it | A Mac or Linux machine, the GitHub CLI, and access to `admin-tasks` |
+Every demo repo has the `demo-generated` topic. These cleanups only delete repos with that topic, so other repos are safe. Use them during the event or after it.
+
+| Where the demo repos are | Automatic cleanup | To clean up sooner |
+| --- | --- | --- |
+| Each booth account (`octobooth-1` … `octobooth-10`), the default | [Weekly cleanup](#weekly-cleanup-in-each-booth-account): Mondays 08:00 UTC, repos more than 7 days old | The [Demo Launcher](#from-the-demo-launcher) on that machine, or [run the weekly cleanup](#run-it-sooner-just-a-browser) from a browser signed in as that account |
+| The `octobooth-demos` org (ChatOps and the security demos) | [Org nightly cleanup](#org-nightly-cleanup): nightly 08:00 UTC, repos more than 72 hours old | A `/cleanup` comment or the **Clean up demos** workflow in `repo-setup-scripts` (org members with write access) |
 
 08:00 UTC is midnight Pacific (1 AM during daylight saving time).
+
+### From the Demo Launcher
+
+The Demo Launcher on each booth machine can delete that booth account's demo repos. Deleting needs the `delete_repo` scope, which setup adds to the GitHub CLI login.
+
+1. Ask Copilot to "open the demo launcher" and scroll to **Clean up**.
+2. Leave **Owner** empty to clean up the booth account that's logged in.
+3. Set **Older than** (default 72 hours), or click **Any age** to include every demo repo, however new.
+4. Click **Find demo repos** and review the list. Untick any repo you want to keep.
+5. Optionally tick **Also delete local clones** to remove their folders in `~/repos` too.
+6. Click **Delete** and then click it again to confirm.
+
+The same cleanup runs in a terminal on that machine. It lists the matching repos and asks before deleting:
+
+```bash
+cd ~/repos/repo-setup-scripts
+bash ./create-repo.sh --cleanup          # demo repos more than 72 hours old
+bash ./create-repo.sh --cleanup --all    # every demo repo, however new
+```
+
+On Windows, use `.\create-repo.ps1 -Cleanup` (add `-All` for every demo repo). Add `--dry-run` (`-DryRun`) to only list what it would delete. The `repo-setup-scripts` README (org members only) has every option.
+
+For org demos, use the [org cleanup](#org-nightly-cleanup) instead. If you type `octobooth-demos` as the launcher's owner, the list includes demos from every booth and ChatOps.
 
 ### Weekly cleanup in each booth account
 
@@ -347,9 +340,56 @@ Each booth account has a private repo, `octobooth-N/demo-cleanup`, with a workfl
 
 #### Check that it's working
 
-Open the account's `demo-cleanup` **Actions** tab. Each Monday should have a green run. If a run fails, GitHub emails the booth account, and the run's log says what's wrong. The usual cause is a revoked or deleted token; fix it by [setting up that account again](#set-up-or-repair-the-weekly-cleanup).
+Open the account's `demo-cleanup` **Actions** tab. Each Monday should have a green run. If a run fails, GitHub emails the booth account, and the run's log says what's wrong. The usual cause is a revoked or deleted token; ask an org admin to [set up that account again](#set-up-or-repair-the-weekly-cleanup).
 
-#### Set up or repair the weekly cleanup
+### Org nightly cleanup
+
+Demo repos created in the `octobooth-demos` org (ChatOps and the security demos) are deleted by the **Clean up demos** workflow in `repo-setup-scripts` once they're more than 72 hours old. To run it sooner, org members with write access to `repo-setup-scripts` can either:
+
+- open an issue in `repo-setup-scripts` and comment `/cleanup 24 --confirm` (any number of hours), or `/cleanup --all --confirm` after an event; or
+- run **Clean up demos** from that repo's **Actions** tab.
+
+Comments without `--confirm` are dry runs. These cleanups can't see repos in the booth accounts.
+
+## How to clean all Octobooth repos
+
+This section should be run by someone with admin access to the `octobooth-demos` org, such as [@geektrainer](https://github.com/geektrainer), [@jdooley-clt](https://github.com/jdooley-clt), or someone else on the GitHub DevRel team. For everyday cleanup of demo repos, use [Clean up demo repos](#clean-up-demo-repos) instead.
+
+The scripts are in the private [`octobooth-demos/admin-tasks`](https://github.com/octobooth-demos/admin-tasks) repo, and its README has every option. You need a Mac or Linux machine, the GitHub CLI, and access to `admin-tasks`.
+
+### Get the admin scripts
+
+1. On a fresh Mac, install [Homebrew](https://brew.sh), then the GitHub CLI: `brew install gh`.
+2. Log in as yourself (an `octobooth-demos` org member) so you can download the admin scripts:
+
+   ```bash
+   gh auth login -h github.com
+   gh repo clone octobooth-demos/admin-tasks && cd admin-tasks
+   ```
+
+   If `admin-tasks` is already on the machine, run `cd admin-tasks && git pull` instead.
+
+### Wipe every repo in the booth accounts
+
+`admin-tasks/scripts/wipe-accounts.sh` deletes **every** repo in each booth account, demo or not, except `demo-cleanup`. It goes one account at a time: log in (or switch) → list that account's repos → you confirm → delete → next account. It doesn't touch the org's repos or the booth machines' local folders.
+
+```bash
+bash scripts/wipe-accounts.sh --dry-run    # list what would be deleted, change nothing
+bash scripts/wipe-accounts.sh              # walk through octobooth-1..10
+bash scripts/wipe-accounts.sh --from 5     # resume at octobooth-5
+```
+
+- **Logins.** For each booth account the GitHub CLI isn't logged in to yet, the script walks you through a browser login. Sign in to github.com as that account (a private window is easiest), press Enter, and paste the one-time code it shows. Type `s` to skip an account. Logins are remembered, so later runs don't ask again.
+- **Confirming.** For each account it lists the repos, numbered. Type:
+  - `WIPE` (in capitals) to delete them.
+  - `k` to keep some, by number or name.
+  - `s` to skip the account.
+  - `q` to stop.
+
+  Anything else, including lowercase `wipe`, shows a warning and asks again.
+- **Finishing up.** At the end it prints a summary and, if anything was skipped or failed, the exact command to finish it.
+
+### Set up or repair the weekly cleanup
 
 Needed for a new booth account, or when an account's cleanup reports a token problem. You need a Mac (or Linux), the GitHub CLI logged in to your own GitHub account, access to `admin-tasks`, and a browser where you can sign in as the booth account(s).
 
@@ -370,15 +410,6 @@ For each account, the script:
 
 Rerunning is safe; it replaces the token. The token belongs to the booth account, not to you, so it keeps working whoever set it up and whatever machines are logged in. It stops working only if someone deletes or regenerates it in that account's **Settings → Developer settings → Personal access tokens (classic)**, where its note is `demo-cleanup weekly cleanup (octobooth-N)`.
 
-### Org nightly cleanup
-
-Demo repos created in the `octobooth-demos` org (ChatOps and the security demos) are deleted by the **Clean up demos** workflow in `repo-setup-scripts` once they're more than 72 hours old. To run it sooner, org members with write access can either:
-
-- open an issue in `repo-setup-scripts` and comment `/cleanup 24 --confirm` (any number of hours), or `/cleanup --all --confirm` after an event; or
-- run **Clean up demos** from that repo's **Actions** tab.
-
-Comments without `--confirm` are dry runs.
-
 ## Troubleshooting
 
 | Problem | Fix |
@@ -386,8 +417,9 @@ Comments without `--confirm` are dry runs.
 | `gh auth status` shows your personal account (or another booth account) | Run `gh auth logout -h github.com`, then `gh auth login -h github.com` as this machine's booth account and add the scopes. See [GitHub CLI login](../README.md#github-cli-login). |
 | Setup ends with "The following items failed to install" | Fix the cause shown for each item and run setup again; finished steps are skipped. On Windows, see [Troubleshooting Windows package installs](../README.md#troubleshooting-windows-package-installs). |
 | "open the demo launcher" doesn't work | Ask from a session in the repo-setup-scripts project. If it still doesn't open, [update the Demo Launcher](#before-each-booth-day-update-the-machine) and restart the GitHub Copilot app. |
-| A booth account's weekly cleanup run failed | Open the failed run. If it mentions `CLEANUP_TOKEN`, [set up that account again](#set-up-or-repair-the-weekly-cleanup). |
-| Demo repos in a booth account aren't being deleted | Check they're more than 7 days old and have the `demo-generated` topic (shown under **About** on the repo page). To delete them now, [run the cleanup](#run-it-sooner-just-a-browser) with `older_than_days` set to `0`. |
-| The weekly cleanup setup script says a token belongs to the wrong account | The browser was signed in as another account. Delete that stray token in the other account's token settings, switch the browser to the right account, and make a new one. |
-| `gh repo clone octobooth-demos/admin-tasks` says "Could not resolve" | Log in to the GitHub CLI as your own org-member account: `gh auth login -h github.com`. |
-| The wipe script asks for `delete_repo` | Approve it in the browser while signed in as that booth account. |
+| The launcher's **Clean up** says your `gh` login can't delete repos | Run `gh auth refresh -h github.com -s delete_repo` in a terminal as the booth account, then click **Delete** again. |
+| A booth account's weekly cleanup run failed | Open the failed run. If it mentions `CLEANUP_TOKEN`, ask an org admin to [set up that account again](#set-up-or-repair-the-weekly-cleanup). |
+| Demo repos in a booth account aren't being deleted | Check they're more than 7 days old and have the `demo-generated` topic (shown under **About** on the repo page). To delete them now, use the launcher's [Clean up](#from-the-demo-launcher) with **Any age**, or [run the weekly cleanup](#run-it-sooner-just-a-browser) with `older_than_days` set to `0`. |
+| (Admins) The weekly cleanup setup script says a token belongs to the wrong account | The browser was signed in as another account. Delete that stray token in the other account's token settings, switch the browser to the right account, and make a new one. |
+| (Admins) `gh repo clone octobooth-demos/admin-tasks` says "Could not resolve" | Log in to the GitHub CLI as your own org-member account: `gh auth login -h github.com`. |
+| (Admins) The wipe script asks for `delete_repo` | Approve it in the browser while signed in as that booth account. |
