@@ -110,12 +110,28 @@ Clone this repo so you can update the scripts before each run. A ZIP download ne
 Setup already cloned `~/repos/repo-setup-scripts` and installed the Demo Launcher for every Copilot session.
 
 1. Open the GitHub Copilot app and sign in with the booth account.
-2. Add the existing local folder `~/repos/repo-setup-scripts` as a project. Don't clone it again, so one update refreshes both the installed launcher and the project.
-3. Ask Copilot to "open the demo launcher" in any session. If that doesn't work, ask from a session in the repo-setup-scripts project.
+2. Add the existing local folder `~/repos/repo-setup-scripts` as a project. Use the local folder, not the repo's URL: adding it by URL makes the app clone a second copy, and only `~/repos/repo-setup-scripts` is updated by `install-demo-launcher.sh` and used by the installed Demo Launcher.
+3. Pin the repo-setup-scripts project in the app's project list so it's easy to find on booth day.
+4. Ask Copilot to "open the demo launcher" in any session. If that doesn't work, ask from a session in the repo-setup-scripts project.
 
 More detail: [Demo Launcher](#demo-launcher).
 
-#### 4. Check the machine is ready
+#### 4. Add Chrome bookmarks
+
+In Chrome, still signed in to GitHub.com as the booth account, open each page below and press **Cmd+D** to bookmark it:
+
+- `https://github.com/octobooth-N`: the booth account's profile, using this machine's number (for example `https://github.com/octobooth-1`).
+- `https://github.com/octobooth-demos`: the `octobooth-demos` org.
+
+#### 5. Sign in to VS Code and VS Code Insiders
+
+Do this in both VS Code and VS Code Insiders, so GitHub Copilot uses the booth account:
+
+1. Open the app and click the **Accounts** icon at the bottom of the Activity Bar (the left edge). Sign in with GitHub, and approve it in the browser while signed in as the booth account.
+2. Click **Accounts** again and check it shows `octobooth-N`, not a personal account. If it shows another account, sign out of that account there and sign in again as the booth account.
+3. Check that GitHub Copilot is signed in and active: the Copilot icon in the Status Bar (the bottom edge) doesn't show a sign-in or error warning, and Copilot Chat answers a message.
+
+#### 6. Check the machine is ready
 
 Go through [Check that the machine is ready](#check-that-the-machine-is-ready).
 
@@ -221,12 +237,28 @@ Set `$env:NONINTERACTIVE = "true"` before running `setup.ps1` to skip GitHub bro
 Setup already cloned `$HOME\repos\repo-setup-scripts`. On Windows, the Demo Launcher loads from that project.
 
 1. Open the GitHub Copilot app and sign in with the booth account.
-2. Add the existing local folder `$HOME\repos\repo-setup-scripts` as a project. Don't clone it again, so the update steps keep the project current.
-3. Start a session in that project and ask Copilot to "open the demo launcher".
+2. Add the existing local folder `$HOME\repos\repo-setup-scripts` as a project. Use the local folder, not the repo's URL: adding it by URL makes the app clone a second copy, and only `$HOME\repos\repo-setup-scripts` is updated by `install-demo-launcher.ps1`.
+3. Pin the repo-setup-scripts project in the app's project list so it's easy to find on booth day.
+4. Start a session in that project and ask Copilot to "open the demo launcher".
 
 More detail: [Windows: repo-setup-scripts project](#windows-repo-setup-scripts-project).
 
-#### 8. Check the machine is ready
+#### 8. Add Edge favorites
+
+Setup signed in to GitHub.com in Microsoft Edge, and Chrome isn't installed on Windows, so use Edge. Edge calls bookmarks favorites. In Edge, still signed in to GitHub.com as the booth account, open each page below and press **Ctrl+D** to bookmark it:
+
+- `https://github.com/octobooth-N`: the booth account's profile, using this machine's number (for example `https://github.com/octobooth-1`).
+- `https://github.com/octobooth-demos`: the `octobooth-demos` org.
+
+#### 9. Sign in to VS Code and VS Code Insiders
+
+Do this in both VS Code and VS Code Insiders, so GitHub Copilot uses the booth account:
+
+1. Open the app and click the **Accounts** icon at the bottom of the Activity Bar (the left edge). Sign in with GitHub, and approve it in the browser while signed in as the booth account.
+2. Click **Accounts** again and check it shows `octobooth-N`, not a personal account. If it shows another account, sign out of that account there and sign in again as the booth account.
+3. Check that GitHub Copilot is signed in and active: the Copilot icon in the Status Bar (the bottom edge) doesn't show a sign-in or error warning, and Copilot Chat answers a message.
+
+#### 10. Check the machine is ready
 
 Go through [Check that the machine is ready](#check-that-the-machine-is-ready).
 
@@ -236,9 +268,11 @@ Check each item on every booth machine. `N` is this machine's booth account numb
 
 1. **GitHub CLI.** Run `gh auth status`. It should show `octobooth-N` as the active account, with `codespace`, `delete_repo`, `project`, and `workflow` in its token scopes. If not, follow [GitHub CLI login](#github-cli-login). If `GH_TOKEN` or `GITHUB_TOKEN` is set, unset it.
 2. **Demo repos.** `~/repos` (`$HOME\repos` on Windows) contains `repo-setup-scripts`, `tailspin-toys`, and `security-octo-supply` (the `repos_to_clone` list in [`config.json`](config.json)).
-3. **Copilot app.** It's signed in as `octobooth-N`, the repo-setup-scripts project is added, and "open the demo launcher" opens the launcher.
-4. **Demo loader.** `load-demos.sh` (macOS) or `load-demos.ps1` (Windows) is on the Desktop.
-5. **Weekly cleanup.** In a browser signed in as the booth account, open `https://github.com/octobooth-N/demo-cleanup/actions`. It should have a **Weekly demo cleanup** workflow with green runs. If the repo is missing or runs fail, [set up the weekly cleanup](docs/booth-playbook.md#set-up-or-repair-the-weekly-cleanup) for that account.
+3. **Copilot app.** It's signed in as `octobooth-N`, the repo-setup-scripts project is added from the local `~/repos/repo-setup-scripts` folder (`$HOME\repos\repo-setup-scripts` on Windows) and pinned, and "open the demo launcher" opens the launcher.
+4. **VS Code and VS Code Insiders.** In each, **Accounts** shows `octobooth-N`, and GitHub Copilot is signed in and active.
+5. **Bookmarks.** The browser (Chrome on macOS, Edge on Windows) has bookmarks for `https://github.com/octobooth-N` and `https://github.com/octobooth-demos`.
+6. **Demo loader.** `load-demos.sh` (macOS) or `load-demos.ps1` (Windows) is on the Desktop.
+7. **Weekly cleanup.** In a browser signed in as the booth account, open `https://github.com/octobooth-N/demo-cleanup/actions`. It should have a **Weekly demo cleanup** workflow with green runs. If the repo is missing or runs fail, [set up the weekly cleanup](docs/booth-playbook.md#set-up-or-repair-the-weekly-cleanup) for that account.
 
 ### GitHub CLI login
 
@@ -293,7 +327,8 @@ On booth machines, do both. The loader makes the launcher available in any sessi
 
 1. On macOS, run `setup.sh`. On Linux, or a Mac that's already set up, run `install-demo-launcher.sh` (see below). Either one clones the repo to `~/repos/repo-setup-scripts` and runs its `install.sh`.
 2. Open the GitHub Copilot app and sign in with the booth/demo account.
-3. Add the existing local folder `~/repos/repo-setup-scripts` as a project. Don't clone it again: then the loader and the project use the same checkout, and one `bash install-demo-launcher.sh` (or `git -C ~/repos/repo-setup-scripts pull`) plus an app restart updates both.
+3. Add the existing local folder `~/repos/repo-setup-scripts` as a project. Don't add it by URL or clone it again, which makes a second copy: then the loader and the project use the same checkout, and one `bash install-demo-launcher.sh` (or `git -C ~/repos/repo-setup-scripts pull`) plus an app restart updates both.
+   Then pin the project in the app's project list.
 4. Ask Copilot to "open the demo launcher" in any session. If that doesn't work, ask from a session in the repo-setup-scripts project.
 
 `setup.sh` fast-forwards an existing `~/repos/repo-setup-scripts` checkout (`git pull --ff-only`) and runs the repo's `.github/extensions/demo-launcher/install.sh` when present. That writes a loader to `${COPILOT_HOME:-~/.copilot}/extensions/demo-launcher/extension.mjs` that imports the launcher from the checkout, so later pulls update it.
@@ -303,7 +338,8 @@ On booth machines, do both. The loader makes the launcher available in any sessi
 `install.sh` is macOS/Linux only, so on Windows the canvas loads from the repo-setup-scripts project. `setup.ps1` clones it to `$HOME\repos\repo-setup-scripts`.
 
 1. Open the GitHub Copilot app and sign in with the booth/demo account.
-2. Add the existing local folder `$HOME\repos\repo-setup-scripts` as a project. Don't clone it again, so the update steps below keep the project current.
+2. Add the existing local folder `$HOME\repos\repo-setup-scripts` as a project. Don't add it by URL or clone it again, which makes a second copy, so the update steps below keep the project current.
+   Then pin the project in the app's project list.
 3. Start a session in that project and ask Copilot to "open the demo launcher".
 
 #### Install or update the canvas on Windows
