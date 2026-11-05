@@ -1,5 +1,7 @@
 # Booth Machine Setup
 
+_Last updated by [@filmgirl](https://github.com/filmgirl) on November 5, 2026_
+
 ![CI](https://github.com/octobooth-demos/machine-setup/actions/workflows/ci.yml/badge.svg)
 
 > [!IMPORTANT]

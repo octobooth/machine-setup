@@ -1,5 +1,7 @@
 # Booth playbook
 
+_Last updated by [@filmgirl](https://github.com/filmgirl) on November 5, 2026_
+
 A step-by-step walkthrough for running a booth: set up each booth machine before the event, run demos on booth day, then clean up and reset the booth accounts afterwards. You can read this without logging in to anything. Each step lists the access and tools it needs.
 
 [Machine setup reference (README)](../README.md) · [Demo Launcher](../README.md#demo-launcher) · [Troubleshooting](#troubleshooting)
