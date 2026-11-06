@@ -115,7 +115,7 @@ Setup already cloned `~/repos/repo-setup-scripts` and installed the Demo Launche
 1. Open the GitHub Copilot app and sign in with the booth account.
 2. Add the existing local folder `~/repos/repo-setup-scripts` as a project. Use the local folder, not the repo's URL: adding it by URL makes the app clone a second copy, and only `~/repos/repo-setup-scripts` is updated by `install-demo-launcher.sh` and used by the installed Demo Launcher.
 3. Start a session in the repo-setup-scripts project. Then right-click that session in the Copilot app and choose **Pin** so it's easy to find on booth day.
-4. Ask Copilot to "open the demo launcher" in any session. If that doesn't work, ask from a session in the repo-setup-scripts project.
+4. Ask Copilot to "open the demo launcher" in any chat or session.
 
 More detail: [Demo Launcher](#demo-launcher).
 
@@ -326,13 +326,13 @@ If the error persists, update App Installer through Microsoft Store and check wh
 
 ### macOS (and Linux): installed loader and project
 
-On booth machines, do both. The loader makes the launcher available in any session if the app loads user extensions, and the project is a guaranteed fallback.
+On booth machines, do both. The loader that `install.sh` writes makes the launcher available in any chat or session (confirmed on regular Copilot app builds). The project is a convenience: it gives you a session, or the canvas, to pin for quick access on booth day.
 
 1. On macOS, run `setup.sh`. On Linux, or a Mac that's already set up, run `install-demo-launcher.sh` (see below). Either one clones the repo to `~/repos/repo-setup-scripts` and runs its `install.sh`.
 2. Open the GitHub Copilot app and sign in with the booth/demo account.
 3. Add the existing local folder `~/repos/repo-setup-scripts` as a project. Don't add it by URL or clone it again, which makes a second copy: then the loader and the project use the same checkout, and one `bash install-demo-launcher.sh` (or `git -C ~/repos/repo-setup-scripts pull`) plus an app restart updates both.
 4. Start a session in that project, right-click the session in the Copilot app, and choose **Pin**.
-5. Ask Copilot to "open the demo launcher" in any session. If that doesn't work, ask from a session in the repo-setup-scripts project.
+5. Ask Copilot to "open the demo launcher" in any chat or session.
 
 `setup.sh` fast-forwards an existing `~/repos/repo-setup-scripts` checkout (`git pull --ff-only`) and runs the repo's `.github/extensions/demo-launcher/install.sh` when present. That writes a loader to `${COPILOT_HOME:-~/.copilot}/extensions/demo-launcher/extension.mjs` that imports the launcher from the checkout, so later pulls update it.
 

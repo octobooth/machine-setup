@@ -53,8 +53,8 @@ demo_launcher_main() {
     fi
 
     log_success "Demo Launcher installed"
-    log_info "Restart the GitHub Copilot app (or reload extensions), then ask Copilot to \"open the demo launcher\" in any session."
-    log_info "Also add the existing ~/repos/repo-setup-scripts folder (don't re-clone) as a project in the Copilot app. If the launcher doesn't show up in a session, open it from a session in that project."
+    log_info "Restart the GitHub Copilot app (or reload extensions), then ask Copilot to \"open the demo launcher\" in any chat or session."
+    log_info "Also add the existing ~/repos/repo-setup-scripts folder (don't re-clone) as a project in the Copilot app, so you can pin a session or the canvas for quick access."
 }
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then

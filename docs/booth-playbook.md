@@ -95,7 +95,7 @@ Setup already cloned `~/repos/repo-setup-scripts` and installed the Demo Launche
 1. Open the GitHub Copilot app and sign in with the booth account.
 2. Add the existing local folder `~/repos/repo-setup-scripts` as a project. Use the local folder, not the repo's URL: adding it by URL makes the app clone a second copy, and only `~/repos/repo-setup-scripts` is updated by `install-demo-launcher.sh` and used by the installed Demo Launcher.
 3. Start a session in the repo-setup-scripts project. Then right-click that session in the Copilot app and choose **Pin** so it's easy to find on booth day.
-4. Ask Copilot to "open the demo launcher" in any session. If that doesn't work, ask from a session in the repo-setup-scripts project.
+4. Ask Copilot to "open the demo launcher" in any chat or session.
 
 More detail: [Demo Launcher](../README.md#demo-launcher).
 
