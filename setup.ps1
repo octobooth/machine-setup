@@ -681,37 +681,25 @@ function Get-DemoLauncherLoaderPath {
     return Join-Path (Join-Path (Join-Path (Get-CopilotHome) "extensions") "demo-launcher") "extension.mjs"
 }
 
+# Fallback copy of repo-setup-scripts' .github/extensions/demo-launcher-loader/extension.mjs,
+# used until a checkout ships it. Keep it identical to that file.
+$script:VendoredDemoLauncherLoader = Join-Path (Join-Path $PSScriptRoot "windows") "demo-launcher-loader.mjs"
+$script:DemoLauncherRepoMarker = 'const INSTALLED_REPO = "";'
+
+# Bakes the checkout into the loader's INSTALLED_REPO line, like install.sh does on macOS/Linux
 function Get-DemoLauncherLoaderContent {
-    param([Parameter(Mandatory)][string]$LauncherPath)
+    param(
+        [Parameter(Mandatory)][string]$Template,
+        [Parameter(Mandatory)][string]$CheckoutDir
+    )
 
-    # JSON string escaping is valid JavaScript, so backslashes and quotes in the path stay intact
-    $launcherLiteral = ConvertTo-Json -InputObject $LauncherPath -Compress
-    return @"
-// Installed by machine-setup (install-demo-launcher.ps1 / setup.ps1).
-// Loads the Demo Launcher from your repo-setup-scripts checkout so every Copilot session can open it.
-import { existsSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { pathToFileURL } from "node:url";
-
-const launcher = $launcherLiteral;
-
-// In a repo that ships its own copy (repo-setup-scripts), let that one provide the canvas.
-function sessionRepoHasOwnCopy() {
-    for (let dir = process.cwd(); ; dir = dirname(dir)) {
-        if (existsSync(join(dir, ".github", "extensions", "demo-launcher", "extension.mjs"))) return true;
-        if (existsSync(join(dir, ".git")) || dirname(dir) === dir) return false;
+    if (-not $Template.Contains($script:DemoLauncherRepoMarker)) {
+        Write-Warn "The Demo Launcher loader has no INSTALLED_REPO line, so it will use its default checkout path."
+        return $Template
     }
-}
-
-if (sessionRepoHasOwnCopy()) {
-    const { joinSession } = await import("@github/copilot-sdk/extension");
-    await joinSession({});
-} else {
-    // Dynamic import needs a file:// URL; bare C:\ paths fail on Windows.
-    await import(pathToFileURL(launcher).href);
-}
-
-"@
+    # JSON string escaping is valid JavaScript, so backslashes and quotes in the path stay intact
+    $repoLiteral = ConvertTo-Json -InputObject $CheckoutDir -Compress
+    return $Template.Replace($script:DemoLauncherRepoMarker, "const INSTALLED_REPO = $repoLiteral;")
 }
 
 function Install-DemoLauncherLoader {
@@ -725,14 +713,15 @@ function Install-DemoLauncherLoader {
         return
     }
 
-    # Prefer the loader the checkout ships, so both platforms run the same file; it resolves
-    # ~/repos/repo-setup-scripts itself, which is where this checkout lives.
+    # Prefer the loader the checkout ships, so every platform runs the same file
     $shippedLoader = Join-Path (Join-Path $extensionsDir "demo-launcher-loader") "extension.mjs"
-    if (Test-Path -LiteralPath $shippedLoader -PathType Leaf) {
-        $content = [System.IO.File]::ReadAllText($shippedLoader)
-    } else {
-        $content = Get-DemoLauncherLoaderContent -LauncherPath $launcherPath
+    $templatePath = if (Test-Path -LiteralPath $shippedLoader -PathType Leaf) { $shippedLoader } else { $script:VendoredDemoLauncherLoader }
+    if (-not (Test-Path -LiteralPath $templatePath -PathType Leaf)) {
+        $script:failedItems += "loader: Demo Launcher ($templatePath not found)"
+        Write-Err "$templatePath not found, so the Demo Launcher loader wasn't installed. Pull machine-setup and re-run."
+        return
     }
+    $content = Get-DemoLauncherLoaderContent -Template ([System.IO.File]::ReadAllText($templatePath)) -CheckoutDir $CheckoutDir
 
     $loaderPath = Get-DemoLauncherLoaderPath
     try {

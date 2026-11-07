@@ -134,16 +134,16 @@ Describe 'install-demo-launcher.ps1' {
             Get-DemoLauncherLoaderPath | Should -Be (Join-Path (Join-Path (Join-Path $env:COPILOT_HOME 'extensions') 'demo-launcher') 'extension.mjs')
         }
 
-        It 'installs a loader that imports the checkout via pathToFileURL and guards against a second copy' {
+        It 'installs the vendored repo-setup-scripts loader with the checkout baked in' {
             Invoke-DemoLauncherMain | Should -Be 0
 
-            $loader = Get-DemoLauncherLoaderPath
-            $content = Get-Content -Raw -Path $loader
-            $launcher = Join-Path (Join-Path (Join-Path (Join-Path (Get-DemoLauncherRepoDir) '.github') 'extensions') 'demo-launcher') 'extension.mjs'
-            $content | Should -Match ([regex]::Escape('await import(pathToFileURL(launcher).href)'))
+            $content = [System.IO.File]::ReadAllText((Get-DemoLauncherLoaderPath))
+            $expected = [System.IO.File]::ReadAllText($script:VendoredDemoLauncherLoader).Replace(
+                'const INSTALLED_REPO = "";',
+                'const INSTALLED_REPO = ' + (ConvertTo-Json -InputObject (Get-DemoLauncherRepoDir) -Compress) + ';')
+            $content | Should -BeExactly $expected
+            $content | Should -Match ([regex]::Escape('await import(pathToFileURL(launcherFile).href)'))
             $content | Should -Match 'function sessionRepoHasOwnCopy\(\)'
-            $content | Should -Match ([regex]::Escape('await joinSession({})'))
-            $content | Should -Match ([regex]::Escape('const launcher = ' + (ConvertTo-Json -InputObject $launcher -Compress) + ';'))
         }
 
         It 'writes the loader as UTF-8 without a BOM' {
@@ -155,14 +155,15 @@ Describe 'install-demo-launcher.ps1' {
         }
 
         It 'escapes Windows paths into a valid JavaScript string' {
-            $content = Get-DemoLauncherLoaderContent -LauncherPath 'C:\Users\o"booth\repos\repo-setup-scripts\.github\extensions\demo-launcher\extension.mjs'
+            $content = Get-DemoLauncherLoaderContent -Template 'const INSTALLED_REPO = ""; // x' -CheckoutDir 'C:\Users\o"booth\repos\repo-setup-scripts'
 
-            $content | Should -Match ([regex]::Escape('const launcher = "C:\\Users\\o\"booth\\repos\\repo-setup-scripts\\.github\\extensions\\demo-launcher\\extension.mjs";'))
+            $content | Should -BeExactly 'const INSTALLED_REPO = "C:\\Users\\o\"booth\\repos\\repo-setup-scripts"; // x'
         }
 
         It 'produces a loader that node can parse' -Skip:(-not (Get-Command node -ErrorAction SilentlyContinue)) {
             $file = Join-Path $TestDrive 'loader-check.mjs'
-            $content = Get-DemoLauncherLoaderContent -LauncherPath 'C:\Users\octobooth\repos\repo-setup-scripts\.github\extensions\demo-launcher\extension.mjs'
+            $template = [System.IO.File]::ReadAllText($script:VendoredDemoLauncherLoader)
+            $content = Get-DemoLauncherLoaderContent -Template $template -CheckoutDir "C:\Users\o'booth\repos\repo-setup-scripts"
             [System.IO.File]::WriteAllText($file, $content, (New-Object System.Text.UTF8Encoding $false))
 
             node --check $file
@@ -174,13 +175,19 @@ Describe 'install-demo-launcher.ps1' {
             New-FakeCheckout -Target $target
             $shippedDir = Join-Path (Join-Path (Join-Path $target '.github') 'extensions') 'demo-launcher-loader'
             New-Item -Path $shippedDir -ItemType Directory -Force | Out-Null
-            [System.IO.File]::WriteAllText((Join-Path $shippedDir 'extension.mjs'), "// shipped loader`n", (New-Object System.Text.UTF8Encoding $true))
+            [System.IO.File]::WriteAllText((Join-Path $shippedDir 'extension.mjs'), "// shipped loader`nconst INSTALLED_REPO = `"`";`n", (New-Object System.Text.UTF8Encoding $true))
 
             Invoke-DemoLauncherMain | Should -Be 0
 
-            [System.IO.File]::ReadAllText((Get-DemoLauncherLoaderPath)) | Should -Be "// shipped loader`n"
+            $literal = ConvertTo-Json -InputObject $target -Compress
+            [System.IO.File]::ReadAllText((Get-DemoLauncherLoaderPath)) | Should -BeExactly "// shipped loader`nconst INSTALLED_REPO = $literal;`n"
             $bytes = [System.IO.File]::ReadAllBytes((Get-DemoLauncherLoaderPath))
             $bytes[0] | Should -Not -Be 0xEF
+        }
+
+        It 'keeps a shipped loader without an INSTALLED_REPO line as is' {
+            Get-DemoLauncherLoaderContent -Template '// other loader' -CheckoutDir 'C:\x' | Should -BeExactly '// other loader'
+            Should -Invoke Write-Warn -Times 1 -Exactly
         }
 
         It 'fails without writing a loader when the checkout has no launcher' {
