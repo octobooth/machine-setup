@@ -1,24 +1,30 @@
 <#
 .SYNOPSIS
-    Installs or updates the Demo Launcher canvas checkout on Windows.
+    Installs or updates the Demo Launcher canvas on Windows.
 
 .DESCRIPTION
-    Windows counterpart to install-demo-launcher.sh. The Demo Launcher's
-    install.sh is macOS/Linux only, so on Windows the canvas loads from the
-    repo-setup-scripts project checkout in $HOME\repos\repo-setup-scripts.
-    This script clones that checkout if it's missing, or fast-forwards it if
-    it's already there. Safe to re-run.
+    Windows counterpart to install-demo-launcher.sh. Clones
+    $HOME\repos\repo-setup-scripts if it's missing, or fast-forwards it if
+    it's already there, then writes a user-level loader to
+    $env:COPILOT_HOME\extensions\demo-launcher\extension.mjs (default
+    $HOME\.copilot) that imports the launcher from that checkout, so the
+    Copilot app can open it from any chat. Doesn't need admin. Safe to re-run.
+
+.PARAMETER Uninstall
+    Removes only the loader file. The checkout and the launcher's run history
+    (the artifacts folder next to the loader) are kept.
 
 .EXAMPLE
     .\install-demo-launcher.ps1
+
+.EXAMPLE
+    .\install-demo-launcher.ps1 -Uninstall
 #>
+
+param([switch]$Uninstall)
 
 # setup.ps1 only runs Invoke-Main when executed directly, so dot-sourcing it just loads its helpers
 . (Join-Path $PSScriptRoot "setup.ps1")
-
-# Only this repo is trusted as the Demo Launcher source, because its checkout is
-# added as a Copilot project and its contents shape what Copilot does there.
-$script:TrustedDemoLauncherRepo = "octobooth-demos/repo-setup-scripts"
 
 function Get-DemoLauncherRepo {
     if ($null -ne $script:config) {
@@ -28,19 +34,6 @@ function Get-DemoLauncherRepo {
         }
     }
     return $script:TrustedDemoLauncherRepo
-}
-
-function Test-DemoLauncherRemote {
-    param([string]$Target)
-
-    $url = git -C $Target remote get-url origin 2>$null
-    if ($LASTEXITCODE -ne 0) { return $false }
-    $pattern = '^(https://github\.com/|git@github\.com:|ssh://git@github\.com/)' + [regex]::Escape($script:TrustedDemoLauncherRepo) + '(\.git)?/?$'
-    return ("$url".Trim() -match $pattern)
-}
-
-function Get-DemoLauncherRepoDir {
-    return Join-Path (Join-Path $env:USERPROFILE "repos") "repo-setup-scripts"
 }
 
 function Test-DemoLauncherPrerequisite {
@@ -94,7 +87,13 @@ function Sync-DemoLauncherRepo {
 }
 
 function Invoke-DemoLauncherMain {
+    param([switch]$Uninstall)
+
     $script:failedItems = @()
+    if ($Uninstall) {
+        Uninstall-DemoLauncherLoader
+        return 0
+    }
     if (Test-Path $script:configPath) { Import-Config }
 
     if (-not (Test-DemoLauncherPrerequisite)) { return 1 }
@@ -102,17 +101,21 @@ function Invoke-DemoLauncherMain {
     # Send git/gh output to the console so it doesn't become part of the return value
     Sync-DemoLauncherRepo | Out-Host
 
+    $target = Get-DemoLauncherRepoDir
+    if ($script:failedItems.Count -eq 0) {
+        Install-DemoLauncherLoader -CheckoutDir $target
+    }
+
     Write-Summary
     if ($script:failedItems.Count -gt 0) { return 1 }
 
-    $target = Get-DemoLauncherRepoDir
-    Write-Success "Demo Launcher checkout is up to date at $target"
-    Write-Info "Restart the GitHub Copilot app (or reload extensions) to pick up the update."
-    Write-Info "If you haven't yet, add the existing $target folder as a project in the Copilot app (don't clone it again)."
-    Write-Info "Then start a session in that project (choose Current checkout, not New worktree) and ask Copilot to `"open the demo launcher`"."
+    Write-Success "Demo Launcher is up to date at $target"
+    Write-Info "Fully quit the GitHub Copilot app (right-click its tray icon and choose Quit), then reopen it."
+    Write-Info "Then ask Copilot to `"open the demo launcher`" in any chat."
+    Write-Info "Optional, for quick access: add the existing $target folder as a project (don't clone it again) and pin a Current checkout session."
     return 0
 }
 
 if ($MyInvocation.InvocationName -ne ".") {
-    exit (Invoke-DemoLauncherMain)
+    exit (Invoke-DemoLauncherMain -Uninstall:$Uninstall)
 }

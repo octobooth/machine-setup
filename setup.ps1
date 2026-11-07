@@ -670,6 +670,124 @@ function Copy-Repos {
     }
 }
 
+function Get-CopilotHome {
+    if ($env:COPILOT_HOME) { return $env:COPILOT_HOME }
+    return Join-Path $env:USERPROFILE ".copilot"
+}
+
+# The user-level loader the Copilot app runs in every session, like install.sh writes on macOS/Linux.
+# Its folder also holds the launcher's run history (artifacts), so only this file is ever replaced or removed.
+function Get-DemoLauncherLoaderPath {
+    return Join-Path (Join-Path (Join-Path (Get-CopilotHome) "extensions") "demo-launcher") "extension.mjs"
+}
+
+function Get-DemoLauncherLoaderContent {
+    param([Parameter(Mandatory)][string]$LauncherPath)
+
+    # JSON string escaping is valid JavaScript, so backslashes and quotes in the path stay intact
+    $launcherLiteral = ConvertTo-Json -InputObject $LauncherPath -Compress
+    return @"
+// Installed by machine-setup (install-demo-launcher.ps1 / setup.ps1).
+// Loads the Demo Launcher from your repo-setup-scripts checkout so every Copilot session can open it.
+import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { pathToFileURL } from "node:url";
+
+const launcher = $launcherLiteral;
+
+// In a repo that ships its own copy (repo-setup-scripts), let that one provide the canvas.
+function sessionRepoHasOwnCopy() {
+    for (let dir = process.cwd(); ; dir = dirname(dir)) {
+        if (existsSync(join(dir, ".github", "extensions", "demo-launcher", "extension.mjs"))) return true;
+        if (existsSync(join(dir, ".git")) || dirname(dir) === dir) return false;
+    }
+}
+
+if (sessionRepoHasOwnCopy()) {
+    const { joinSession } = await import("@github/copilot-sdk/extension");
+    await joinSession({});
+} else {
+    // Dynamic import needs a file:// URL; bare C:\ paths fail on Windows.
+    await import(pathToFileURL(launcher).href);
+}
+
+"@
+}
+
+function Install-DemoLauncherLoader {
+    param([Parameter(Mandatory)][string]$CheckoutDir)
+
+    $extensionsDir = Join-Path (Join-Path $CheckoutDir ".github") "extensions"
+    $launcherPath = Join-Path (Join-Path $extensionsDir "demo-launcher") "extension.mjs"
+    if (-not (Test-Path -LiteralPath $launcherPath -PathType Leaf)) {
+        $script:failedItems += "loader: Demo Launcher ($launcherPath not found)"
+        Write-Err "$launcherPath not found, so the Demo Launcher loader wasn't installed. Pull $CheckoutDir and re-run."
+        return
+    }
+
+    # Prefer the loader the checkout ships, so both platforms run the same file; it resolves
+    # ~/repos/repo-setup-scripts itself, which is where this checkout lives.
+    $shippedLoader = Join-Path (Join-Path $extensionsDir "demo-launcher-loader") "extension.mjs"
+    if (Test-Path -LiteralPath $shippedLoader -PathType Leaf) {
+        $content = [System.IO.File]::ReadAllText($shippedLoader)
+    } else {
+        $content = Get-DemoLauncherLoaderContent -LauncherPath $launcherPath
+    }
+
+    $loaderPath = Get-DemoLauncherLoaderPath
+    try {
+        New-Item -Path (Split-Path $loaderPath) -ItemType Directory -Force -ErrorAction Stop | Out-Null
+        # Windows PowerShell 5.1's -Encoding UTF8 adds a BOM, so write the bytes directly
+        [System.IO.File]::WriteAllText($loaderPath, $content, (New-Object System.Text.UTF8Encoding $false))
+    } catch {
+        $script:failedItems += "loader: Demo Launcher ($loaderPath)"
+        Write-Err "Couldn't write the Demo Launcher loader to ${loaderPath}: $($_.Exception.Message)"
+        return
+    }
+    Write-Success "Demo Launcher loader installed at $loaderPath"
+}
+
+function Uninstall-DemoLauncherLoader {
+    $loaderPath = Get-DemoLauncherLoaderPath
+    if (Test-Path -LiteralPath $loaderPath -PathType Leaf) {
+        Remove-Item -LiteralPath $loaderPath -Force
+        Write-Success "Removed $loaderPath (run history in $(Split-Path $loaderPath) was kept)."
+    } else {
+        Write-Info "No Demo Launcher loader at $loaderPath; nothing to remove."
+    }
+}
+
+# Only this repo is trusted as the Demo Launcher source, because the loader runs its code in
+# every Copilot session and its checkout may be added as a Copilot project.
+$script:TrustedDemoLauncherRepo = "octobooth-demos/repo-setup-scripts"
+
+function Get-DemoLauncherRepoDir {
+    return Join-Path (Join-Path $env:USERPROFILE "repos") "repo-setup-scripts"
+}
+
+function Test-DemoLauncherRemote {
+    param([string]$Target)
+
+    $url = git -C $Target remote get-url origin 2>$null
+    if ($LASTEXITCODE -ne 0) { return $false }
+    $pattern = '^(https://github\.com/|git@github\.com:|ssh://git@github\.com/)' + [regex]::Escape($script:TrustedDemoLauncherRepo) + '(\.git)?/?$'
+    return ("$url".Trim() -match $pattern)
+}
+
+function Install-DemoLauncher {
+    $checkout = Get-DemoLauncherRepoDir
+    if (-not (Test-Path -LiteralPath (Join-Path $checkout ".git"))) {
+        Write-Warn "$checkout isn't a git checkout yet, so the Demo Launcher wasn't installed. Run .\install-demo-launcher.ps1 once GitHub CLI is logged in."
+        return
+    }
+    if (-not (Test-DemoLauncherRemote -Target $checkout)) {
+        $script:failedItems += "loader: Demo Launcher ($checkout origin isn't $script:TrustedDemoLauncherRepo)"
+        Write-Err "$checkout doesn't point at $script:TrustedDemoLauncherRepo, so the Demo Launcher loader wasn't installed."
+        return
+    }
+    Install-DemoLauncherLoader -CheckoutDir $checkout
+}
+
 function Register-MCPServers {
     Write-Info "Registering MCP servers for Copilot CLI..."
 
@@ -765,6 +883,9 @@ function Invoke-Main {
         Connect-GH
     }
     Copy-Repos -SkipClone:$skipRepoClones
+
+    # Make the Demo Launcher available in every Copilot session
+    Install-DemoLauncher
 
     # PWA setup is intentionally disabled until the booth workflow needs it again.
     # See README for the rationale and re-enable notes.

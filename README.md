@@ -29,7 +29,7 @@ This repository contains setup scripts for configuring booth machines. The scrip
 - Makes Google Chrome the default browser on macOS (via `defaultbrowser`), including when Chrome was already installed.
 - Configures VLC media player settings.
 - Registers shared MCP servers for Copilot CLI.
-- Clones the demo repos into `~/repos` and, on macOS, installs the Demo Launcher canvas for every Copilot session. `install-demo-launcher.sh` (macOS/Linux) and `install-demo-launcher.ps1` (Windows) do just that step on a machine that is already set up (see [Demo Launcher](#demo-launcher)).
+- Clones the demo repos into `~/repos` and installs the Demo Launcher canvas for every Copilot session. `install-demo-launcher.sh` (macOS/Linux) and `install-demo-launcher.ps1` (Windows) do just that step on a machine that is already set up (see [Demo Launcher](#demo-launcher)).
 
 ## Configuration
 
@@ -217,7 +217,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
    1. **Installs.** `winget` installs everything in `windows.packages` in [`config.json`](config.json). PowerShell 7 (`Microsoft.PowerShell`) is installed first, followed by VS Code, VS Code Insiders, Windows Terminal, Git, GitHub CLI, Node.js LTS, Python, VLC, Copilot CLI, the GitHub Copilot app, and GitHub Desktop. This takes a while, and some installers briefly show their own windows. Setup then configures VLC and pins VS Code, VS Code Insiders, the GitHub Copilot app, Windows Terminal, and VLC to the taskbar. The taskbar briefly disappears while Explorer restarts.
    2. **GitHub.com in Edge.** The script opens Microsoft Edge and pauses. Sign in to GitHub.com as **the booth account**, then press Enter.
    3. **GitHub CLI login.** The GitHub CLI shows a one-time code. Press Enter to open the browser, enter the code, and approve the login (or scope upgrade) while signed in as the booth account. See [GitHub CLI login](#github-cli-login).
-4. Setup then installs GitHub CLI extensions, clones the demo repos into `$HOME\repos`, installs VS Code extensions and the theme, and registers MCP servers for Copilot CLI.
+4. Setup then installs GitHub CLI extensions, clones the demo repos into `$HOME\repos`, installs the Demo Launcher for every Copilot chat, installs VS Code extensions and the theme, and registers MCP servers for Copilot CLI.
 5. At the end, setup prints a summary of anything that failed. Fix the cause and run `.\setup.ps1` again; finished steps and `winget` packages that are already installed are skipped. For `winget` errors, see [Troubleshooting Windows package installs](#troubleshooting-windows-package-installs).
 
 Set `$env:NONINTERACTIVE = "true"` before running `setup.ps1` to skip GitHub browser login, CLI login, scope refresh, and the pause when setup isn't running as an administrator. Existing CLI credentials (including `GH_TOKEN` or `GITHUB_TOKEN`) are used to install extensions and clone repositories. Without usable credentials, those steps are deferred with warnings; authenticate with `gh auth login` and rerun setup to complete them. Set `$env:FORCE_REINSTALL = "true"` to redo steps that are normally skipped on reruns, including `winget` installs of packages that are already installed. See [Re-running on a Windows machine that's already set up](#re-running-on-a-windows-machine-thats-already-set-up).
@@ -226,7 +226,7 @@ Set `$env:NONINTERACTIVE = "true"` before running `setup.ps1` to skip GitHub bro
 
 - Close the window and open a new terminal so it picks up the updated `PATH`. Check PowerShell 7 with `pwsh --version`. Windows Terminal adds a **PowerShell** profile for it, and Windows PowerShell 5.1 stays installed alongside it. Run future scripts with `pwsh`.
 - Store booth videos in `C:\Users\<YourUsername>\Videos` and open them from VLC on the taskbar.
-- To update the Demo Launcher later, run `.\install-demo-launcher.ps1` (see [Install or update the canvas on Windows](#install-or-update-the-canvas-on-windows)).
+- To update the Demo Launcher later, run `.\install-demo-launcher.ps1` (see [Install or update the launcher on Windows](#install-or-update-the-launcher-on-windows)).
 - To add the taskbar pins on a machine that ran setup before they existed, or after a run from a window that wasn't elevated, pull the latest and run `.\setup.ps1` again from **Terminal (Admin)**. You can also run only that step from an Administrator prompt in the repo folder:
 
   ```powershell
@@ -237,14 +237,13 @@ Set `$env:NONINTERACTIVE = "true"` before running `setup.ps1` to skip GitHub bro
 
 #### 7. Set up the Demo Launcher
 
-Setup already cloned `$HOME\repos\repo-setup-scripts`. On Windows, the Demo Launcher loads from that project.
+Setup already cloned `$HOME\repos\repo-setup-scripts` and installed the Demo Launcher for every Copilot chat.
 
-1. Open the GitHub Copilot app and sign in with the booth account.
-2. Add the existing local folder `$HOME\repos\repo-setup-scripts` as a project. Use the local folder, not the repo's URL: adding it by URL makes the app clone a second copy, and only `$HOME\repos\repo-setup-scripts` is updated by `install-demo-launcher.ps1`.
-3. Start a session in the repo-setup-scripts project, choosing **Current checkout** (not **New worktree**). Then right-click that session in the Copilot app and choose **Pin** so it's easy to find on booth day.
-4. In the pinned repo-setup-scripts session, ask Copilot to "open the demo launcher".
+1. Open the GitHub Copilot app and sign in with the booth account. If it was already open, fully quit it first (right-click its icon in the system tray and choose **Quit**), so it loads the launcher.
+2. Ask Copilot to "open the demo launcher" in any chat.
+3. Optional, for quick access on booth day: add the existing local folder `$HOME\repos\repo-setup-scripts` as a project (use the local folder, not the repo's URL, which clones a second copy), start a session in it with **Current checkout** (not **New worktree**), then right-click that session and choose **Pin**.
 
-More detail: [Windows: repo-setup-scripts project](#windows-repo-setup-scripts-project).
+More detail: [Windows: installed loader and project](#windows-installed-loader-and-project).
 
 #### 8. Add Edge favorites
 
@@ -288,7 +287,7 @@ Check each item on every booth machine. `N` is this machine's booth account numb
 
 1. **GitHub CLI.** Run `gh auth status`. It should show `octobooth-N` as the active account, with `codespace`, `delete_repo`, `project`, and `workflow` in its token scopes. If not, follow [GitHub CLI login](#github-cli-login). If `GH_TOKEN` or `GITHUB_TOKEN` is set, unset it.
 2. **Demo repos.** `~/repos` (`$HOME\repos` on Windows) contains `repo-setup-scripts`, `tailspin-toys`, and `security-octo-supply` (the `repos_to_clone` list in [`config.json`](config.json)).
-3. **Copilot app.** It's signed in as `octobooth-N`, the repo-setup-scripts project is added from the local `~/repos/repo-setup-scripts` folder (`$HOME\repos\repo-setup-scripts` on Windows), a **Current checkout** repo-setup-scripts session is pinned (right-click the session and choose **Pin**), and "open the demo launcher" opens the launcher.
+3. **Copilot app.** It's signed in as `octobooth-N`, and "open the demo launcher" opens the launcher from a new chat. If you added the optional repo-setup-scripts project, it's from the local `~/repos/repo-setup-scripts` folder (`$HOME\repos\repo-setup-scripts` on Windows) and its pinned session is a **Current checkout** one.
 4. **VS Code and VS Code Insiders.** In each, **Accounts** shows `octobooth-N`, and GitHub Copilot is signed in and active.
 5. **Bookmarks.** The browser (Chrome on macOS, Edge on Windows) has bookmarks for `https://github.com/octobooth-N` and `https://github.com/octobooth-demos`.
 6. **Dock or taskbar.** On macOS, the Dock has Google Chrome, the GitHub Copilot app, VS Code, VS Code Insiders, iTerm2, and VLC. On Windows, the taskbar has VS Code, VS Code Insiders, the GitHub Copilot app, Windows Terminal, and VLC. Machines set up with an older version of the setup scripts may still have a `load-demos.sh` or `load-demos.ps1` script on the Desktop. Setup no longer creates it, and nothing uses it, so you can delete it.
@@ -356,18 +355,20 @@ On booth machines, do both. The loader that `install.sh` writes makes the launch
 
 `setup.sh` fast-forwards an existing `~/repos/repo-setup-scripts` checkout (`git pull --ff-only`) and runs the repo's `.github/extensions/demo-launcher/install.sh` when present. That writes a loader to `${COPILOT_HOME:-~/.copilot}/extensions/demo-launcher/extension.mjs` that imports the launcher from the checkout, so later pulls update it.
 
-### Windows: repo-setup-scripts project
+### Windows: installed loader and project
 
-`install.sh` is macOS/Linux only, so on Windows the canvas loads from the repo-setup-scripts project. `setup.ps1` clones it to `$HOME\repos\repo-setup-scripts`.
+On Windows, `setup.ps1` and `install-demo-launcher.ps1` write the loader themselves (`install.sh` is macOS/Linux only), so the launcher opens from any chat. The project is optional: it gives you a session to pin for quick access on booth day.
 
-1. Open the GitHub Copilot app and sign in with the booth/demo account.
-2. Add the existing local folder `$HOME\repos\repo-setup-scripts` as a project. Don't add it by URL or clone it again, which makes a second copy, so the update steps below keep the project current.
-3. Start a session in that project with **Current checkout** (not **New worktree**), right-click the session in the Copilot app, and choose **Pin**.
-4. In the pinned session, ask Copilot to "open the demo launcher".
+1. Run `setup.ps1`, or on a machine that's already set up, `install-demo-launcher.ps1` (see below). Neither needs an Administrator prompt for this step.
+2. Fully quit the GitHub Copilot app (right-click its icon in the system tray and choose **Quit**), reopen it, and sign in with the booth/demo account.
+3. Ask Copilot to "open the demo launcher" in any chat.
+4. Optional: add the existing local folder `$HOME\repos\repo-setup-scripts` as a project. Don't add it by URL or clone it again, which makes a second copy. Start a session in it with **Current checkout** (not **New worktree**), right-click the session, and choose **Pin**.
 
-#### Install or update the canvas on Windows
+The loader is `$env:COPILOT_HOME\extensions\demo-launcher\extension.mjs` (`$HOME\.copilot\extensions\demo-launcher\extension.mjs` by default). It imports the launcher from `$HOME\repos\repo-setup-scripts`, so later pulls update it. When repo-setup-scripts ships its own loader (`.github/extensions/demo-launcher-loader/extension.mjs`), the scripts copy that file; otherwise they write an equivalent one. In a session whose repo has its own copy of the launcher (such as the repo-setup-scripts project), the loader steps aside so only one Demo Launcher shows up. The `artifacts` folder next to it holds the launcher's run history and is left alone.
 
-Before each booth day, update the checkout, then restart the GitHub Copilot app (or reload extensions) so it loads the new launcher. From an up-to-date clone of this repo, in PowerShell:
+#### Install or update the launcher on Windows
+
+Before each booth day, update the checkout and loader, then fully quit and reopen the GitHub Copilot app so it loads the new launcher. From an up-to-date clone of this repo, in a regular (non-administrator) PowerShell:
 
 ```powershell
 git -C "$HOME\repos\machine-setup" pull
@@ -376,7 +377,9 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 .\install-demo-launcher.ps1
 ```
 
-Re-running is safe. It checks for `git` and `gh`, clones `octobooth-demos/repo-setup-scripts` to `$HOME\repos\repo-setup-scripts` if it's missing (this needs a logged-in GitHub CLI; see [GitHub CLI login](#github-cli-login)), or, after checking that its `origin` is that repo, fast-forwards it with `git pull --ff-only`. It exits with an error and lists what failed if the clone or pull doesn't work. If a folder with that name exists but isn't a git checkout, the script stops; move the folder aside and re-run.
+Re-running is safe. It checks for `git` and `gh`, clones `octobooth-demos/repo-setup-scripts` to `$HOME\repos\repo-setup-scripts` if it's missing (this needs a logged-in GitHub CLI; see [GitHub CLI login](#github-cli-login)), or, after checking that its `origin` is that repo, fast-forwards it with `git pull --ff-only`. It then (re)writes the loader. It exits with an error and lists what failed if the clone, pull, or loader doesn't work. If a folder with that name exists but isn't a git checkout, the script stops; move the folder aside and re-run.
+
+To remove the loader (the checkout and run history are kept), run `.\install-demo-launcher.ps1 -Uninstall`.
 
 To update by hand instead:
 
@@ -385,10 +388,10 @@ git -C "$HOME\repos\repo-setup-scripts" remote get-url origin   # should be octo
 git -C "$HOME\repos\repo-setup-scripts" pull --ff-only
 ```
 
-Then restart the GitHub Copilot app.
+Then fully quit and reopen the GitHub Copilot app. A pull alone doesn't install the loader the first time; run `install-demo-launcher.ps1` for that.
 
 > [!WARNING]
-> Copilot reads the files in a project, so only add the `octobooth-demos/repo-setup-scripts` checkout as a project, and don't add other or unknown repos on booth machines. `install-demo-launcher.ps1` only uses that repo, even if `config.json` lists a different one. It also refuses to update a checkout whose `origin` points anywhere else. Updates come straight from that repo's default branch, so review changes there (for example with `git -C "$HOME\repos\repo-setup-scripts" log --oneline -5`) before a booth day.
+> The loader runs the launcher's code in every Copilot chat, and Copilot reads the files in a project, so only use the `octobooth-demos/repo-setup-scripts` checkout, and don't add other or unknown repos as projects on booth machines. `setup.ps1` and `install-demo-launcher.ps1` only use that repo, even if `config.json` lists a different one. They also refuse to update a checkout, or install the loader for one, whose `origin` points anywhere else. Updates come straight from that repo's default branch, so review changes there (for example with `git -C "$HOME\repos\repo-setup-scripts" log --oneline -5`) before a booth day.
 
 ### Install or update on a macOS or Linux machine that's already set up
 
