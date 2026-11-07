@@ -53,7 +53,7 @@ Then follow the steps for [macOS](#set-up-a-mac) or [Windows](#set-up-a-windows-
    git clone https://github.com/octobooth-demos/machine-setup.git ~/repos/machine-setup
    ```
 
-3. Put the scripts on the tested release the booth uses, currently `v1` (see [Using a release](../README.md#using-a-release)). Do this again before each booth day, and before re-running `setup.sh` or `install-demo-launcher.sh`:
+3. Put the scripts on the tested [`v1` release](https://github.com/octobooth-demos/machine-setup/releases) the booth uses (see [Using a release](../README.md#using-a-release)). Do this again before each booth day, and before re-running `setup.sh` or `install-demo-launcher.sh`:
 
    ```bash
    git -C ~/repos/machine-setup fetch --tags --force
@@ -80,12 +80,12 @@ If `git` still doesn't work, the README has a [ZIP fallback](../README.md#1-get-
    ```
 
 4. Answer the prompts as they come up:
-   1. **Xcode Command Line Tools.** `git` and Homebrew need them. If they're missing, the installer opens: click **Install**, and the script waits until it finishes (up to 30 minutes; set `XCODE_CLT_TIMEOUT` in seconds to change this). If the install fails or times out, run `xcode-select --install`, finish the installer, and run `bash setup.sh` again.
+   1. **Xcode Command Line Tools.** `git` and Homebrew need them. If they're missing, the installer opens: click **Install**, and the script waits until it finishes (up to 30 minutes; set `XCODE_CLT_TIMEOUT` in seconds to change this). If the install fails or times out, run `xcode-select --install`, finish the installer, and run `bash setup.sh --ref v1` again.
    2. **Your Mac password.** The Homebrew installer and the SF Mono font ask for it. Type it and press Enter (nothing shows while you type). If the Homebrew installer asks you to press RETURN to continue, press Enter.
    3. **GitHub.com in Chrome.** The script opens Chrome and pauses. Sign in to GitHub.com as **the booth account**, then press Enter.
    4. **Default browser.** If Chrome isn't the default browser yet, macOS asks whether to change it. Click **Use “Google Chrome”**, then press Enter. This also works if Chrome was installed before setup ran. If Chrome is already the default, the script skips this step.
    5. **GitHub CLI login.** The GitHub CLI shows a one-time code. Press Enter to open the browser, enter the code, and approve the login (or scope upgrade) while signed in as the booth account. See [GitHub CLI login](../README.md#github-cli-login).
-5. At the end, setup prints a summary of anything that failed. Fix the cause and run `bash setup.sh` again; finished steps are skipped.
+5. At the end, setup prints a summary of anything that failed. Fix the cause and run `bash setup.sh --ref v1` again; finished steps are skipped.
 6. Setup adds Google Chrome, the GitHub Copilot app, VS Code, VS Code Insiders, iTerm2, and VLC to the Dock.
 7. Store booth videos in `$HOME/Videos` and open them from VLC in the Dock.
 
@@ -152,7 +152,7 @@ git clone https://github.com/octobooth-demos/machine-setup.git "$HOME\repos\mach
 cd "$HOME\repos\machine-setup"
 ```
 
-Put the scripts on the tested release the booth uses, currently `v1` (see [Using a release](../README.md#using-a-release)). Do this again before each booth day, and before re-running `setup.ps1` or `install-demo-launcher.ps1`:
+Put the scripts on the tested [`v1` release](https://github.com/octobooth-demos/machine-setup/releases) the booth uses (see [Using a release](../README.md#using-a-release)). Do this again before each booth day, and before re-running `setup.ps1` or `install-demo-launcher.ps1`:
 
 ```powershell
 git -C "$HOME\repos\machine-setup" fetch --tags --force
@@ -181,11 +181,11 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
    2. **GitHub.com in Edge.** The script opens Microsoft Edge and pauses. Sign in to GitHub.com as **the booth account**, then press Enter.
    3. **GitHub CLI login.** The GitHub CLI shows a one-time code. Press Enter to open the browser, enter the code, and approve the login (or scope upgrade) while signed in as the booth account. See [GitHub CLI login](../README.md#github-cli-login).
 4. Setup then installs GitHub CLI extensions, clones the demo repos into `$HOME\repos`, installs the Demo Launcher for every Copilot chat, installs VS Code extensions and the theme, and registers MCP servers for Copilot CLI.
-5. At the end, setup prints a summary of anything that failed. Fix the cause and run `.\setup.ps1` again; finished steps and `winget` packages that are already installed are skipped. For `winget` errors, see [Troubleshooting Windows package installs](../README.md#troubleshooting-windows-package-installs).
+5. At the end, setup prints a summary of anything that failed. Fix the cause and run `.\setup.ps1 -Ref v1` again; finished steps and `winget` packages that are already installed are skipped. For `winget` errors, see [Troubleshooting Windows package installs](../README.md#troubleshooting-windows-package-installs).
 
 #### 6. After setup
 
-- Close the window and open a new terminal so it picks up the updated `PATH`. Check PowerShell 7 with `pwsh --version`. Windows Terminal adds a **PowerShell** profile for it, and Windows PowerShell 5.1 stays installed alongside it. Run future scripts with `pwsh`.
+- Close the window and open a new terminal so it picks up the updated `PATH`. Check PowerShell 7 with `pwsh --version`. Windows Terminal adds a **PowerShell** profile for it, but its default profile may still be **Windows PowerShell** 5.1, which stays installed alongside it (check with `$PSVersionTable.PSVersion`). The scripts work in either, but use PowerShell 7 from here on: open the **PowerShell** profile, or make it the default in Windows Terminal under **Settings** > **Startup** > **Default profile**.
 - To update the Demo Launcher later, see [Before each booth day: update the machine](#before-each-booth-day-update-the-machine).
 - Store booth videos in `C:\Users\<YourUsername>\Videos` and open them from VLC on the taskbar.
 
@@ -232,7 +232,7 @@ Check each item on every booth machine. `N` is this machine's booth account numb
 
 ### Before each booth day: update the machine
 
-Update the setup scripts and the Demo Launcher to the tested release the booth uses, currently `v1`, then restart the GitHub Copilot app so it loads the new launcher. On Windows, fully quit it from its system tray icon (right-click, **Quit**) before reopening it.
+Update the setup scripts and the Demo Launcher to the tested release the booth uses, currently `v1`, then fully restart the GitHub Copilot app so it loads the new launcher: on macOS, quit it with **Cmd+Q**; on Windows, right-click its system tray icon and choose **Quit**. Then reopen it.
 
 On macOS:
 
@@ -253,7 +253,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 .\install-demo-launcher.ps1 -Ref v1
 ```
 
-`v1` always points at the latest tested `v1.x.y` release of both repos, so this picks up fixes without taking untested changes from `main`. If the script says the tag doesn't exist or the checkout has local changes, fix that before the booth opens; see [Using a release](../README.md#using-a-release). To track `main` instead (for example, to test changes before a release), run `git -C ~/repos/machine-setup checkout main`, pull, and run the install without `--ref` / `-Ref`.
+`v1` always points at the latest tested `v1.x.y` release of both repos, so this picks up fixes without taking untested changes from `main`. If the script says the tag doesn't exist or the checkout has local changes, fix that before the booth opens; see [Using a release](../README.md#using-a-release). Developers testing changes before a release can track `main` instead: run `git -C ~/repos/machine-setup checkout main`, pull, and run the install without `--ref` / `-Ref`.
 
 Both are safe to re-run. To also pick up changes in `config.json` (new apps, extensions, or repos), run setup again with the same release (`bash setup.sh --ref v1` or `.\setup.ps1 -Ref v1`) in addition to the launcher update above. Already-finished steps and already-installed packages are skipped. On Windows, run `.\setup.ps1` from **Terminal (Admin)**; otherwise it skips the taskbar pins. See [Re-running on a Windows machine that's already set up](../README.md#re-running-on-a-windows-machine-thats-already-set-up) for details, and [Demo Launcher](../README.md#demo-launcher) for what the install scripts do.
 
