@@ -59,6 +59,8 @@ demo_launcher_main() {
     # install.sh is idempotent, so always run it to refresh the loader
     FORCE_REINSTALL=true
     install_demo_launcher
+    # Booth-day updates run this script, so it also refreshes the booth's Copilot instructions
+    try_install "Copilot booth instructions" install_booth_instructions
 
     if [[ ! -f "$installer" ]]; then
         failed_items+=("Demo Launcher (install.sh not found in $DEMO_LAUNCHER_REPO)")
