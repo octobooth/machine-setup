@@ -262,15 +262,13 @@ Both are safe to re-run. To also pick up changes in `config.json` (new apps, ext
 Two demos take too long to create while a visitor waits: **AI Security** (about 20 minutes until it's fully ready) and **Security Supply Chain (v4)** (about 10 minutes). Create them before the booth opens:
 
 1. Signed in to the Copilot app as the booth account, ask Copilot to "open the demo launcher", and create **AI Security** and **Security Supply Chain (v4)**.
-2. When each is ready, open its demo repo and demo PRs in the browser (Chrome on macOS, Edge on Windows) and bookmark each one (**Cmd+D** in Chrome, **Ctrl+D** in Edge):
-   - **AI Security:** the repo, the "Containerize the supplier portal and deploy it to staging" PR, and Copilot's draft fix PR for the `js/sql-injection` alert.
-   - **Security Supply Chain (v4):** the repo and its two demo PRs, `feature-add-tos-download` and `feature/supplier-notes`. The repo also opens several Dependabot PRs first, so bookmark the two demo PRs directly.
+2. When each is ready, open its demo repo in the browser (Chrome on macOS, Edge on Windows) and bookmark it (**Cmd+D** in Chrome, **Ctrl+D** in Edge).
 
 Both demos create repos in the `octobooth-demos` org, where the [nightly cleanup](#org-nightly-cleanup) deletes them once they're more than 72 hours old. Create them within 72 hours of when you'll use them; one of each can serve the whole day. Before-the-demo checks: [AI Security](https://github.com/octobooth-demos/repo-setup-scripts#ai-security-ai-scan--agentic-autofix) and [Security Supply Chain (v4)](https://github.com/octobooth-demos/repo-setup-scripts#security-supply-chain-v4) in the `repo-setup-scripts` README.
 
 ## Part 2: During the event: run demos
 
-1. **Open the demo apps.** Open the GitHub Copilot app, VS Code, VS Code Insiders, and VLC from the Dock (macOS) or taskbar (Windows). Open your booth videos in VLC from `~/Videos` (`C:\Users\<YourUsername>\Videos` on Windows). In the browser (Chrome on macOS, Edge on Windows), use the bookmarks for the booth account, `octobooth-demos`, and the [security demos you created ahead of time](#create-the-security-demos-ahead-of-time).
+1. **Open the demo apps.** Open the GitHub Copilot app, VS Code, VS Code Insiders, and VLC from the Dock (macOS) or taskbar (Windows). Open your booth videos in VLC from `~/Videos` (`C:\Users\<YourUsername>\Videos` on Windows). In the browser (Chrome on macOS, Edge on Windows), use the bookmarks for the booth account, `octobooth-demos`, and the [security demo repos you created ahead of time](#create-the-security-demos-ahead-of-time).
 2. **Open the Demo Launcher.** Ask Copilot to "open the demo launcher" in any chat.
 3. **Create demos from the launcher.** It creates each demo repo in the background and opens a session for it. The launcher, the demo list, and per-demo notes are documented in the `repo-setup-scripts` README (org members only).
 
