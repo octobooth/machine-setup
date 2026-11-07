@@ -30,7 +30,10 @@ Describe 'Invoke-NativeCommand' {
     It 'returns stderr from a successful command as plain text' {
         $output = @(Invoke-FakeNative -ExitCode 0)
         $LASTEXITCODE | Should -Be 0
-        $output | Should -Be @('Updating 1234567..89abcde', '   1234567..89abcde  main -> main')
+        # stdout and stderr are separate pipes, so their order isn't guaranteed
+        $output.Count | Should -Be 2
+        $output | Should -Contain 'Updating 1234567..89abcde'
+        $output | Should -Contain '   1234567..89abcde  main -> main'
         $output | ForEach-Object { $_ | Should -BeOfType [string] }
     }
 
