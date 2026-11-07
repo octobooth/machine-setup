@@ -95,7 +95,7 @@ function Sync-DemoLauncherRepo {
         return
     }
 
-    gh auth status --active -h github.com 2>&1 | Out-Null
+    Invoke-NativeCommand gh auth status --active -h github.com | Out-Null
     if ($LASTEXITCODE -ne 0) {
         $script:failedItems += "clone: $repo (GitHub CLI not logged in)"
         Write-Err "GitHub CLI isn't logged in. Run 'gh auth login -h github.com' with the booth account, then re-run."

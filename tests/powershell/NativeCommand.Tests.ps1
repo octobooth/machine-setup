@@ -53,6 +53,25 @@ Describe 'Invoke-NativeCommand' {
         $output | Should -Be @('true')
     }
 
+    It 'passes a single argument through whole' {
+        $output = @(Invoke-NativeCommand git --version)
+        $LASTEXITCODE | Should -Be 0
+        $output[0] | Should -Match '^git version '
+    }
+
+    It 'runs a command with no arguments' {
+        $output = @(Invoke-NativeCommand git)
+        # git with no arguments prints its usage and exits 1
+        $LASTEXITCODE | Should -Be 1
+        ($output -join "`n") | Should -Match 'usage: git'
+    }
+
+    It "doesn't throw when a silenced git command fails under ErrorActionPreference Stop" {
+        $ErrorActionPreference = 'Stop'
+        { Invoke-NativeCommand git -C (Get-Location) tag -d no-such-tag-for-tests | Out-Null } | Should -Not -Throw
+        $LASTEXITCODE | Should -Be 1
+    }
+
     Context 'install-demo-launcher.ps1 updating its checkout' {
         BeforeAll {
             # The test origin is a local folder, so treat it as the trusted repo

@@ -107,7 +107,11 @@ function Invoke-SafeInstall {
 # succeeded, so callers must decide success from $LASTEXITCODE, which this leaves set.
 # Uses $args rather than a param block so flags like -C pass straight through.
 function Invoke-NativeCommand {
-    $command, $arguments = $args
+    $command = $args[0]
+    # Assigned rather than returned from an if, which would unwrap a lone argument into a
+    # string that splatting then passes one character at a time
+    $arguments = @()
+    if ($args.Count -gt 1) { $arguments = @($args[1..($args.Count - 1)]) }
     # With 'Stop', 5.1 would throw on the first stderr line instead of returning it
     $savedPreference = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
@@ -796,7 +800,7 @@ function Get-DemoLauncherRepoDir {
 function Test-DemoLauncherRemote {
     param([string]$Target)
 
-    $url = git -C $Target remote get-url origin 2>$null
+    $url = Invoke-NativeCommand git -C $Target remote get-url origin
     if ($LASTEXITCODE -ne 0) { return $false }
     $pattern = '^(https://github\.com/|git@github\.com:|ssh://git@github\.com/)' + [regex]::Escape($script:TrustedDemoLauncherRepo) + '(\.git)?/?$'
     return ("$url".Trim() -match $pattern)
@@ -819,7 +823,7 @@ function Test-GitWorktreeClean {
 
 function Test-GitDetachedHead {
     param([string]$Target)
-    git -C $Target symbolic-ref --quiet HEAD 2>$null | Out-Null
+    Invoke-NativeCommand git -C $Target symbolic-ref --quiet HEAD | Out-Null
     return ($LASTEXITCODE -ne 0)
 }
 
@@ -841,7 +845,7 @@ function Switch-DemoLauncherRelease {
     $failure = "release: $script:TrustedDemoLauncherRepo at $Ref"
     $validName = $false
     if (-not $Ref.StartsWith('-')) {
-        git check-ref-format "refs/tags/$Ref" 2>$null | Out-Null
+        Invoke-NativeCommand git check-ref-format "refs/tags/$Ref" | Out-Null
         $validName = ($LASTEXITCODE -eq 0)
     }
     if (-not $validName) {
@@ -860,10 +864,10 @@ function Switch-DemoLauncherRelease {
     }
 
     # fetch --tags doesn't remove tags deleted on origin, so check origin still has it
-    git -C $Target ls-remote --quiet --exit-code --tags origin "refs/tags/$Ref" 2>$null | Out-Null
+    Invoke-NativeCommand git -C $Target ls-remote --quiet --exit-code --tags origin "refs/tags/$Ref" | Out-Null
     if ($LASTEXITCODE -eq 2) {
         $script:failedItems += $failure
-        git -C $Target tag -d $Ref 2>$null | Out-Null
+        Invoke-NativeCommand git -C $Target tag -d $Ref | Out-Null
         if ($LASTEXITCODE -eq 0) {
             Write-Err "Release tag $Ref isn't on GitHub (it may have been withdrawn), so its local copy was removed. Use the major the booth uses (currently v1), or run without a release to track main."
         } else {
@@ -877,7 +881,7 @@ function Switch-DemoLauncherRelease {
         return $false
     }
 
-    git -C $Target rev-parse --quiet --verify "refs/tags/$Ref^{commit}" 2>$null | Out-Null
+    Invoke-NativeCommand git -C $Target rev-parse --quiet --verify "refs/tags/$Ref^{commit}" | Out-Null
     if ($LASTEXITCODE -ne 0) {
         $script:failedItems += $failure
         Write-Err "Release tag $Ref doesn't exist in $script:TrustedDemoLauncherRepo. Use the major the booth uses (currently v1), or run without a release to track main."
@@ -908,10 +912,10 @@ function Restore-DemoLauncherDefaultBranch {
     if (-not (Test-GitDetachedHead -Target $Target)) { return $true }
 
     $failure = "update: $script:TrustedDemoLauncherRepo (couldn't leave its pinned release)"
-    $branch = git -C $Target symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>$null
+    $branch = Invoke-NativeCommand git -C $Target symbolic-ref --quiet --short refs/remotes/origin/HEAD
     $branch = if ($LASTEXITCODE -eq 0 -and $branch) { "$branch".Trim() -replace '^origin/', '' } else { 'main' }
-    $pinned = git -C $Target describe --tags --exact-match HEAD 2>$null
-    if ($LASTEXITCODE -ne 0 -or -not $pinned) { $pinned = git -C $Target rev-parse --short HEAD 2>$null }
+    $pinned = Invoke-NativeCommand git -C $Target describe --tags --exact-match HEAD
+    if ($LASTEXITCODE -ne 0 -or -not $pinned) { $pinned = Invoke-NativeCommand git -C $Target rev-parse --short HEAD }
 
     if (-not (Test-GitWorktreeClean -Target $Target)) {
         $script:failedItems += $failure
@@ -1041,7 +1045,7 @@ function Invoke-Main {
         Write-Warn "NONINTERACTIVE set: skipping GitHub web and CLI authentication"
         $skipRepoClones = $true
         if (Get-Command gh -ErrorAction SilentlyContinue) {
-            gh auth status --active -h github.com 2>&1 | Out-Null
+            Invoke-NativeCommand gh auth status --active -h github.com | Out-Null
             if ($LASTEXITCODE -eq 0) {
                 $skipRepoClones = $false
                 Install-GHExtensions
