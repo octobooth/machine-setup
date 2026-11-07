@@ -426,7 +426,7 @@ The GitHub Actions workflow validates syntax, linting, configuration shape, and 
 #### Bash
 
 ```bash
-shellcheck -x setup.sh install-demo-launcher.sh
+shellcheck --severity=warning -x setup.sh install-demo-launcher.sh
 bash -n setup.sh && bash -n install-demo-launcher.sh
 bats tests/bash
 ```
