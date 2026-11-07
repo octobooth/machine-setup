@@ -985,6 +985,184 @@ function Install-DemoLauncher {
     Install-DemoLauncherLoader -CheckoutDir $checkout
 }
 
+# ----------------------------------------
+# Playwright MCP bundle
+# ----------------------------------------
+# Booth machines can't reach the npm registry, so the Playwright MCP server comes prebuilt
+# from this repo's releases. mcp-bundle\package.json pins the version, and the
+# "Playwright MCP bundle" workflow publishes it as playwright-mcp-v<version>.
+
+$script:PlaywrightMcpBundleRepo = 'octobooth-demos/machine-setup'
+$script:PlaywrightMcpBrowser = 'msedge'
+$script:McpBundlePackagePath = Join-Path (Join-Path $PSScriptRoot 'mcp-bundle') 'package.json'
+
+function Get-PlaywrightMcpBundleVersion {
+    if (-not (Test-Path $script:McpBundlePackagePath)) { return $null }
+    try {
+        $package = Get-Content -Raw -Path $script:McpBundlePackagePath | ConvertFrom-Json
+        return $package.dependencies.'@playwright/mcp'
+    }
+    catch {
+        return $null
+    }
+}
+
+function Get-PlaywrightMcpDir {
+    $copilotHome = if ($env:COPILOT_HOME) { $env:COPILOT_HOME } else { Join-Path $env:USERPROFILE ".copilot" }
+    return Join-Path (Join-Path $copilotHome 'mcp-servers') 'playwright'
+}
+
+function Get-PlaywrightMcpCli {
+    return [System.IO.Path]::Combine((Get-PlaywrightMcpDir), 'node_modules', '@playwright', 'mcp', 'cli.js')
+}
+
+# Absolute path to node.exe. The Copilot app may not see PATH changes from a winget install
+# made earlier in this session, so also check the default install folder.
+function Get-NodePath {
+    $node = Get-Command node -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($node) { return $node.Source }
+    if ($env:ProgramFiles) {
+        $default = Join-Path $env:ProgramFiles 'nodejs\node.exe'
+        if (Test-Path $default) { return $default }
+    }
+    return $null
+}
+
+# Windows' own tar.exe, not Git's, which misreads C:\ paths
+function Get-TarCommand {
+    if ($env:SystemRoot) {
+        $systemTar = Join-Path $env:SystemRoot 'System32\tar.exe'
+        if (Test-Path $systemTar) { return $systemTar }
+    }
+    return 'tar'
+}
+
+# Copies one bundle file from a release URL or, for offline installs and tests, a local folder
+# ($env:PLAYWRIGHT_MCP_BUNDLE_URL)
+function Save-PlaywrightMcpBundleFile {
+    param(
+        [string]$Source,
+        [string]$Name,
+        [string]$Destination
+    )
+    $outFile = Join-Path $Destination $Name
+    if ($Source -match '^https?://') {
+        [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+        # The progress bar makes Invoke-WebRequest very slow in Windows PowerShell 5.1
+        $savedProgress = $ProgressPreference
+        $ProgressPreference = 'SilentlyContinue'
+        try {
+            Invoke-WebRequest -Uri "$Source/$Name" -OutFile $outFile -UseBasicParsing -TimeoutSec 300 -ErrorAction Stop
+        }
+        finally {
+            $ProgressPreference = $savedProgress
+        }
+    } else {
+        Copy-Item -Path (Join-Path $Source $Name) -Destination $outFile -ErrorAction Stop
+    }
+}
+
+# Downloads, verifies, and unpacks the pinned bundle into $HOME\.copilot\mcp-servers\playwright.
+# Never fails setup: it warns and skips if the bundle can't be installed.
+function Install-PlaywrightMcpBundle {
+    $version = Get-PlaywrightMcpBundleVersion
+    if (-not $version) {
+        Write-Warn "No Playwright MCP version pinned in mcp-bundle\package.json, skipping it"
+        return
+    }
+
+    $dest = Get-PlaywrightMcpDir
+    $versionFile = Join-Path $dest '.bundle-version'
+    if (-not $script:ForceReinstall -and (Test-Path (Get-PlaywrightMcpCli)) -and (Test-Path $versionFile) -and
+        ((Get-Content -Raw -Path $versionFile).Trim() -eq $version)) {
+        Write-Info "Playwright MCP $version already installed, skipping..."
+        return
+    }
+
+    $asset = "playwright-mcp-$version.tgz"
+    $source = if ($env:PLAYWRIGHT_MCP_BUNDLE_URL) { $env:PLAYWRIGHT_MCP_BUNDLE_URL } else {
+        "https://github.com/$script:PlaywrightMcpBundleRepo/releases/download/playwright-mcp-v$version"
+    }
+    Write-Info "Installing Playwright MCP $version..."
+
+    # Stage next to the destination so the final move stays on the same drive
+    $parent = Split-Path $dest
+    New-Item -Path $parent -ItemType Directory -Force | Out-Null
+    $tmp = Join-Path $parent (".playwright-download-" + [guid]::NewGuid().ToString('N'))
+    New-Item -Path $tmp -ItemType Directory -Force | Out-Null
+
+    try {
+        try {
+            Save-PlaywrightMcpBundleFile -Source $source -Name $asset -Destination $tmp
+            Save-PlaywrightMcpBundleFile -Source $source -Name "$asset.sha256" -Destination $tmp
+        }
+        catch {
+            Write-Warn "Couldn't download Playwright MCP $version from $source, skipping it"
+            return
+        }
+
+        $expected = ((Get-Content -Path (Join-Path $tmp "$asset.sha256") -TotalCount 1) -split '\s+')[0]
+        $actual = (Get-FileHash -Algorithm SHA256 -Path (Join-Path $tmp $asset)).Hash
+        if (-not $expected -or $expected -ne $actual) {
+            Write-Warn "Playwright MCP $version download failed its checksum, skipping it"
+            return
+        }
+
+        $bundle = Join-Path $tmp 'bundle'
+        New-Item -Path $bundle -ItemType Directory -Force | Out-Null
+        Invoke-NativeCommand (Get-TarCommand) -xzf (Join-Path $tmp $asset) -C $bundle | Out-Null
+        $bundleCli = [System.IO.Path]::Combine($bundle, 'node_modules', '@playwright', 'mcp', 'cli.js')
+        if ($LASTEXITCODE -ne 0 -or -not (Test-Path $bundleCli)) {
+            Write-Warn "Couldn't unpack Playwright MCP $version, skipping it"
+            return
+        }
+        Set-Content -Path (Join-Path $bundle '.bundle-version') -Value $version -Encoding ASCII
+
+        if (Test-Path $dest) { Remove-Item -Path $dest -Recurse -Force -ErrorAction Stop }
+        Move-Item -Path $bundle -Destination $dest -ErrorAction Stop
+        Write-Success "Installed Playwright MCP $version to $dest"
+    }
+    catch {
+        Write-Warn "Couldn't install Playwright MCP $version, skipping it: $_"
+    }
+    finally {
+        Remove-Item -Path $tmp -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+# Adds the bundled Playwright server to the MCP config, if it's installed.
+# Leaves a playwright entry alone if someone set up their own.
+function Add-PlaywrightMcpServer {
+    param([object]$McpConfig)
+
+    $cli = Get-PlaywrightMcpCli
+    if (-not (Test-Path $cli)) { return }
+
+    $node = Get-NodePath
+    if (-not $node) {
+        Write-Warn "Node.js not found, so the Playwright MCP server wasn't registered"
+        return
+    }
+
+    $existing = $McpConfig.mcpServers.PSObject.Properties['playwright']
+    if ($null -ne $existing) {
+        $existingArgs = @($existing.Value.args)
+        if ($existingArgs.Count -eq 0 -or $existingArgs[0] -ne $cli) {
+            Write-Info "Keeping your own 'playwright' MCP server entry"
+            return
+        }
+    }
+
+    $serverConfig = [PSCustomObject]@{
+        tools   = @("*")
+        type    = "local"
+        command = $node
+        args    = @($cli, "--browser=$script:PlaywrightMcpBrowser")
+    }
+    $McpConfig.mcpServers | Add-Member -NotePropertyName 'playwright' -NotePropertyValue $serverConfig -Force
+    Write-Success "Registered MCP server: playwright (prebuilt)"
+}
+
 function Register-MCPServers {
     Write-Info "Registering MCP servers for Copilot CLI..."
 
@@ -1037,6 +1215,8 @@ function Register-MCPServers {
         $mcpConfig.mcpServers | Add-Member -NotePropertyName $server.name -NotePropertyValue $serverConfig -Force
         Write-Success "Registered MCP server: $($server.name)"
     }
+
+    Add-PlaywrightMcpServer -McpConfig $mcpConfig
 
     $mcpConfig | ConvertTo-Json -Depth 10 | Out-File -FilePath $mcpConfigPath -Force -Encoding UTF8
     Write-Success "MCP servers written to $mcpConfigPath"
@@ -1109,7 +1289,8 @@ function Invoke-Main {
     # Install extensions and configure themes
     Initialize-Editors
 
-    # Register MCP servers for Copilot CLI
+    # Register MCP servers for Copilot CLI, including the prebuilt Playwright server
+    Install-PlaywrightMcpBundle
     Register-MCPServers
 
     # Print summary and finish

@@ -87,6 +87,97 @@ load_script() {
     [ "$output" = "/usr/local/bin/playwright-mcp" ]
 }
 
+# Builds a fake Playwright MCP release (tgz + .sha256) for the pinned version in $1
+make_playwright_mcp_release() {
+    local release_dir="$1" version
+    version=$(playwright_mcp_bundle_version)
+    local src="$BATS_TEST_TMPDIR/bundle-src"
+    mkdir -p "$src/node_modules/@playwright/mcp" "$release_dir"
+    echo "console.log('fake playwright mcp')" > "$src/node_modules/@playwright/mcp/cli.js"
+    tar -czf "$release_dir/playwright-mcp-$version.tgz" -C "$src" node_modules
+    (cd "$release_dir" && shasum -a 256 "playwright-mcp-$version.tgz" > "playwright-mcp-$version.tgz.sha256")
+}
+
+# Puts a fake node first on PATH so registration doesn't depend on the machine
+use_fake_node() {
+    mkdir -p "$BATS_TEST_TMPDIR/bin"
+    printf '#!/bin/sh\nexit 0\n' > "$BATS_TEST_TMPDIR/bin/node"
+    chmod +x "$BATS_TEST_TMPDIR/bin/node"
+    export PATH="$BATS_TEST_TMPDIR/bin:$PATH"
+}
+
+@test "install_playwright_mcp_bundle installs the pinned release and skips it next time" {
+    load_script
+    make_playwright_mcp_release "$BATS_TEST_TMPDIR/release"
+    export PLAYWRIGHT_MCP_BUNDLE_URL="$BATS_TEST_TMPDIR/release"
+
+    run install_playwright_mcp_bundle
+    [ "$status" -eq 0 ]
+    [[ -f "$COPILOT_HOME/mcp-servers/playwright/node_modules/@playwright/mcp/cli.js" ]]
+    [ "$(cat "$COPILOT_HOME/mcp-servers/playwright/.bundle-version")" = "$(playwright_mcp_bundle_version)" ]
+
+    run install_playwright_mcp_bundle
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"already installed"* ]] || false
+
+    # No staging folders are left behind
+    [ "$(find "$COPILOT_HOME/mcp-servers" -mindepth 1 -maxdepth 1 | wc -l | tr -d ' ')" = "1" ]
+}
+
+@test "install_playwright_mcp_bundle warns and skips when the checksum doesn't match" {
+    load_script
+    make_playwright_mcp_release "$BATS_TEST_TMPDIR/release"
+    echo "0000  tampered" > "$BATS_TEST_TMPDIR/release/playwright-mcp-$(playwright_mcp_bundle_version).tgz.sha256"
+    export PLAYWRIGHT_MCP_BUNDLE_URL="$BATS_TEST_TMPDIR/release"
+
+    run install_playwright_mcp_bundle
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"checksum"* ]] || false
+    [[ ! -e "$COPILOT_HOME/mcp-servers/playwright" ]]
+}
+
+@test "install_playwright_mcp_bundle warns and skips when the download fails" {
+    load_script
+    export PLAYWRIGHT_MCP_BUNDLE_URL="$BATS_TEST_TMPDIR/missing"
+
+    run install_playwright_mcp_bundle
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Couldn't download"* ]] || false
+    [[ ! -e "$COPILOT_HOME/mcp-servers/playwright" ]]
+}
+
+@test "register_mcp_servers registers the installed Playwright bundle with node and Chrome" {
+    load_script
+    load_config
+    use_fake_node
+    make_playwright_mcp_release "$BATS_TEST_TMPDIR/release"
+    PLAYWRIGHT_MCP_BUNDLE_URL="$BATS_TEST_TMPDIR/release" install_playwright_mcp_bundle
+
+    register_mcp_servers
+
+    local mcp_config="$COPILOT_HOME/mcp-config.json"
+    run jq -r '.mcpServers.playwright.command' "$mcp_config"
+    [ "$output" = "$BATS_TEST_TMPDIR/bin/node" ]
+
+    run jq -r '.mcpServers.playwright.args | join(" ")' "$mcp_config"
+    [ "$output" = "$COPILOT_HOME/mcp-servers/playwright/node_modules/@playwright/mcp/cli.js --browser=chrome" ]
+}
+
+@test "register_mcp_servers doesn't replace a custom Playwright entry with the bundle" {
+    load_script
+    load_config
+    use_fake_node
+    make_playwright_mcp_release "$BATS_TEST_TMPDIR/release"
+    PLAYWRIGHT_MCP_BUNDLE_URL="$BATS_TEST_TMPDIR/release" install_playwright_mcp_bundle
+    printf '%s\n' '{"mcpServers":{"playwright":{"type":"local","command":"/opt/my-playwright","args":[]}}}' \
+        > "$COPILOT_HOME/mcp-config.json"
+
+    register_mcp_servers
+
+    run jq -r '.mcpServers.playwright.command' "$COPILOT_HOME/mcp-config.json"
+    [ "$output" = "/opt/my-playwright" ]
+}
+
 @test "try_install records failures without exiting" {
     load_script
 
@@ -919,6 +1010,8 @@ release_commit() {
     load_config() { :; }
     check_demo_launcher_prereqs() { :; }
     install_demo_launcher() { echo "release=$BOOTH_RELEASE"; }
+    install_playwright_mcp_bundle() { :; }
+    register_mcp_servers() { :; }
     mkdir -p "$HOME/repos/repo-setup-scripts/.git"
 
     run demo_launcher_main --ref v1.2.0

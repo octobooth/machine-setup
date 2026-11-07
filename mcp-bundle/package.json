@@ -1,0 +1,9 @@
+{
+  "name": "booth-playwright-mcp-bundle",
+  "private": true,
+  "description": "Pins the Playwright MCP server that setup installs on booth machines from a GitHub release, because they can't reach the npm registry.",
+  "license": "MIT",
+  "dependencies": {
+    "@playwright/mcp": "0.0.83"
+  }
+}

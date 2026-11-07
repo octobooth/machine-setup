@@ -98,6 +98,91 @@ Describe 'setup.ps1' {
         $mcpConfig.mcpServers.'microsoft-learn'.url | Should -Be 'https://learn.microsoft.com/api/mcp'
     }
 
+    Context 'Playwright MCP bundle' {
+        BeforeEach {
+            $script:savedForce = $script:ForceReinstall
+            $script:ForceReinstall = $false
+            $env:COPILOT_HOME = Join-Path $TestDrive ("copilot-" + [guid]::NewGuid().ToString('N'))
+            $script:bundleVersion = Get-PlaywrightMcpBundleVersion
+            $script:releaseDir = Join-Path $TestDrive ("release-" + [guid]::NewGuid().ToString('N'))
+            $asset = "playwright-mcp-$script:bundleVersion.tgz"
+
+            # A fake release: a tgz with cli.js and its .sha256, like the workflow publishes
+            $src = Join-Path $TestDrive ("bundle-src-" + [guid]::NewGuid().ToString('N'))
+            $cliDir = [System.IO.Path]::Combine($src, 'node_modules', '@playwright', 'mcp')
+            New-Item -Path $cliDir -ItemType Directory -Force | Out-Null
+            New-Item -Path $script:releaseDir -ItemType Directory -Force | Out-Null
+            "console.log('fake playwright mcp')" | Set-Content -Path (Join-Path $cliDir 'cli.js')
+            Invoke-NativeCommand (Get-TarCommand) -czf (Join-Path $script:releaseDir $asset) -C $src node_modules | Out-Null
+            $hash = (Get-FileHash -Algorithm SHA256 -Path (Join-Path $script:releaseDir $asset)).Hash.ToLowerInvariant()
+            "$hash  $asset" | Set-Content -Path (Join-Path $script:releaseDir "$asset.sha256")
+            $env:PLAYWRIGHT_MCP_BUNDLE_URL = $script:releaseDir
+
+            $script:fakeNode = Join-Path $TestDrive 'node.exe'
+            Mock Get-NodePath { $script:fakeNode }
+        }
+
+        AfterEach {
+            $script:ForceReinstall = $script:savedForce
+            Remove-Item Env:PLAYWRIGHT_MCP_BUNDLE_URL -ErrorAction SilentlyContinue
+        }
+
+        It 'pins an exact @playwright/mcp version' {
+            $script:bundleVersion | Should -Match '^\d+\.\d+\.\d+$'
+        }
+
+        It 'installs the pinned release and skips it next time' {
+            Install-PlaywrightMcpBundle
+
+            Test-Path (Get-PlaywrightMcpCli) | Should -BeTrue
+            (Get-Content -Raw -Path (Join-Path (Get-PlaywrightMcpDir) '.bundle-version')).Trim() | Should -Be $script:bundleVersion
+            @(Get-ChildItem -Force -Path (Split-Path (Get-PlaywrightMcpDir))).Count | Should -Be 1
+
+            Install-PlaywrightMcpBundle
+            Should -Invoke Write-Info -ParameterFilter { $Message -like '*already installed*' } -Times 1 -Exactly
+        }
+
+        It 'warns and skips when the checksum does not match' {
+            "0000  tampered" | Set-Content -Path (Join-Path $script:releaseDir "playwright-mcp-$script:bundleVersion.tgz.sha256")
+
+            Install-PlaywrightMcpBundle
+
+            Test-Path (Get-PlaywrightMcpDir) | Should -BeFalse
+            Should -Invoke Write-Warn -ParameterFilter { $Message -like '*checksum*' } -Times 1 -Exactly
+            $script:failedItems.Count | Should -Be 0
+        }
+
+        It 'warns and skips when the download fails' {
+            $env:PLAYWRIGHT_MCP_BUNDLE_URL = Join-Path $TestDrive 'missing'
+
+            Install-PlaywrightMcpBundle
+
+            Test-Path (Get-PlaywrightMcpDir) | Should -BeFalse
+            Should -Invoke Write-Warn -ParameterFilter { $Message -like "*Couldn't download*" } -Times 1 -Exactly
+            $script:failedItems.Count | Should -Be 0
+        }
+
+        It 'registers the installed bundle with node and Edge' {
+            Install-PlaywrightMcpBundle
+            Register-MCPServers
+
+            $mcpConfig = Get-Content -Raw -Path (Join-Path $env:COPILOT_HOME 'mcp-config.json') | ConvertFrom-Json
+            $mcpConfig.mcpServers.playwright.command | Should -Be $script:fakeNode
+            @($mcpConfig.mcpServers.playwright.args) | Should -Be @((Get-PlaywrightMcpCli), '--browser=msedge')
+        }
+
+        It 'does not replace a custom Playwright entry with the bundle' {
+            Install-PlaywrightMcpBundle
+            '{"mcpServers":{"playwright":{"type":"local","command":"C:\\tools\\my-playwright.exe","args":[]}}}' |
+                Out-File -FilePath (Join-Path $env:COPILOT_HOME 'mcp-config.json') -Encoding utf8
+
+            Register-MCPServers
+
+            $mcpConfig = Get-Content -Raw -Path (Join-Path $env:COPILOT_HOME 'mcp-config.json') | ConvertFrom-Json
+            $mcpConfig.mcpServers.playwright.command | Should -Be 'C:\tools\my-playwright.exe'
+        }
+    }
+
     It 'Invoke-SafeInstall records native command failures' {
         Invoke-SafeInstall -Description 'example failure' -Action { & cmd /c exit 1 }
 
@@ -506,6 +591,7 @@ Describe 'setup.ps1' {
             Mock Copy-Repos { }
             Mock Install-DemoLauncher { }
             Mock Initialize-Editors { }
+            Mock Install-PlaywrightMcpBundle { }
             Mock Register-MCPServers { }
                 Mock Write-Summary { }
             Mock Get-Command { $true } -ParameterFilter { $Name -eq 'gh' }

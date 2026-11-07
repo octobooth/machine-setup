@@ -1,0 +1,11 @@
+version: 2
+updates:
+  # Playwright MCP server that setup installs on booth machines. Merging a bump to main
+  # publishes a new playwright-mcp-v<version> release (see README "Playwright MCP bundle").
+  - package-ecosystem: npm
+    directory: /mcp-bundle
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: "mcp-bundle"
+    open-pull-requests-limit: 2

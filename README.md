@@ -28,7 +28,7 @@ This repository contains setup scripts for configuring booth machines. The scrip
 - Pins VS Code, VS Code Insiders, the GitHub Copilot app, Windows Terminal, and VLC to the Windows taskbar.
 - Makes Google Chrome the default browser on macOS (via `defaultbrowser`), including when Chrome was already installed.
 - Configures VLC media player settings.
-- Registers shared MCP servers for Copilot CLI. These are all remote (HTTP) servers, because booth machines can't reach the npm registry. Setup also removes the Playwright MCP server (`npx @playwright/mcp`) that earlier versions registered, since it hangs without npm and leaves Copilot sessions stuck at "busy". A `playwright` entry that doesn't use `npx` is left alone.
+- Registers shared MCP servers for Copilot CLI: the remote (HTTP) servers in `config.json`, plus a [prebuilt Playwright MCP server](#playwright-mcp-server) downloaded from this repo's releases, because booth machines can't reach the npm registry. Setup also removes the `npx @playwright/mcp` entry that earlier versions registered, since it hangs without npm and leaves Copilot sessions stuck at "busy". A `playwright` entry you set up yourself is left alone.
 - Clones the demo repos into `~/repos` and installs the Demo Launcher canvas for every Copilot session. `install-demo-launcher.sh` (macOS/Linux) and `install-demo-launcher.ps1` (Windows) do just that step on a machine that is already set up (see [Demo Launcher](#demo-launcher)). Both can pin the demo scripts to a tested [release](#using-a-release).
 
 ## Configuration
@@ -457,7 +457,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 .\install-demo-launcher.ps1 -Ref v1
 ```
 
-Re-running is safe. It checks for `git` and `gh`, clones `octobooth-demos/repo-setup-scripts` to `$HOME\repos\repo-setup-scripts` if it's missing (this needs a logged-in GitHub CLI; see [GitHub CLI login](#github-cli-login)), or, after checking that its `origin` is that repo, fast-forwards it with `git pull --ff-only`. With `-Ref` (or `$env:BOOTH_RELEASE`) it checks out that release instead, and without one it first switches a checkout that's on a release back to its default branch (see [Using a release](#using-a-release)). It then (re)writes the loader. It exits with an error and lists what failed if the clone, pull, or loader doesn't work. If a folder with that name exists but isn't a git checkout, the script stops; move the folder aside and re-run.
+Re-running is safe. It checks for `git` and `gh`, clones `octobooth-demos/repo-setup-scripts` to `$HOME\repos\repo-setup-scripts` if it's missing (this needs a logged-in GitHub CLI; see [GitHub CLI login](#github-cli-login)), or, after checking that its `origin` is that repo, fast-forwards it with `git pull --ff-only`. With `-Ref` (or `$env:BOOTH_RELEASE`) it checks out that release instead, and without one it first switches a checkout that's on a release back to its default branch (see [Using a release](#using-a-release)). It then (re)writes the loader, installs the pinned [Playwright MCP server](#playwright-mcp-server) if it's new or changed, and refreshes the MCP servers in `$HOME\.copilot\mcp-config.json` (a failed Playwright download only warns). It exits with an error and lists what failed if the clone, pull, or loader doesn't work. If a folder with that name exists but isn't a git checkout, the script stops; move the folder aside and re-run.
 
 To remove the loader (the checkout and run history are kept), run `.\install-demo-launcher.ps1 -Uninstall`.
 
@@ -489,6 +489,7 @@ To track `main` instead, see [Using a release](#using-a-release). It's safe to r
 1. Checks for `gh`, `git`, and `jq` (`brew install gh jq`) and that the GitHub CLI is logged in. Logging in is interactive, so if it isn't, the script prints the `gh auth login` command to run and stops. It also warns if the login is missing the `codespace`/`delete_repo`/`project`/`workflow` scopes (`gh auth refresh -h github.com -s codespace,delete_repo,project,workflow`).
 2. Clones `octobooth-demos/repo-setup-scripts` to `~/repos/repo-setup-scripts`, or pulls it if it's already there. With `--ref` (or `BOOTH_RELEASE`) it checks out that release instead; without one, it first switches a checkout that's on a release back to its default branch.
 3. Runs `install.sh` to (re)write the loader.
+4. Installs the pinned [Playwright MCP server](#playwright-mcp-server) if it's new or changed, and refreshes the MCP servers in `~/.copilot/mcp-config.json`. If the download fails, it warns and carries on.
 
 Then restart the GitHub Copilot app (or reload extensions) and ask Copilot to "open the demo launcher" in any session to check it works. To remove it, run `bash install-demo-launcher.sh --uninstall`.
 
@@ -504,7 +505,7 @@ For more on the Demo Launcher itself, see the [repo-setup-scripts quick start](h
 
 ### Copilot sessions stuck at "busy"
 
-Earlier versions of setup registered a Playwright MCP server that runs `npx @playwright/mcp@latest`. Booth machines can't reach the npm registry, so it hangs at startup and keeps Copilot sessions "busy". Rerunning setup removes it. To remove it by hand, run this, then fully quit and reopen the GitHub Copilot app.
+Earlier versions of setup registered a Playwright MCP server that runs `npx @playwright/mcp@latest`. Booth machines can't reach the npm registry, so it hangs at startup and keeps Copilot sessions "busy". Rerunning setup or `install-demo-launcher` replaces it with the [prebuilt Playwright MCP server](#playwright-mcp-server). To remove it by hand, run this, then fully quit and reopen the GitHub Copilot app.
 
 macOS:
 
@@ -517,6 +518,48 @@ Windows (PowerShell):
 ```powershell
 $f = "$HOME\.copilot\mcp-config.json"; $c = Get-Content -Raw $f | ConvertFrom-Json; $c.mcpServers.PSObject.Properties.Remove('playwright'); $c | ConvertTo-Json -Depth 10 | Set-Content $f -Encoding UTF8
 ```
+
+## Playwright MCP server
+
+Booth machines can't reach the npm registry, so `npx @playwright/mcp` doesn't work there. Instead, setup and `install-demo-launcher` install a prebuilt copy of the [Playwright MCP server](https://github.com/microsoft/playwright-mcp) from this repo's releases. Anyone can use it for their own demos on a booth machine.
+
+### What's installed and where
+
+- The server and its dependencies are in `~/.copilot/mcp-servers/playwright` (`$HOME\.copilot\mcp-servers\playwright` on Windows). `.bundle-version` there shows the version.
+- It's registered as `playwright` in `~/.copilot/mcp-config.json`, so every Copilot CLI and GitHub Copilot app session gets its browser tools. It runs with the absolute path to `node` and drives the browser that setup installs: Google Chrome on macOS (`--browser=chrome`), Microsoft Edge on Windows (`--browser=msedge`). No browser download is needed.
+- The version is pinned in [`mcp-bundle/package.json`](mcp-bundle/package.json) and its lockfile. Setup downloads `playwright-mcp-<version>.tgz` from the [`playwright-mcp-v<version>` release](https://github.com/octobooth-demos/machine-setup/releases?q=playwright-mcp&expanded=true), checks it against the `.sha256` file, and unpacks it. Later runs skip it until the pinned version changes (or `FORCE_REINSTALL=true`).
+- If the download fails, setup warns and skips the Playwright server; nothing else fails. If you already have your own `playwright` entry in `mcp-config.json`, setup leaves it alone.
+
+### Use it in your own demo
+
+In a Copilot session, just ask for browser work, for example "open localhost:4321 and take a screenshot of the home page". The `playwright` tools are already available.
+
+To use it from VS Code or a repo's own MCP config (`.vscode/mcp.json` or `.mcp.json`), point at the installed copy instead of `npx`. Use absolute paths, because MCP configs don't expand `~` or `$HOME`. Copy the `command` and first `args` value from the `playwright` entry in `~/.copilot/mcp-config.json`. For example, in `.vscode/mcp.json` on macOS:
+
+```json
+{
+  "servers": {
+    "playwright": {
+      "command": "/Users/<you>/.nvm/versions/node/<version>/bin/node",
+      "args": ["/Users/<you>/.copilot/mcp-servers/playwright/node_modules/@playwright/mcp/cli.js", "--browser=chrome"]
+    }
+  }
+}
+```
+
+On Windows use `C:\\Program Files\\nodejs\\node.exe`, `C:\\Users\\<you>\\.copilot\\mcp-servers\\playwright\\node_modules\\@playwright\\mcp\\cli.js`, and `--browser=msedge`. Run `node <path to cli.js> --help` for the server's other options, such as `--headless` or `--viewport-size`.
+
+If `node` moves (for example, after `nvm` installs a new Node LTS and removes the old one), run `install-demo-launcher` or setup again to update the path.
+
+### Update the Playwright MCP bundle (maintainers)
+
+Dependabot opens a pull request each month when there's a new `@playwright/mcp`. The [Playwright MCP bundle workflow](.github/workflows/playwright-mcp-bundle.yml) builds the bundle on that pull request (as a downloadable artifact) and tests installing it with `setup.sh` on macOS and `setup.ps1` in Windows PowerShell 5.1.
+
+1. Review and merge the Dependabot pull request. To bump it by hand instead, change the exact version in `mcp-bundle/package.json` and regenerate `mcp-bundle/package-lock.json` against `registry.npmjs.org` (CI rejects a lockfile that points at another registry).
+2. On `main`, the workflow publishes the release `playwright-mcp-v<version>` with the `.tgz` and `.sha256`. It's never marked as the latest release, and an existing version's release is never replaced. To publish it again after a failure, rerun the workflow from the **Actions** tab (**Run workflow** on `main`).
+3. Machines on `main` pick it up the next time they run setup or `install-demo-launcher`. Booth machines pick it up after the next tested [release](#using-a-release) (`vX.Y.Z` plus moving `v1`), when booth staff run their usual update: `bash install-demo-launcher.sh --ref v1` (`.\install-demo-launcher.ps1 -Ref v1` on Windows), then fully restart the GitHub Copilot app.
+
+The bundle has its own `playwright-mcp-v<version>` tags rather than riding on the `vX.Y.Z` releases. That way a version is built once from its lockfile and never changes. Booth releases stay as they are: a `vX.Y.Z` tag only changes which bundle version `mcp-bundle/package.json` asks for. Merging a bump never changes a booth machine until a new `v1` release includes it.
 
 ## Development and Testing
 
