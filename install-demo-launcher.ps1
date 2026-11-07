@@ -84,7 +84,7 @@ function Sync-DemoLauncherRepo {
         if (-not (Restore-DemoLauncherDefaultBranch -Target $target)) { return }
         Write-Info "Updating $target..."
         Invoke-SafeInstall -Description "update: $repo" -Action {
-            git -C $target pull --ff-only 2>&1
+            Invoke-NativeCommand git -C $target pull --ff-only
         }
         return
     }
@@ -105,7 +105,7 @@ function Sync-DemoLauncherRepo {
     New-Item -Path (Split-Path $target) -ItemType Directory -Force | Out-Null
     Write-Info "Cloning $repo into $target..."
     Invoke-SafeInstall -Description "clone: $repo" -Action {
-        gh repo clone $repo $target 2>&1
+        Invoke-NativeCommand gh repo clone $repo $target
     }
     if ($Release -and $script:failedItems.Count -eq 0 -and (Test-DemoLauncherRemote -Target $target)) {
         Switch-DemoLauncherRelease -Target $target -Ref $Release | Out-Null

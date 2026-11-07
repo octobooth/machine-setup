@@ -101,6 +101,26 @@ function Invoke-SafeInstall {
     }
 }
 
+# Runs a native command (Invoke-NativeCommand git -C $dir pull) and returns its stdout
+# and stderr as plain strings. Windows PowerShell 5.1 turns redirected stderr, such as
+# git's normal progress, into red NativeCommandError records even when the command
+# succeeded, so callers must decide success from $LASTEXITCODE, which this leaves set.
+# Uses $args rather than a param block so flags like -C pass straight through.
+function Invoke-NativeCommand {
+    $command, $arguments = $args
+    # With 'Stop', 5.1 would throw on the first stderr line instead of returning it
+    $savedPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & $command @arguments 2>&1 | ForEach-Object {
+            if ($_ -is [System.Management.Automation.ErrorRecord]) { $_.Exception.Message } else { "$_" }
+        }
+    }
+    finally {
+        $ErrorActionPreference = $savedPreference
+    }
+}
+
 function Write-Summary {
     if ($script:failedItems.Count -gt 0) {
         Write-Host ""
@@ -211,7 +231,7 @@ function Install-WingetPackage {
 
     try {
         # Use the winget source to avoid unrelated Microsoft Store certificate failures.
-        $output = winget install --id $PackageId -e --source winget --accept-source-agreements --accept-package-agreements --silent 2>&1
+        $output = Invoke-NativeCommand winget install --id $PackageId -e --source winget --accept-source-agreements --accept-package-agreements --silent
         $exitCode = $LASTEXITCODE
 
         if ($script:WingetAlreadyInstalledExitCodes -contains $exitCode) {
@@ -391,7 +411,7 @@ function Install-EditorExtensions {
 
     $installedExts = @()
     if (Test-ShouldSkipInstalled) {
-        $rawExts = & $Command --list-extensions 2>&1
+        $rawExts = Invoke-NativeCommand $Command --list-extensions
         if ($rawExts) {
             $installedExts = $rawExts | ForEach-Object { $_.ToLower() }
         }
@@ -406,7 +426,7 @@ function Install-EditorExtensions {
         # Attempt install; handle built-in conflicts gracefully
         # (e.g., Copilot is now bundled in VS Code/Insiders)
         try {
-            $output = & $Command --install-extension $ext 2>&1
+            $output = Invoke-NativeCommand $Command --install-extension $ext
             if ($LASTEXITCODE -ne 0) {
                 if ($output -match "built-in extension") {
                     Write-Success "Built-in: $ext ($Name), skipping..."
@@ -428,7 +448,7 @@ function Install-GHExtension {
 
     $description = "gh extension: $Extension"
     try {
-        $output = gh extension install $Extension 2>&1
+        $output = Invoke-NativeCommand gh extension install $Extension
         $exitCode = $LASTEXITCODE
         $text = ($output | Out-String)
 
@@ -466,7 +486,7 @@ function Install-GHExtensions {
 
     $installedExts = @()
     if (Test-ShouldSkipInstalled) {
-        $rawList = gh extension list 2>&1
+        $rawList = Invoke-NativeCommand gh extension list
         if ($LASTEXITCODE -eq 0 -and $rawList) {
             $installedExts = $rawList | ForEach-Object { ($_ -split '\t')[1] } | Where-Object { $_ }
         }
@@ -677,7 +697,7 @@ function Copy-Repos {
             Write-Warn "Skipping clone: $repo. Authenticate with 'gh auth login' and rerun setup."
         } else {
             Invoke-SafeInstall -Description "clone: $repo" -Action {
-                gh repo clone $repo $target 2>&1
+                Invoke-NativeCommand gh repo clone $repo $target
             }
         }
     }
@@ -806,7 +826,7 @@ function Test-GitDetachedHead {
 function Write-LocalChangesHelp {
     param([string]$Target)
     Write-Err "$Target has local changes:"
-    git -C $Target status --short --untracked-files=no 2>&1 | Out-Host
+    Invoke-NativeCommand git -C $Target status --short --untracked-files=no | Out-Host
     Write-Err "Save them with: git -C `"$Target`" stash   (or discard them with: git -C `"$Target`" checkout -- .), then re-run."
 }
 
@@ -832,7 +852,7 @@ function Switch-DemoLauncherRelease {
 
     Write-Info "Fetching release tags for $Target..."
     # --force so a moving major tag (v1) follows the remote when it's moved to a newer release
-    git -C $Target fetch --quiet --tags --force origin 2>&1 | Out-Host
+    Invoke-NativeCommand git -C $Target fetch --quiet --tags --force origin | Out-Host
     if ($LASTEXITCODE -ne 0) {
         $script:failedItems += $failure
         Write-Err "Couldn't fetch tags for $Target. Check the network and the GitHub CLI login, then re-run."
@@ -870,7 +890,7 @@ function Switch-DemoLauncherRelease {
         return $false
     }
 
-    git -C $Target checkout --quiet --detach "refs/tags/$Ref" 2>&1 | Out-Host
+    Invoke-NativeCommand git -C $Target checkout --quiet --detach "refs/tags/$Ref" | Out-Host
     if ($LASTEXITCODE -ne 0) {
         $script:failedItems += $failure
         Write-Err "Couldn't check out $Ref in $Target."
@@ -900,7 +920,7 @@ function Restore-DemoLauncherDefaultBranch {
     }
 
     Write-Info "$Target was pinned to $("$pinned".Trim()); switching back to $branch to track the latest changes"
-    git -C $Target checkout --quiet $branch 2>&1 | Out-Host
+    Invoke-NativeCommand git -C $Target checkout --quiet $branch | Out-Host
     if ($LASTEXITCODE -ne 0) {
         $script:failedItems += $failure
         Write-Err "Couldn't switch $Target back to $branch."
@@ -923,7 +943,7 @@ function Sync-DemoLauncherRelease {
     if ($Release) { return (Switch-DemoLauncherRelease -Target $checkout -Ref $Release) }
 
     if (-not (Restore-DemoLauncherDefaultBranch -Target $checkout)) { return $false }
-    git -C $checkout pull --ff-only --quiet 2>&1 | Out-Host
+    Invoke-NativeCommand git -C $checkout pull --ff-only --quiet | Out-Host
     if ($LASTEXITCODE -ne 0) { Write-Warn "Couldn't fast-forward $checkout; using it as is." }
     return $true
 }

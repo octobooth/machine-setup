@@ -110,3 +110,22 @@ jobs:
       - name: Run Pester
         shell: pwsh
         run: Invoke-Pester -Path .\tests\powershell -CI
+
+  # The booth's Windows Terminal may default to Windows PowerShell 5.1, which
+  # handles native commands' stderr differently from PowerShell 7
+  test-windows-powershell:
+    name: Test Windows PowerShell 5.1
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Pester
+        shell: powershell
+        run: |
+          Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Scope CurrentUser -Force | Out-Null
+          Install-Module Pester -MinimumVersion 5.0 -Scope CurrentUser -Force -SkipPublisherCheck -Repository PSGallery
+      - name: Run Pester
+        shell: powershell
+        run: |
+          Import-Module Pester -MinimumVersion 5.0
+          $PSVersionTable.PSVersion
+          Invoke-Pester -Path .\tests\powershell -CI
