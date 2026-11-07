@@ -12,7 +12,9 @@ Describe 'install-demo-launcher.ps1' {
 
     BeforeEach {
         $script:originalUserProfile = $env:USERPROFILE
+        $script:originalCopilotHome = $env:COPILOT_HOME
         $env:USERPROFILE = Join-Path $TestDrive ([guid]::NewGuid().ToString())
+        $env:COPILOT_HOME = $null
         New-Item -Path $env:USERPROFILE -ItemType Directory -Force | Out-Null
         $script:calls = [System.Collections.Generic.List[string]]::new()
         $script:ghLoggedIn = $true
@@ -32,13 +34,23 @@ Describe 'install-demo-launcher.ps1' {
             if ($args[0] -eq 'auth') {
                 $global:LASTEXITCODE = if ($script:ghLoggedIn) { 0 } else { 1 }
             } else {
+                if ($args[0] -eq 'repo' -and $args[1] -eq 'clone') { New-FakeCheckout -Target $args[3] }
                 $global:LASTEXITCODE = 0
             }
+        }
+
+        function New-FakeCheckout {
+            param([string]$Target)
+            $launcherDir = Join-Path (Join-Path (Join-Path $Target '.github') 'extensions') 'demo-launcher'
+            New-Item -Path (Join-Path $Target '.git') -ItemType Directory -Force | Out-Null
+            New-Item -Path $launcherDir -ItemType Directory -Force | Out-Null
+            Set-Content -Path (Join-Path $launcherDir 'extension.mjs') -Value '// launcher'
         }
     }
 
     AfterEach {
         $env:USERPROFILE = $script:originalUserProfile
+        $env:COPILOT_HOME = $script:originalCopilotHome
     }
 
     It 'reads the repo-setup-scripts repo from config.json' {
@@ -78,7 +90,7 @@ Describe 'install-demo-launcher.ps1' {
 
     It 'fast-forwards an existing checkout instead of cloning' {
         $target = Get-DemoLauncherRepoDir
-        New-Item -Path (Join-Path $target '.git') -ItemType Directory -Force | Out-Null
+        New-FakeCheckout -Target $target
 
         Invoke-DemoLauncherMain | Should -Be 0
 
@@ -110,5 +122,137 @@ Describe 'install-demo-launcher.ps1' {
         Invoke-DemoLauncherMain | Should -Be 1
 
         $script:calls | Where-Object { $_ -like 'gh repo clone*' } | Should -BeNullOrEmpty
+    }
+
+    Context 'loader' {
+        It 'writes the loader under $HOME\.copilot by default' {
+            Get-DemoLauncherLoaderPath | Should -Be (Join-Path (Join-Path (Join-Path (Join-Path $env:USERPROFILE '.copilot') 'extensions') 'demo-launcher') 'extension.mjs')
+        }
+
+        It 'writes the loader under COPILOT_HOME when it is set' {
+            $env:COPILOT_HOME = Join-Path $TestDrive 'custom-copilot-home'
+            Get-DemoLauncherLoaderPath | Should -Be (Join-Path (Join-Path (Join-Path $env:COPILOT_HOME 'extensions') 'demo-launcher') 'extension.mjs')
+        }
+
+        It 'installs the vendored repo-setup-scripts loader with the checkout baked in' {
+            Invoke-DemoLauncherMain | Should -Be 0
+
+            $content = [System.IO.File]::ReadAllText((Get-DemoLauncherLoaderPath))
+            $expected = [System.IO.File]::ReadAllText($script:VendoredDemoLauncherLoader).Replace(
+                'const INSTALLED_REPO = "";',
+                'const INSTALLED_REPO = ' + (ConvertTo-Json -InputObject (Get-DemoLauncherRepoDir) -Compress) + ';')
+            $content | Should -BeExactly $expected
+            $content | Should -Match ([regex]::Escape('await import(pathToFileURL(launcherFile).href)'))
+            $content | Should -Match 'function sessionRepoHasOwnCopy\(\)'
+        }
+
+        It 'writes the loader as UTF-8 without a BOM' {
+            Invoke-DemoLauncherMain | Should -Be 0
+
+            $bytes = [System.IO.File]::ReadAllBytes((Get-DemoLauncherLoaderPath))
+            $bytes.Length | Should -BeGreaterThan 3
+            ($bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) | Should -BeFalse
+        }
+
+        It 'escapes Windows paths into a valid JavaScript string' {
+            $content = Get-DemoLauncherLoaderContent -Template 'const INSTALLED_REPO = ""; // x' -CheckoutDir 'C:\Users\o"booth\repos\repo-setup-scripts'
+
+            $content | Should -BeExactly 'const INSTALLED_REPO = "C:\\Users\\o\"booth\\repos\\repo-setup-scripts"; // x'
+        }
+
+        It 'produces a loader that node can parse' -Skip:(-not (Get-Command node -ErrorAction SilentlyContinue)) {
+            $file = Join-Path $TestDrive 'loader-check.mjs'
+            $template = [System.IO.File]::ReadAllText($script:VendoredDemoLauncherLoader)
+            $content = Get-DemoLauncherLoaderContent -Template $template -CheckoutDir "C:\Users\o'booth\repos\repo-setup-scripts"
+            [System.IO.File]::WriteAllText($file, $content, (New-Object System.Text.UTF8Encoding $false))
+
+            node --check $file
+            $LASTEXITCODE | Should -Be 0
+        }
+
+        It 'copies the loader the checkout ships when it exists' {
+            $target = Get-DemoLauncherRepoDir
+            New-FakeCheckout -Target $target
+            $shippedDir = Join-Path (Join-Path (Join-Path $target '.github') 'extensions') 'demo-launcher-loader'
+            New-Item -Path $shippedDir -ItemType Directory -Force | Out-Null
+            [System.IO.File]::WriteAllText((Join-Path $shippedDir 'extension.mjs'), "// shipped loader`nconst INSTALLED_REPO = `"`";`n", (New-Object System.Text.UTF8Encoding $true))
+
+            Invoke-DemoLauncherMain | Should -Be 0
+
+            $literal = ConvertTo-Json -InputObject $target -Compress
+            [System.IO.File]::ReadAllText((Get-DemoLauncherLoaderPath)) | Should -BeExactly "// shipped loader`nconst INSTALLED_REPO = $literal;`n"
+            $bytes = [System.IO.File]::ReadAllBytes((Get-DemoLauncherLoaderPath))
+            $bytes[0] | Should -Not -Be 0xEF
+        }
+
+        It 'keeps a shipped loader without an INSTALLED_REPO line as is' {
+            Get-DemoLauncherLoaderContent -Template '// other loader' -CheckoutDir 'C:\x' | Should -BeExactly '// other loader'
+            Should -Invoke Write-Warn -Times 1 -Exactly
+        }
+
+        It 'fails without writing a loader when the checkout has no launcher' {
+            New-Item -Path (Join-Path (Get-DemoLauncherRepoDir) '.git') -ItemType Directory -Force | Out-Null
+
+            Invoke-DemoLauncherMain | Should -Be 1
+
+            Test-Path (Get-DemoLauncherLoaderPath) | Should -BeFalse
+        }
+
+        It 'does not write a loader when the checkout origin is untrusted' {
+            New-FakeCheckout -Target (Get-DemoLauncherRepoDir)
+            $script:originUrl = 'https://github.com/attacker/repo-setup-scripts.git'
+
+            Invoke-DemoLauncherMain | Should -Be 1
+
+            Test-Path (Get-DemoLauncherLoaderPath) | Should -BeFalse
+        }
+
+        It '-Uninstall removes only the loader file' {
+            $loader = Get-DemoLauncherLoaderPath
+            $loaderDir = Split-Path $loader
+            $artifacts = Join-Path $loaderDir 'artifacts'
+            New-Item -Path $artifacts -ItemType Directory -Force | Out-Null
+            Set-Content -Path (Join-Path $artifacts 'run.json') -Value '{}'
+            Set-Content -Path $loader -Value '// loader'
+
+            Invoke-DemoLauncherMain -Uninstall | Should -Be 0
+
+            Test-Path $loader | Should -BeFalse
+            Test-Path (Join-Path $artifacts 'run.json') | Should -BeTrue
+            $script:calls | Should -BeNullOrEmpty
+        }
+
+        It '-Uninstall fails when the loader cannot be removed' {
+            $loader = Get-DemoLauncherLoaderPath
+            New-Item -Path (Split-Path $loader) -ItemType Directory -Force | Out-Null
+            Set-Content -Path $loader -Value '// loader'
+            Mock Remove-Item { throw 'access denied' }
+
+            Invoke-DemoLauncherMain -Uninstall | Should -Be 1
+        }
+
+        It 'does not install the loader when a fresh clone has an untrusted origin' {
+            $script:originUrl = 'https://ghe.example.com/octobooth-demos/repo-setup-scripts.git'
+
+            Invoke-DemoLauncherMain | Should -Be 1
+
+            Test-Path (Get-DemoLauncherLoaderPath) | Should -BeFalse
+        }
+
+        It 'keeps the existing loader when the template cannot be read' {
+            New-FakeCheckout -Target (Get-DemoLauncherRepoDir)
+            $loader = Get-DemoLauncherLoaderPath
+            New-Item -Path (Split-Path $loader) -ItemType Directory -Force | Out-Null
+            Set-Content -Path $loader -Value '// old loader'
+            Mock Get-DemoLauncherLoaderContent { throw 'read failed' }
+
+            Invoke-DemoLauncherMain | Should -Be 1
+
+            (Get-Content -Raw -Path $loader).Trim() | Should -Be '// old loader'
+        }
+
+        It '-Uninstall succeeds when no loader is installed' {
+            Invoke-DemoLauncherMain -Uninstall | Should -Be 0
+        }
     }
 }

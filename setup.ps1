@@ -670,6 +670,119 @@ function Copy-Repos {
     }
 }
 
+function Get-CopilotHome {
+    if ($env:COPILOT_HOME) { return $env:COPILOT_HOME }
+    return Join-Path $env:USERPROFILE ".copilot"
+}
+
+# The user-level loader the Copilot app runs in every session, like install.sh writes on macOS/Linux.
+# Its folder also holds the launcher's run history (artifacts), so only this file is ever replaced or removed.
+function Get-DemoLauncherLoaderPath {
+    return Join-Path (Join-Path (Join-Path (Get-CopilotHome) "extensions") "demo-launcher") "extension.mjs"
+}
+
+# Fallback copy of repo-setup-scripts' .github/extensions/demo-launcher-loader/extension.mjs,
+# used until a checkout ships it. Keep it identical to that file.
+$script:VendoredDemoLauncherLoader = Join-Path (Join-Path $PSScriptRoot "windows") "demo-launcher-loader.mjs"
+$script:DemoLauncherRepoMarker = 'const INSTALLED_REPO = "";'
+
+# Bakes the checkout into the loader's INSTALLED_REPO line, like install.sh does on macOS/Linux
+function Get-DemoLauncherLoaderContent {
+    param(
+        [Parameter(Mandatory)][string]$Template,
+        [Parameter(Mandatory)][string]$CheckoutDir
+    )
+
+    if (-not $Template.Contains($script:DemoLauncherRepoMarker)) {
+        Write-Warn "The Demo Launcher loader has no INSTALLED_REPO line, so it will use its default checkout path."
+        return $Template
+    }
+    # JSON string escaping is valid JavaScript, so backslashes and quotes in the path stay intact
+    $repoLiteral = ConvertTo-Json -InputObject $CheckoutDir -Compress
+    return $Template.Replace($script:DemoLauncherRepoMarker, "const INSTALLED_REPO = $repoLiteral;")
+}
+
+function Install-DemoLauncherLoader {
+    param([Parameter(Mandatory)][string]$CheckoutDir)
+
+    $extensionsDir = Join-Path (Join-Path $CheckoutDir ".github") "extensions"
+    $launcherPath = Join-Path (Join-Path $extensionsDir "demo-launcher") "extension.mjs"
+    if (-not (Test-Path -LiteralPath $launcherPath -PathType Leaf)) {
+        $script:failedItems += "loader: Demo Launcher ($launcherPath not found)"
+        Write-Err "$launcherPath not found, so the Demo Launcher loader wasn't installed. Pull $CheckoutDir and re-run."
+        return
+    }
+
+    # Prefer the loader the checkout ships, so every platform runs the same file
+    $shippedLoader = Join-Path (Join-Path $extensionsDir "demo-launcher-loader") "extension.mjs"
+    $templatePath = if (Test-Path -LiteralPath $shippedLoader -PathType Leaf) { $shippedLoader } else { $script:VendoredDemoLauncherLoader }
+    if (-not (Test-Path -LiteralPath $templatePath -PathType Leaf)) {
+        $script:failedItems += "loader: Demo Launcher ($templatePath not found)"
+        Write-Err "$templatePath not found, so the Demo Launcher loader wasn't installed. Pull machine-setup and re-run."
+        return
+    }
+    $loaderPath = Get-DemoLauncherLoaderPath
+    try {
+        # Read before touching the existing loader, so a failed read can't leave it empty
+        $content = Get-DemoLauncherLoaderContent -Template ([System.IO.File]::ReadAllText($templatePath)) -CheckoutDir $CheckoutDir
+        New-Item -Path (Split-Path $loaderPath) -ItemType Directory -Force -ErrorAction Stop | Out-Null
+        # Windows PowerShell 5.1's -Encoding UTF8 adds a BOM, so write the bytes directly
+        [System.IO.File]::WriteAllText($loaderPath, $content, (New-Object System.Text.UTF8Encoding $false))
+    } catch {
+        $script:failedItems += "loader: Demo Launcher ($loaderPath)"
+        Write-Err "Couldn't write the Demo Launcher loader to ${loaderPath}: $($_.Exception.Message)"
+        return
+    }
+    Write-Success "Demo Launcher loader installed at $loaderPath"
+}
+
+function Uninstall-DemoLauncherLoader {
+    $loaderPath = Get-DemoLauncherLoaderPath
+    if (-not (Test-Path -LiteralPath $loaderPath -PathType Leaf)) {
+        Write-Info "No Demo Launcher loader at $loaderPath; nothing to remove."
+        return $true
+    }
+    try {
+        Remove-Item -LiteralPath $loaderPath -Force -ErrorAction Stop
+    } catch {
+        Write-Err "Couldn't remove ${loaderPath}: $($_.Exception.Message)"
+        return $false
+    }
+    Write-Success "Removed $loaderPath (run history in $(Split-Path $loaderPath) was kept)."
+    return $true
+}
+
+# Only this repo is trusted as the Demo Launcher source, because the loader runs its code in
+# every Copilot session and its checkout may be added as a Copilot project.
+$script:TrustedDemoLauncherRepo = "octobooth-demos/repo-setup-scripts"
+
+function Get-DemoLauncherRepoDir {
+    return Join-Path (Join-Path $env:USERPROFILE "repos") "repo-setup-scripts"
+}
+
+function Test-DemoLauncherRemote {
+    param([string]$Target)
+
+    $url = git -C $Target remote get-url origin 2>$null
+    if ($LASTEXITCODE -ne 0) { return $false }
+    $pattern = '^(https://github\.com/|git@github\.com:|ssh://git@github\.com/)' + [regex]::Escape($script:TrustedDemoLauncherRepo) + '(\.git)?/?$'
+    return ("$url".Trim() -match $pattern)
+}
+
+function Install-DemoLauncher {
+    $checkout = Get-DemoLauncherRepoDir
+    if (-not (Test-Path -LiteralPath (Join-Path $checkout ".git"))) {
+        Write-Warn "$checkout isn't a git checkout yet, so the Demo Launcher wasn't installed. Run .\install-demo-launcher.ps1 once GitHub CLI is logged in."
+        return
+    }
+    if (-not (Test-DemoLauncherRemote -Target $checkout)) {
+        $script:failedItems += "loader: Demo Launcher ($checkout origin isn't $script:TrustedDemoLauncherRepo)"
+        Write-Err "$checkout doesn't point at $script:TrustedDemoLauncherRepo, so the Demo Launcher loader wasn't installed."
+        return
+    }
+    Install-DemoLauncherLoader -CheckoutDir $checkout
+}
+
 function Register-MCPServers {
     Write-Info "Registering MCP servers for Copilot CLI..."
 
@@ -765,6 +878,9 @@ function Invoke-Main {
         Connect-GH
     }
     Copy-Repos -SkipClone:$skipRepoClones
+
+    # Make the Demo Launcher available in every Copilot session
+    Install-DemoLauncher
 
     # PWA setup is intentionally disabled until the booth workflow needs it again.
     # See README for the rationale and re-enable notes.

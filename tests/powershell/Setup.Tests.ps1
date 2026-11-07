@@ -412,6 +412,52 @@ Describe 'setup.ps1' {
         }
     }
 
+    Context 'Install-DemoLauncher' {
+        BeforeEach {
+            $script:savedUserProfile = $env:USERPROFILE
+            $script:savedCopilotHome = $env:COPILOT_HOME
+            $env:USERPROFILE = Join-Path $TestDrive ([guid]::NewGuid().ToString())
+            $env:COPILOT_HOME = $null
+            $script:failedItems = @()
+            $script:originUrl = 'https://github.com/octobooth-demos/repo-setup-scripts.git'
+            Mock git { $global:LASTEXITCODE = 0; return $script:originUrl }
+        }
+
+        AfterEach {
+            $env:USERPROFILE = $script:savedUserProfile
+            $env:COPILOT_HOME = $script:savedCopilotHome
+        }
+
+        It 'writes the loader for a trusted checkout' {
+            $launcherDir = Join-Path (Join-Path (Join-Path (Get-DemoLauncherRepoDir) '.github') 'extensions') 'demo-launcher'
+            New-Item -Path (Join-Path (Get-DemoLauncherRepoDir) '.git') -ItemType Directory -Force | Out-Null
+            New-Item -Path $launcherDir -ItemType Directory -Force | Out-Null
+            Set-Content -Path (Join-Path $launcherDir 'extension.mjs') -Value '// launcher'
+
+            Install-DemoLauncher
+
+            Test-Path (Get-DemoLauncherLoaderPath) | Should -BeTrue
+            $script:failedItems | Should -BeNullOrEmpty
+        }
+
+        It 'skips without failing when the checkout is missing' {
+            Install-DemoLauncher
+
+            Test-Path (Get-DemoLauncherLoaderPath) | Should -BeFalse
+            $script:failedItems | Should -BeNullOrEmpty
+        }
+
+        It 'refuses a checkout whose origin is not the trusted repo' {
+            New-Item -Path (Join-Path (Get-DemoLauncherRepoDir) '.git') -ItemType Directory -Force | Out-Null
+            $script:originUrl = 'https://github.com/attacker/repo-setup-scripts.git'
+
+            Install-DemoLauncher
+
+            Test-Path (Get-DemoLauncherLoaderPath) | Should -BeFalse
+            $script:failedItems | Should -HaveCount 1
+        }
+    }
+
     Context 'Invoke-Main authentication modes' {
         BeforeEach {
             $script:savedNonInteractive = $script:NonInteractive
@@ -425,6 +471,7 @@ Describe 'setup.ps1' {
             Mock Connect-GH { }
             Mock Install-GHExtensions { }
             Mock Copy-Repos { }
+            Mock Install-DemoLauncher { }
             Mock Initialize-Editors { }
             Mock Register-MCPServers { }
                 Mock Write-Summary { }
