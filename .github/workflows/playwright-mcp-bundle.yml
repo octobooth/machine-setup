@@ -146,8 +146,10 @@ jobs:
           if (-not $server) { throw 'playwright MCP server was not registered' }
           $server | ConvertTo-Json
           $serverArgs = @($server.args) + '--help'
-          & $server.command @serverArgs | Select-Object -First 5
+          # Capture all output first: stopping the pipeline early would kill node
+          $help = & $server.command @serverArgs
           if ($LASTEXITCODE -ne 0) { throw "playwright MCP server exited with $LASTEXITCODE" }
+          $help | Select-Object -First 5
 
   release:
     name: Publish release
