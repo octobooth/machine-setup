@@ -430,6 +430,8 @@ bats tests/bash
 
 #### PowerShell
 
+Run the PowerShell unit tests on Windows.
+
 ```powershell
 Invoke-ScriptAnalyzer -Path .\setup.ps1 -Settings .\PSScriptAnalyzerSettings.psd1
 Invoke-ScriptAnalyzer -Path .\install-demo-launcher.ps1 -Settings .\PSScriptAnalyzerSettings.psd1
