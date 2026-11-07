@@ -101,28 +101,47 @@ function Invoke-SafeInstall {
     }
 }
 
-# Runs a native command (Invoke-NativeCommand git -C $dir pull) and returns its stdout
-# and stderr as plain strings. Windows PowerShell 5.1 turns redirected stderr, such as
+# Runs a native command and returns its output as plain strings: stdout and stderr, or
+# with -StdoutOnly just stdout. Windows PowerShell 5.1 turns redirected stderr, such as
 # git's normal progress, into red NativeCommandError records even when the command
 # succeeded, so callers must decide success from $LASTEXITCODE, which this leaves set.
-# Uses $args rather than a param block so flags like -C pass straight through.
-function Invoke-NativeCommand {
-    $command = $args[0]
+function Invoke-NativeCommandLine {
+    param(
+        [object[]]$CommandLine,
+        [switch]$StdoutOnly
+    )
+    $command = $CommandLine[0]
     # Assigned rather than returned from an if, which would unwrap a lone argument into a
     # string that splatting then passes one character at a time
     $arguments = @()
-    if ($args.Count -gt 1) { $arguments = @($args[1..($args.Count - 1)]) }
+    if ($CommandLine.Count -gt 1) { $arguments = @($CommandLine[1..($CommandLine.Count - 1)]) }
     # With 'Stop', 5.1 would throw on the first stderr line instead of returning it
     $savedPreference = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     try {
         & $command @arguments 2>&1 | ForEach-Object {
-            if ($_ -is [System.Management.Automation.ErrorRecord]) { $_.Exception.Message } else { "$_" }
+            if ($_ -is [System.Management.Automation.ErrorRecord]) {
+                if ($StdoutOnly) { Write-Verbose "$command (stderr): $($_.Exception.Message)" } else { $_.Exception.Message }
+            } else {
+                "$_"
+            }
         }
     }
     finally {
         $ErrorActionPreference = $savedPreference
     }
+}
+
+# For output that's shown or searched for messages (Invoke-NativeCommand git -C $dir pull).
+# Uses $args rather than a param block so flags like -C pass straight through.
+function Invoke-NativeCommand {
+    Invoke-NativeCommandLine -CommandLine $args
+}
+
+# For output that's parsed as a value (a URL, branch, or list), so warnings or trace
+# lines on stderr (CRLF, safe.directory, GIT_TRACE) can't end up in it
+function Get-NativeCommandOutput {
+    Invoke-NativeCommandLine -CommandLine $args -StdoutOnly
 }
 
 function Write-Summary {
@@ -415,7 +434,7 @@ function Install-EditorExtensions {
 
     $installedExts = @()
     if (Test-ShouldSkipInstalled) {
-        $rawExts = Invoke-NativeCommand $Command --list-extensions
+        $rawExts = Get-NativeCommandOutput $Command --list-extensions
         if ($rawExts) {
             $installedExts = $rawExts | ForEach-Object { $_.ToLower() }
         }
@@ -490,7 +509,7 @@ function Install-GHExtensions {
 
     $installedExts = @()
     if (Test-ShouldSkipInstalled) {
-        $rawList = Invoke-NativeCommand gh extension list
+        $rawList = Get-NativeCommandOutput gh extension list
         if ($LASTEXITCODE -eq 0 -and $rawList) {
             $installedExts = $rawList | ForEach-Object { ($_ -split '\t')[1] } | Where-Object { $_ }
         }
@@ -800,7 +819,7 @@ function Get-DemoLauncherRepoDir {
 function Test-DemoLauncherRemote {
     param([string]$Target)
 
-    $url = Invoke-NativeCommand git -C $Target remote get-url origin
+    $url = Get-NativeCommandOutput git -C $Target remote get-url origin
     if ($LASTEXITCODE -ne 0) { return $false }
     $pattern = '^(https://github\.com/|git@github\.com:|ssh://git@github\.com/)' + [regex]::Escape($script:TrustedDemoLauncherRepo) + '(\.git)?/?$'
     return ("$url".Trim() -match $pattern)
@@ -817,7 +836,7 @@ function Get-BoothRelease {
 
 function Test-GitWorktreeClean {
     param([string]$Target)
-    $status = git -C $Target status --porcelain --untracked-files=no 2>$null
+    $status = Get-NativeCommandOutput git -C $Target status --porcelain --untracked-files=no
     return ($LASTEXITCODE -eq 0 -and -not $status)
 }
 
@@ -912,10 +931,10 @@ function Restore-DemoLauncherDefaultBranch {
     if (-not (Test-GitDetachedHead -Target $Target)) { return $true }
 
     $failure = "update: $script:TrustedDemoLauncherRepo (couldn't leave its pinned release)"
-    $branch = Invoke-NativeCommand git -C $Target symbolic-ref --quiet --short refs/remotes/origin/HEAD
+    $branch = Get-NativeCommandOutput git -C $Target symbolic-ref --quiet --short refs/remotes/origin/HEAD
     $branch = if ($LASTEXITCODE -eq 0 -and $branch) { "$branch".Trim() -replace '^origin/', '' } else { 'main' }
-    $pinned = Invoke-NativeCommand git -C $Target describe --tags --exact-match HEAD
-    if ($LASTEXITCODE -ne 0 -or -not $pinned) { $pinned = Invoke-NativeCommand git -C $Target rev-parse --short HEAD }
+    $pinned = Get-NativeCommandOutput git -C $Target describe --tags --exact-match HEAD
+    if ($LASTEXITCODE -ne 0 -or -not $pinned) { $pinned = Get-NativeCommandOutput git -C $Target rev-parse --short HEAD }
 
     if (-not (Test-GitWorktreeClean -Target $Target)) {
         $script:failedItems += $failure

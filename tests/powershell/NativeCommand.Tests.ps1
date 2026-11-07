@@ -75,6 +75,49 @@ Describe 'Invoke-NativeCommand' {
         $LASTEXITCODE | Should -Be 1
     }
 
+    Context 'Get-NativeCommandOutput' {
+        BeforeAll {
+            function Get-FakeValue {
+                param([int]$ExitCode)
+                Get-NativeCommandOutput $script:shell -NoProfile -NonInteractive -Command "[Console]::Error.WriteLine('warning: noise'); [Console]::Out.WriteLine('main'); [Console]::Error.WriteLine('trace: more noise'); exit $ExitCode"
+            }
+        }
+
+        It 'returns only stdout when stderr has noise' {
+            $output = @(Get-FakeValue -ExitCode 0)
+            $LASTEXITCODE | Should -Be 0
+            $output | Should -Be @('main')
+            $output[0] | Should -BeOfType [string]
+        }
+
+        It 'leaves $LASTEXITCODE set when the command fails' {
+            $output = @(Get-FakeValue -ExitCode 1)
+            $LASTEXITCODE | Should -Be 1
+            $output | Should -Be @('main')
+        }
+
+        It "doesn't throw on stderr when ErrorActionPreference is Stop" {
+            $ErrorActionPreference = 'Stop'
+            { Get-FakeValue -ExitCode 0 } | Should -Not -Throw
+        }
+
+        It 'keeps a trusted origin URL clean when git traces to stderr' {
+            $repo = Join-Path $TestDrive ([guid]::NewGuid().ToString())
+            Invoke-TestGit -c init.defaultBranch=main init -q $repo
+            Invoke-TestGit -C $repo remote add origin 'https://github.com/octobooth-demos/repo-setup-scripts.git'
+            $env:GIT_TRACE = '1'
+            try {
+                $url = @(Get-NativeCommandOutput git -C $repo remote get-url origin)
+                $trusted = Test-DemoLauncherRemote -Target $repo
+            }
+            finally {
+                Remove-Item Env:\GIT_TRACE -ErrorAction SilentlyContinue
+            }
+            $url | Should -Be @('https://github.com/octobooth-demos/repo-setup-scripts.git')
+            $trusted | Should -BeTrue
+        }
+    }
+
     Context 'install-demo-launcher.ps1 updating its checkout' {
         BeforeAll {
             # The test origin is a local folder, so treat it as the trusted repo
