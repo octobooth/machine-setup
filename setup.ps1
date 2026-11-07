@@ -1007,6 +1007,16 @@ function Register-MCPServers {
         $mcpConfig | Add-Member -NotePropertyName "mcpServers" -NotePropertyValue ([PSCustomObject]@{}) -Force
     }
 
+    # Earlier setups registered Playwright MCP via npx, which hangs where npm is blocked
+    $playwright = $mcpConfig.mcpServers.PSObject.Properties['playwright']
+    if ($null -ne $playwright -and $playwright.Value -is [PSCustomObject] -and $playwright.Value.command -eq 'npx') {
+        $playwrightArgs = @($playwright.Value.args | Where-Object { $_ -is [string] -and $_.Contains('@playwright/mcp') })
+        if ($playwrightArgs.Count -gt 0) {
+            $mcpConfig.mcpServers.PSObject.Properties.Remove('playwright')
+            Write-Success "Removed old Playwright MCP server (npx @playwright/mcp)"
+        }
+    }
+
     foreach ($server in $config.shared.mcp_servers) {
         $serverConfig = if ($server.type -eq "local") {
             [PSCustomObject]@{

@@ -24,14 +24,6 @@
     "vlc_settings": "osd=0 # Hide filename display\nloop=1 # Enable loop by default\nvideo-title-show=0 # Hide filename display",
     "mcp_servers": [
       {
-        "name": "playwright",
-        "type": "local",
-        "command": "npx",
-        "args": [
-          "@playwright/mcp@latest"
-        ]
-      },
-      {
         "name": "microsoft-learn",
         "type": "http",
         "url": "https://learn.microsoft.com/api/mcp"

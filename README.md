@@ -28,7 +28,7 @@ This repository contains setup scripts for configuring booth machines. The scrip
 - Pins VS Code, VS Code Insiders, the GitHub Copilot app, Windows Terminal, and VLC to the Windows taskbar.
 - Makes Google Chrome the default browser on macOS (via `defaultbrowser`), including when Chrome was already installed.
 - Configures VLC media player settings.
-- Registers shared MCP servers for Copilot CLI.
+- Registers shared MCP servers for Copilot CLI. These are all remote (HTTP) servers, because booth machines can't reach the npm registry. Setup also removes the Playwright MCP server (`npx @playwright/mcp`) that earlier versions registered, since it hangs without npm and leaves Copilot sessions stuck at "busy". A `playwright` entry that doesn't use `npx` is left alone.
 - Clones the demo repos into `~/repos` and installs the Demo Launcher canvas for every Copilot session. `install-demo-launcher.sh` (macOS/Linux) and `install-demo-launcher.ps1` (Windows) do just that step on a machine that is already set up (see [Demo Launcher](#demo-launcher)). Both can pin the demo scripts to a tested [release](#using-a-release).
 
 ## Configuration
@@ -501,6 +501,22 @@ If two "Demo Launcher" canvases are both labeled Personal, one was installed fro
 A "Demo Launcher" labeled "repository: security-octo-supply-v4-…" comes from a demo repo made from the old v4 template, which included a HydraFusion launcher (since removed). Remove that demo project from the Copilot app.
 
 For more on the Demo Launcher itself, see the [repo-setup-scripts quick start](https://github.com/octobooth-demos/repo-setup-scripts#quick-start-booth-machine).
+
+### Copilot sessions stuck at "busy"
+
+Earlier versions of setup registered a Playwright MCP server that runs `npx @playwright/mcp@latest`. Booth machines can't reach the npm registry, so it hangs at startup and keeps Copilot sessions "busy". Rerunning setup removes it. To remove it by hand, run this, then fully quit and reopen the GitHub Copilot app.
+
+macOS:
+
+```bash
+f=~/.copilot/mcp-config.json; jq 'del(.mcpServers.playwright)' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+```
+
+Windows (PowerShell):
+
+```powershell
+$f = "$HOME\.copilot\mcp-config.json"; $c = Get-Content -Raw $f | ConvertFrom-Json; $c.mcpServers.PSObject.Properties.Remove('playwright'); $c | ConvertTo-Json -Depth 10 | Set-Content $f -Encoding UTF8
+```
 
 ## Development and Testing
 

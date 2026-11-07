@@ -42,15 +42,48 @@ Describe 'setup.ps1' {
 
     It 'Register-MCPServers writes local and http server entries' {
         $env:COPILOT_HOME = Join-Path $TestDrive 'copilot'
+        $originalServers = $script:config.shared.mcp_servers
+        $script:config.shared.mcp_servers = @($originalServers) + [PSCustomObject]@{ name = 'local-example'; type = 'local'; command = 'local-mcp'; args = @('--stdio') }
 
-        Register-MCPServers
+        try {
+            Register-MCPServers
+        } finally {
+            $script:config.shared.mcp_servers = $originalServers
+        }
 
         $configPath = Join-Path $env:COPILOT_HOME 'mcp-config.json'
         Test-Path $configPath | Should -BeTrue
 
         $mcpConfig = Get-Content -Raw -Path $configPath | ConvertFrom-Json
-        $mcpConfig.mcpServers.playwright.command | Should -Be 'npx'
+        $mcpConfig.mcpServers.'local-example'.command | Should -Be 'local-mcp'
         $mcpConfig.mcpServers.'microsoft-learn'.url | Should -Be 'https://learn.microsoft.com/api/mcp'
+        $mcpConfig.mcpServers.PSObject.Properties['playwright'] | Should -BeNullOrEmpty
+    }
+
+    It 'Register-MCPServers removes the old npx Playwright entry and keeps others' {
+        $env:COPILOT_HOME = Join-Path $TestDrive 'copilot'
+        New-Item -Path $env:COPILOT_HOME -ItemType Directory -Force | Out-Null
+        '{"someOtherSetting":true,"mcpServers":{"playwright":{"tools":["*"],"type":"local","command":"npx","args":["@playwright/mcp@latest"]},"custom":{"type":"http","url":"https://example.com/mcp"}}}' |
+            Out-File -FilePath (Join-Path $env:COPILOT_HOME 'mcp-config.json') -Encoding utf8
+
+        Register-MCPServers
+
+        $mcpConfig = Get-Content -Raw -Path (Join-Path $env:COPILOT_HOME 'mcp-config.json') | ConvertFrom-Json
+        $mcpConfig.mcpServers.PSObject.Properties['playwright'] | Should -BeNullOrEmpty
+        $mcpConfig.mcpServers.custom.url | Should -Be 'https://example.com/mcp'
+        $mcpConfig.someOtherSetting | Should -BeTrue
+    }
+
+    It 'Register-MCPServers keeps a custom Playwright entry that does not use npx' {
+        $env:COPILOT_HOME = Join-Path $TestDrive 'copilot'
+        New-Item -Path $env:COPILOT_HOME -ItemType Directory -Force | Out-Null
+        '{"mcpServers":{"playwright":{"type":"local","command":"C:\\tools\\playwright-mcp.exe","args":["@playwright/mcp"]}}}' |
+            Out-File -FilePath (Join-Path $env:COPILOT_HOME 'mcp-config.json') -Encoding utf8
+
+        Register-MCPServers
+
+        $mcpConfig = Get-Content -Raw -Path (Join-Path $env:COPILOT_HOME 'mcp-config.json') | ConvertFrom-Json
+        $mcpConfig.mcpServers.playwright.command | Should -Be 'C:\tools\playwright-mcp.exe'
     }
 
     It 'Register-MCPServers initializes mcpServers on an existing config that lacks it' {
@@ -62,7 +95,7 @@ Describe 'setup.ps1' {
 
         $mcpConfig = Get-Content -Raw -Path (Join-Path $env:COPILOT_HOME 'mcp-config.json') | ConvertFrom-Json
         $mcpConfig.someOtherSetting | Should -BeTrue
-        $mcpConfig.mcpServers.playwright.command | Should -Be 'npx'
+        $mcpConfig.mcpServers.'microsoft-learn'.url | Should -Be 'https://learn.microsoft.com/api/mcp'
     }
 
     It 'Invoke-SafeInstall records native command failures' {

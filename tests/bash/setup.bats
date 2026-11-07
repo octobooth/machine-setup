@@ -36,7 +36,7 @@ load_script() {
     [ "$output" = "14" ]
 }
 
-@test "register_mcp_servers writes config for local and http servers" {
+@test "register_mcp_servers writes config for http servers" {
     load_script
     load_config
 
@@ -45,13 +45,46 @@ load_script() {
     local mcp_config="$COPILOT_HOME/mcp-config.json"
     [[ -f "$mcp_config" ]]
 
-    run jq -r '.mcpServers.playwright.command' "$mcp_config"
-    [ "$status" -eq 0 ]
-    [ "$output" = "npx" ]
-
     run jq -r '.mcpServers["microsoft-learn"].url' "$mcp_config"
     [ "$status" -eq 0 ]
     [ "$output" = "https://learn.microsoft.com/api/mcp" ]
+
+    run jq -r '.mcpServers | has("playwright")' "$mcp_config"
+    [ "$status" -eq 0 ]
+    [ "$output" = "false" ]
+}
+
+@test "register_mcp_servers removes the old npx Playwright entry and keeps others" {
+    load_script
+    load_config
+
+    printf '%s\n' '{"someOtherSetting":true,"mcpServers":{"playwright":{"tools":["*"],"type":"local","command":"npx","args":["@playwright/mcp@latest"]},"custom":{"type":"http","url":"https://example.com/mcp"}}}' \
+        > "$COPILOT_HOME/mcp-config.json"
+
+    register_mcp_servers
+
+    local mcp_config="$COPILOT_HOME/mcp-config.json"
+    run jq -r '.mcpServers | has("playwright")' "$mcp_config"
+    [ "$output" = "false" ]
+
+    run jq -r '.mcpServers.custom.url' "$mcp_config"
+    [ "$output" = "https://example.com/mcp" ]
+
+    run jq -r '.someOtherSetting' "$mcp_config"
+    [ "$output" = "true" ]
+}
+
+@test "register_mcp_servers keeps a custom Playwright entry that doesn't use npx" {
+    load_script
+    load_config
+
+    printf '%s\n' '{"mcpServers":{"playwright":{"type":"local","command":"/usr/local/bin/playwright-mcp","args":["@playwright/mcp"]}}}' \
+        > "$COPILOT_HOME/mcp-config.json"
+
+    register_mcp_servers
+
+    run jq -r '.mcpServers.playwright.command' "$COPILOT_HOME/mcp-config.json"
+    [ "$output" = "/usr/local/bin/playwright-mcp" ]
 }
 
 @test "try_install records failures without exiting" {
