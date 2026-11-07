@@ -91,8 +91,8 @@ function Invoke-DemoLauncherMain {
 
     $script:failedItems = @()
     if ($Uninstall) {
-        Uninstall-DemoLauncherLoader
-        return 0
+        if (Uninstall-DemoLauncherLoader) { return 0 }
+        return 1
     }
     if (Test-Path $script:configPath) { Import-Config }
 
@@ -103,7 +103,8 @@ function Invoke-DemoLauncherMain {
 
     $target = Get-DemoLauncherRepoDir
     if ($script:failedItems.Count -eq 0) {
-        Install-DemoLauncherLoader -CheckoutDir $target
+        # Also checks the origin of a fresh clone before installing code that runs in every chat
+        Install-DemoLauncher
     }
 
     Write-Summary

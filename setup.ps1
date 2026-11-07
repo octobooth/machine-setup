@@ -721,10 +721,10 @@ function Install-DemoLauncherLoader {
         Write-Err "$templatePath not found, so the Demo Launcher loader wasn't installed. Pull machine-setup and re-run."
         return
     }
-    $content = Get-DemoLauncherLoaderContent -Template ([System.IO.File]::ReadAllText($templatePath)) -CheckoutDir $CheckoutDir
-
     $loaderPath = Get-DemoLauncherLoaderPath
     try {
+        # Read before touching the existing loader, so a failed read can't leave it empty
+        $content = Get-DemoLauncherLoaderContent -Template ([System.IO.File]::ReadAllText($templatePath)) -CheckoutDir $CheckoutDir
         New-Item -Path (Split-Path $loaderPath) -ItemType Directory -Force -ErrorAction Stop | Out-Null
         # Windows PowerShell 5.1's -Encoding UTF8 adds a BOM, so write the bytes directly
         [System.IO.File]::WriteAllText($loaderPath, $content, (New-Object System.Text.UTF8Encoding $false))
@@ -738,12 +738,18 @@ function Install-DemoLauncherLoader {
 
 function Uninstall-DemoLauncherLoader {
     $loaderPath = Get-DemoLauncherLoaderPath
-    if (Test-Path -LiteralPath $loaderPath -PathType Leaf) {
-        Remove-Item -LiteralPath $loaderPath -Force
-        Write-Success "Removed $loaderPath (run history in $(Split-Path $loaderPath) was kept)."
-    } else {
+    if (-not (Test-Path -LiteralPath $loaderPath -PathType Leaf)) {
         Write-Info "No Demo Launcher loader at $loaderPath; nothing to remove."
+        return $true
     }
+    try {
+        Remove-Item -LiteralPath $loaderPath -Force -ErrorAction Stop
+    } catch {
+        Write-Err "Couldn't remove ${loaderPath}: $($_.Exception.Message)"
+        return $false
+    }
+    Write-Success "Removed $loaderPath (run history in $(Split-Path $loaderPath) was kept)."
+    return $true
 }
 
 # Only this repo is trusted as the Demo Launcher source, because the loader runs its code in

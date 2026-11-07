@@ -222,6 +222,35 @@ Describe 'install-demo-launcher.ps1' {
             $script:calls | Should -BeNullOrEmpty
         }
 
+        It '-Uninstall fails when the loader cannot be removed' {
+            $loader = Get-DemoLauncherLoaderPath
+            New-Item -Path (Split-Path $loader) -ItemType Directory -Force | Out-Null
+            Set-Content -Path $loader -Value '// loader'
+            Mock Remove-Item { throw 'access denied' }
+
+            Invoke-DemoLauncherMain -Uninstall | Should -Be 1
+        }
+
+        It 'does not install the loader when a fresh clone has an untrusted origin' {
+            $script:originUrl = 'https://ghe.example.com/octobooth-demos/repo-setup-scripts.git'
+
+            Invoke-DemoLauncherMain | Should -Be 1
+
+            Test-Path (Get-DemoLauncherLoaderPath) | Should -BeFalse
+        }
+
+        It 'keeps the existing loader when the template cannot be read' {
+            New-FakeCheckout -Target (Get-DemoLauncherRepoDir)
+            $loader = Get-DemoLauncherLoaderPath
+            New-Item -Path (Split-Path $loader) -ItemType Directory -Force | Out-Null
+            Set-Content -Path $loader -Value '// old loader'
+            Mock Get-DemoLauncherLoaderContent { throw 'read failed' }
+
+            Invoke-DemoLauncherMain | Should -Be 1
+
+            (Get-Content -Raw -Path $loader).Trim() | Should -Be '// old loader'
+        }
+
         It '-Uninstall succeeds when no loader is installed' {
             Invoke-DemoLauncherMain -Uninstall | Should -Be 0
         }
