@@ -80,12 +80,12 @@ If `git` still doesn't work, the README has a [ZIP fallback](../README.md#1-get-
    ```
 
 4. Answer the prompts as they come up:
-   1. **Xcode Command Line Tools.** `git` and Homebrew need them. If they're missing, the installer opens: click **Install**, and the script waits until it finishes (up to 30 minutes; set `XCODE_CLT_TIMEOUT` in seconds to change this). If the install fails or times out, run `xcode-select --install`, finish the installer, and run `bash setup.sh` again.
+   1. **Xcode Command Line Tools.** `git` and Homebrew need them. If they're missing, the installer opens: click **Install**, and the script waits until it finishes (up to 30 minutes; set `XCODE_CLT_TIMEOUT` in seconds to change this). If the install fails or times out, run `xcode-select --install`, finish the installer, and run `bash setup.sh --ref v1` again.
    2. **Your Mac password.** The Homebrew installer and the SF Mono font ask for it. Type it and press Enter (nothing shows while you type). If the Homebrew installer asks you to press RETURN to continue, press Enter.
    3. **GitHub.com in Chrome.** The script opens Chrome and pauses. Sign in to GitHub.com as **the booth account**, then press Enter.
    4. **Default browser.** If Chrome isn't the default browser yet, macOS asks whether to change it. Click **Use “Google Chrome”**, then press Enter. This also works if Chrome was installed before setup ran. If Chrome is already the default, the script skips this step.
    5. **GitHub CLI login.** The GitHub CLI shows a one-time code. Press Enter to open the browser, enter the code, and approve the login (or scope upgrade) while signed in as the booth account. See [GitHub CLI login](../README.md#github-cli-login).
-5. At the end, setup prints a summary of anything that failed. Fix the cause and run `bash setup.sh` again; finished steps are skipped.
+5. At the end, setup prints a summary of anything that failed. Fix the cause and run `bash setup.sh --ref v1` again; finished steps are skipped.
 6. Setup adds Google Chrome, the GitHub Copilot app, VS Code, VS Code Insiders, iTerm2, and VLC to the Dock.
 7. Store booth videos in `$HOME/Videos` and open them from VLC in the Dock.
 
@@ -181,7 +181,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
    2. **GitHub.com in Edge.** The script opens Microsoft Edge and pauses. Sign in to GitHub.com as **the booth account**, then press Enter.
    3. **GitHub CLI login.** The GitHub CLI shows a one-time code. Press Enter to open the browser, enter the code, and approve the login (or scope upgrade) while signed in as the booth account. See [GitHub CLI login](../README.md#github-cli-login).
 4. Setup then installs GitHub CLI extensions, clones the demo repos into `$HOME\repos`, installs the Demo Launcher for every Copilot chat, installs VS Code extensions and the theme, and registers MCP servers for Copilot CLI.
-5. At the end, setup prints a summary of anything that failed. Fix the cause and run `.\setup.ps1` again; finished steps and `winget` packages that are already installed are skipped. For `winget` errors, see [Troubleshooting Windows package installs](../README.md#troubleshooting-windows-package-installs).
+5. At the end, setup prints a summary of anything that failed. Fix the cause and run `.\setup.ps1 -Ref v1` again; finished steps and `winget` packages that are already installed are skipped. For `winget` errors, see [Troubleshooting Windows package installs](../README.md#troubleshooting-windows-package-installs).
 
 #### 6. After setup
 

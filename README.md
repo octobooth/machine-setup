@@ -104,12 +104,12 @@ Clone this repo so you can update the scripts before each run. A ZIP download ne
    `--ref v1` (or `BOOTH_RELEASE=v1`) puts `~/repos/repo-setup-scripts` on the same release. Leave it off to track `main`.
 
 4. Answer the prompts as they come up:
-   1. **Xcode Command Line Tools.** `git` and Homebrew need them. If they're missing, the installer opens: click **Install**, and the script waits until it finishes (up to 30 minutes; set `XCODE_CLT_TIMEOUT` in seconds to change this). If the install fails or times out, run `xcode-select --install`, finish the installer, and run `bash setup.sh` again.
+   1. **Xcode Command Line Tools.** `git` and Homebrew need them. If they're missing, the installer opens: click **Install**, and the script waits until it finishes (up to 30 minutes; set `XCODE_CLT_TIMEOUT` in seconds to change this). If the install fails or times out, run `xcode-select --install`, finish the installer, and run `bash setup.sh --ref v1` again.
    2. **Your Mac password.** The Homebrew installer and the SF Mono font ask for it. Type it and press Enter (nothing shows while you type). If the Homebrew installer asks you to press RETURN to continue, press Enter.
    3. **GitHub.com in Chrome.** The script opens Chrome and pauses. Sign in to GitHub.com as **the booth account**, then press Enter.
    4. **Default browser.** If Chrome isn't the default browser yet, macOS asks whether to change it. Click **Use “Google Chrome”**, then press Enter. This also works if Chrome was installed before setup ran. If Chrome is already the default, the script skips this step.
    5. **GitHub CLI login.** The GitHub CLI shows a one-time code. Press Enter to open the browser, enter the code, and approve the login (or scope upgrade) while signed in as the booth account. See [GitHub CLI login](#github-cli-login).
-5. At the end, setup prints a summary of anything that failed. Fix the cause and run `bash setup.sh` again; finished steps are skipped.
+5. At the end, setup prints a summary of anything that failed. Fix the cause and run `bash setup.sh --ref v1` again; finished steps are skipped.
 6. Setup adds Google Chrome, the GitHub Copilot app, VS Code, VS Code Insiders, iTerm2, and VLC to the Dock.
 7. Store booth videos in `$HOME/Videos` and open them from VLC in the Dock.
 
@@ -145,7 +145,7 @@ Go through [Check that the machine is ready](#check-that-the-machine-is-ready).
 
 #### Re-running on a Mac that's already set up
 
-You can run `bash setup.sh` again on a configured Mac without resetting it. Steps that are already done are skipped, and changed settings in `config.json` are applied:
+You can run `bash setup.sh --ref v1` again on a configured Mac without resetting it. Keep the release on reruns: without it, setup moves `repo-setup-scripts` off the release and back to `main`. Steps that are already done are skipped, and changed settings in `config.json` are applied:
 
 - Homebrew packages that are already installed are left alone, and so are Chrome and the GitHub Copilot app when they're already in `/Applications`.
 - The Monaspace Frozen fonts are skipped when the pinned version is already installed.
@@ -154,7 +154,7 @@ You can run `bash setup.sh` again on a configured Mac without resetting it. Step
 - The GitHub CLI login only asks for missing scopes, and repos already in `~/repos` aren't cloned again.
 - The GitHub.com sign-in pause in Chrome still runs. Press Enter if you're already signed in.
 
-To redo everything, run `FORCE_REINSTALL=true bash setup.sh`. To redo just one step, clear its marker and rerun `bash setup.sh`:
+To redo everything, run `FORCE_REINSTALL=true bash setup.sh --ref v1`. To redo just one step, clear its marker and rerun `bash setup.sh --ref v1`:
 
 ```bash
 # iTerm2 colors, font, theme, ligatures, and thin strokes (quit iTerm2 first)
@@ -232,7 +232,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
    2. **GitHub.com in Edge.** The script opens Microsoft Edge and pauses. Sign in to GitHub.com as **the booth account**, then press Enter.
    3. **GitHub CLI login.** The GitHub CLI shows a one-time code. Press Enter to open the browser, enter the code, and approve the login (or scope upgrade) while signed in as the booth account. See [GitHub CLI login](#github-cli-login).
 4. Setup then installs GitHub CLI extensions, clones the demo repos into `$HOME\repos`, installs the Demo Launcher for every Copilot chat, installs VS Code extensions and the theme, and registers MCP servers for Copilot CLI.
-5. At the end, setup prints a summary of anything that failed. Fix the cause and run `.\setup.ps1` again; finished steps and `winget` packages that are already installed are skipped. For `winget` errors, see [Troubleshooting Windows package installs](#troubleshooting-windows-package-installs).
+5. At the end, setup prints a summary of anything that failed. Fix the cause and run `.\setup.ps1 -Ref v1` again; finished steps and `winget` packages that are already installed are skipped. For `winget` errors, see [Troubleshooting Windows package installs](#troubleshooting-windows-package-installs).
 
 Set `$env:NONINTERACTIVE = "true"` before running `setup.ps1` to skip GitHub browser login, CLI login, scope refresh, and the pause when setup isn't running as an administrator. Existing CLI credentials (including `GH_TOKEN` or `GITHUB_TOKEN`) are used to install extensions and clone repositories. Without usable credentials, those steps are deferred with warnings; authenticate with `gh auth login` and rerun setup to complete them. Set `$env:FORCE_REINSTALL = "true"` to redo steps that are normally skipped on reruns, including `winget` installs of packages that are already installed. See [Re-running on a Windows machine that's already set up](#re-running-on-a-windows-machine-thats-already-set-up).
 
@@ -241,7 +241,7 @@ Set `$env:NONINTERACTIVE = "true"` before running `setup.ps1` to skip GitHub bro
 - Close the window and open a new terminal so it picks up the updated `PATH`. Check PowerShell 7 with `pwsh --version`. Windows Terminal adds a **PowerShell** profile for it, but its default profile may still be **Windows PowerShell** 5.1, which stays installed alongside it (check with `$PSVersionTable.PSVersion`). The scripts work in either, but use PowerShell 7 from here on: open the **PowerShell** profile, or make it the default in Windows Terminal under **Settings** > **Startup** > **Default profile**.
 - Store booth videos in `C:\Users\<YourUsername>\Videos` and open them from VLC on the taskbar.
 - To update the Demo Launcher later, run `.\install-demo-launcher.ps1 -Ref v1` (see [Install or update the launcher on Windows](#install-or-update-the-launcher-on-windows)).
-- To add the taskbar pins on a machine that ran setup before they existed, or after a run from a window that wasn't elevated, pull the latest and run `.\setup.ps1` again from **Terminal (Admin)**. You can also run only that step from an Administrator prompt in the repo folder:
+- To add the taskbar pins on a machine that ran setup before they existed, or after a run from a window that wasn't elevated, update the scripts to `v1` (see [step 3](#3-install-git-and-get-the-setup-scripts)) and run `.\setup.ps1 -Ref v1` again from **Terminal (Admin)**. You can also run only that step from an Administrator prompt in the repo folder:
 
   ```powershell
   . .\setup.ps1; Import-Config; Set-TaskbarPins
@@ -280,7 +280,7 @@ Go through [Check that the machine is ready](#check-that-the-machine-is-ready).
 
 #### Re-running on a Windows machine that's already set up
 
-Run `.\setup.ps1` again from **Terminal (Admin)**. You don't need to reset the machine first. Steps that are already done are skipped:
+Run `.\setup.ps1 -Ref v1` again from **Terminal (Admin)**. You don't need to reset the machine first. Keep the release on reruns: without it, setup moves `repo-setup-scripts` off the release and back to `main`. Steps that are already done are skipped:
 
 - Before installing each package in `windows.packages`, setup runs `winget list --id <id> -e --source winget`. If the package is found, setup logs `Already installed: <id>` and moves on without running `winget install`. Like Homebrew on macOS, reruns don't upgrade installed packages. To update one, run `winget upgrade --id <id> -e --source winget`. If `winget list` returns an unexpected error, setup runs `winget install` as before.
 - VLC settings are skipped once `%APPDATA%\vlc\vlcrc` has setup's marker. Taskbar pins are skipped when the layout and policy already match `config.json`.
@@ -292,7 +292,7 @@ If you run setup from a window that isn't elevated, it warns and pauses at the s
 To redo everything, including reinstalling packages, run:
 
 ```powershell
-$env:FORCE_REINSTALL = "true"; .\setup.ps1; Remove-Item Env:\FORCE_REINSTALL
+$env:FORCE_REINSTALL = "true"; .\setup.ps1 -Ref v1; Remove-Item Env:\FORCE_REINSTALL
 ```
 
 ### Check that the machine is ready
