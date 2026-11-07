@@ -90,7 +90,7 @@ If `git` still doesn't work, the README has a [ZIP fallback](../README.md#1-get-
 
 #### 3. Set up the Demo Launcher
 
-Setup already cloned `~/repos/repo-setup-scripts` and installed the Demo Launcher for every Copilot session.
+Setup already cloned `~/repos/repo-setup-scripts` and installed the Demo Launcher for every Copilot session. Don't also install the launcher from a URL in the Copilot app: that adds a second "Demo Launcher" (see [Troubleshooting](#troubleshooting)). To repair or update it, re-run `install-demo-launcher.sh`. [Why the script](../README.md#demo-launcher).
 
 1. Open the GitHub Copilot app and sign in with the booth account.
 2. Add the existing local folder `~/repos/repo-setup-scripts` as a project. Use the local folder, not the repo's URL: adding it by URL makes the app clone a second copy, and only `~/repos/repo-setup-scripts` is updated by `install-demo-launcher.sh` and used by the installed Demo Launcher.
@@ -185,7 +185,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 
 #### 7. Set up the Demo Launcher
 
-Setup already cloned `$HOME\repos\repo-setup-scripts` and installed the Demo Launcher for every Copilot chat.
+Setup already cloned `$HOME\repos\repo-setup-scripts` and installed the Demo Launcher for every Copilot chat. Don't also install the launcher from a URL in the Copilot app: that adds a second "Demo Launcher" (see [Troubleshooting](#troubleshooting)). To repair or update it, re-run `install-demo-launcher.ps1`. [Why the script](../README.md#demo-launcher).
 
 1. Open the GitHub Copilot app and sign in with the booth account. If it was already open, fully quit it first (right-click its icon in the system tray and choose **Quit**), so it loads the launcher.
 2. Ask Copilot to "open the demo launcher" in any chat.
@@ -408,6 +408,8 @@ Rerunning is safe; it replaces the token. The token belongs to the booth account
 | Setup ends with "The following items failed to install" | Fix the cause shown for each item and run setup again; finished steps are skipped. On Windows, see [Troubleshooting Windows package installs](../README.md#troubleshooting-windows-package-installs). |
 | "open the demo launcher" doesn't work | [Update the Demo Launcher](#before-each-booth-day-update-the-machine), which also reinstalls its loader, then fully quit and reopen the GitHub Copilot app (on Windows, right-click its tray icon and choose **Quit**). If it still doesn't open, ask from a session in the repo-setup-scripts project. |
 | The pinned session still shows the old launcher after an update | It's probably a **New worktree** session, which keeps its own copy. Archive it and start a new **Current checkout** session in the repo-setup-scripts project. |
+| Two "Demo Launcher" canvases, both labeled Personal | One was installed from a URL (it's named `demo-launcher-loader`). Remove `demo-launcher-loader` from the Copilot app's **Extensions** screen, or delete `~/.copilot/extensions/demo-launcher-loader` (`$HOME\.copilot\extensions\demo-launcher-loader` on Windows). Then re-run `install-demo-launcher.sh` or `install-demo-launcher.ps1` and restart the app. |
+| A "Demo Launcher" labeled "repository: security-octo-supply-v4-…" | It comes from a demo repo made from the old v4 template, which included a HydraFusion launcher (since removed). Remove that demo project from the Copilot app. |
 | The launcher's **Clean up** says your `gh` login can't delete repos | Run `gh auth refresh -h github.com -s delete_repo` in a terminal as the booth account, then click **Delete** again. |
 | A booth account's weekly cleanup run failed | Open the failed run. If it mentions `CLEANUP_TOKEN`, ask an org admin to [set up that account again](#set-up-or-repair-the-weekly-cleanup). |
 | Demo repos in a booth account aren't being deleted | Check they're more than 7 days old and have the `demo-generated` topic (shown under **About** on the repo page). To delete them now, use the launcher's [Clean up](#from-the-demo-launcher) with **Any age**, or [run the weekly cleanup](#run-it-sooner-just-a-browser) with `older_than_days` set to `0`. |

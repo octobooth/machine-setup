@@ -341,6 +341,9 @@ If the error persists, update App Installer through Microsoft Store and check wh
 [`octobooth-demos/repo-setup-scripts`](https://github.com/octobooth-demos/repo-setup-scripts) (cloned to `~/repos/repo-setup-scripts`) ships a **Demo Launcher** canvas for the GitHub Copilot app. It creates booth demos in the background with `create-repo.sh`/`create-repo.ps1`, opens sessions for them in the Copilot app, and cleans up old demo repos (see [From the Demo Launcher](docs/booth-playbook.md#from-the-demo-launcher)). For using it on booth day, see [During the event](docs/booth-playbook.md#part-2-during-the-event-run-demos) in the booth playbook.
 
 > [!IMPORTANT]
+> On booth machines, install the launcher only with this repo's scripts: `setup.sh` or `install-demo-launcher.sh` on macOS/Linux, `setup.ps1` or `install-demo-launcher.ps1` on Windows. Don't also install the canvas from a URL in the Copilot app. The launcher reads its demos and `create-repo` scripts from a local clone of repo-setup-scripts, so a clone is needed either way. The scripts clone or update `~/repos/repo-setup-scripts` and write the loader in the same automatic step during machine setup, with no manual per-machine step. Re-running `install-demo-launcher.sh` or `install-demo-launcher.ps1` repairs or updates both (`setup.sh` keeps an existing loader unless `FORCE_REINSTALL=true`). A URL install is named `demo-launcher-loader` even if you ask for `demo-launcher`, so alongside the script's loader you get two "Demo Launcher" canvases labeled Personal (see [Two Demo Launchers show up](#two-demo-launchers-show-up)). The URL install is for running the demos outside the booth; see [Run in your own org](https://github.com/octobooth-demos/repo-setup-scripts/blob/main/docs/run-in-your-own-org.md).
+
+> [!IMPORTANT]
 > Pin a **Current checkout** session, not a **New worktree** one. A worktree session works from its own copy under `copilot-worktrees`, so pulls and `install-demo-launcher` never update it and it keeps loading the old launcher. If the pinned session is a worktree, archive it and start a new **Current checkout** session.
 
 ### macOS (and Linux): installed loader and project
@@ -414,6 +417,10 @@ Then restart the GitHub Copilot app (or reload extensions) and ask Copilot to "o
 ### Two Demo Launchers show up
 
 On Copilot app builds with staff features, the app-wide canvas picker can list two "Demo Launcher" canvases: the installed loader (`user:demo-launcher`) and the project's copy (`project:demo-launcher`). Booth machines run without staff features, so this shouldn't happen there. Both are the same launcher and either one works. To hide one, remove `repo-setup-scripts` from the app's projects and restart the app, but keep the clone in `~/repos/repo-setup-scripts` because the loader imports from it.
+
+If two "Demo Launcher" canvases are both labeled Personal, one was installed from a URL (as `demo-launcher-loader`) next to the script's loader (`demo-launcher`). Remove `demo-launcher-loader` from the Copilot app's **Extensions** screen, or delete `~/.copilot/extensions/demo-launcher-loader` (`$HOME\.copilot\extensions\demo-launcher-loader` on Windows). Then re-run `install-demo-launcher.sh` or `install-demo-launcher.ps1` and restart the app.
+
+A "Demo Launcher" labeled "repository: security-octo-supply-v4-…" comes from a demo repo made from the old v4 template, which included a HydraFusion launcher (since removed). Remove that demo project from the Copilot app.
 
 For more on the Demo Launcher itself, see the [repo-setup-scripts quick start](https://github.com/octobooth-demos/repo-setup-scripts#quick-start-booth-machine).
 
