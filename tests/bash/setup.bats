@@ -1021,6 +1021,22 @@ release_commit() {
     [[ "$output" == *"release=v1"* ]] || false
 }
 
+@test "install-demo-launcher.sh passes the caller's FORCE_REINSTALL to the Playwright bundle" {
+    source "$REPO_ROOT/install-demo-launcher.sh"
+    load_config() { :; }
+    check_demo_launcher_prereqs() { :; }
+    install_demo_launcher() { :; }
+    install_playwright_mcp_bundle() { echo "bundle_force=$FORCE_REINSTALL"; }
+    register_mcp_servers() { :; }
+    mkdir -p "$HOME/repos/repo-setup-scripts/.git"
+
+    FORCE_REINSTALL=false run demo_launcher_main
+    [[ "$output" == *"bundle_force=false"* ]] || false
+
+    FORCE_REINSTALL=true run demo_launcher_main
+    [[ "$output" == *"bundle_force=true"* ]] || false
+}
+
 @test "setup.sh rejects unknown arguments" {
     run bash "$REPO_ROOT/setup.sh" --bogus
     [ "$status" -eq 2 ]

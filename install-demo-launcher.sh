@@ -58,6 +58,7 @@ demo_launcher_main() {
     fi
 
     # install.sh is idempotent, so always run it to refresh the loader
+    local requested_force="$FORCE_REINSTALL"
     FORCE_REINSTALL=true
     install_demo_launcher
 
@@ -66,8 +67,9 @@ demo_launcher_main() {
     fi
 
     # Also roll out the pinned Playwright MCP bundle and MCP servers. Only reinstall the
-    # bundle when its version changes, and never fail the launcher install over it.
-    FORCE_REINSTALL=false
+    # bundle when its version changes (or the caller set FORCE_REINSTALL), and never
+    # fail the launcher install over it.
+    FORCE_REINSTALL="$requested_force"
     install_playwright_mcp_bundle
     register_mcp_servers
 

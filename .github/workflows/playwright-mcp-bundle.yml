@@ -52,7 +52,7 @@ jobs:
           fi
 
           # Booth machines and CI resolve from the public registry, so the lockfile must too
-          if jq -r '.packages[] | .resolved // empty' package-lock.json | grep -v '^https://registry.npmjs.org/'; then
+          if jq -r '.packages[] | .resolved // empty' package-lock.json | grep -v '^https://registry\.npmjs\.org/'; then
             echo "::error::mcp-bundle/package-lock.json has packages from another registry. Regenerate it against registry.npmjs.org."
             exit 1
           fi
@@ -67,7 +67,14 @@ jobs:
 
           asset="playwright-mcp-$version.tgz"
           mkdir -p ../dist
-          tar -czf "../dist/$asset" --owner=0 --group=0 package.json package-lock.json node_modules
+          # Leave out node_modules/.bin: its symlinks need extra privileges to unpack on Windows,
+          # and the server runs cli.js directly
+          tar -czf "../dist/$asset" --owner=0 --group=0 --exclude=node_modules/.bin package.json package-lock.json node_modules
+          # awk reads the whole listing, so pipefail can't trip on tar getting SIGPIPE
+          if tar -tvzf "../dist/$asset" | awk '/^l/ { found = 1 } END { exit !found }'; then
+            echo "::error::The bundle contains symlinks, which may not unpack on Windows"
+            exit 1
+          fi
           (cd ../dist && sha256sum "$asset" > "$asset.sha256")
           cat "../dist/$asset.sha256"
 
