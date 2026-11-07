@@ -131,6 +131,8 @@ In Chrome, still signed in to GitHub.com as the booth account, open each page be
 - `https://github.com/octobooth-N`: the booth account's profile, using this machine's number (for example `https://github.com/octobooth-1`).
 - `https://github.com/octobooth-demos`: the `octobooth-demos` org.
 
+On booth day, you'll also bookmark the security demo repos (AI Security and Security Supply Chain (v4)). You can't add them during setup: they're created within 72 hours of use. Create each demo once, on one machine, then open that same repo in Chrome on every booth machine and press **Cmd+D**. See [Create the security demos ahead of time](docs/booth-playbook.md#create-the-security-demos-ahead-of-time).
+
 #### 5. Sign in to VS Code and VS Code Insiders
 
 Do this in both VS Code and VS Code Insiders, so GitHub Copilot uses the booth account:
@@ -265,6 +267,8 @@ Setup signed in to GitHub.com in Microsoft Edge, and Chrome isn't installed on W
 
 - `https://github.com/octobooth-N`: the booth account's profile, using this machine's number (for example `https://github.com/octobooth-1`).
 - `https://github.com/octobooth-demos`: the `octobooth-demos` org.
+
+On booth day, you'll also bookmark the security demo repos (AI Security and Security Supply Chain (v4)). You can't add them during setup: they're created within 72 hours of use. Create each demo once, on one machine, then open that same repo in Edge on every booth machine and press **Ctrl+D**. See [Create the security demos ahead of time](docs/booth-playbook.md#create-the-security-demos-ahead-of-time).
 
 #### 9. Sign in to VS Code and VS Code Insiders
 
