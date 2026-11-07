@@ -320,7 +320,7 @@ red_component() {
 
     run configure_iterm2
     [ "$status" -eq 1 ]
-    [[ ! -f "$PREFS_STORE" ]]
+    [[ ! -f "$PREFS_STORE" ]] || false
 }
 
 # Stubs curl to "download" a small zip shaped like monaspace-frozen-v*.zip
@@ -352,8 +352,8 @@ STUB
 
     run install_monaspace_frozen
     [ "$status" -eq 0 ]
-    [[ -f "$HOME/Library/Fonts/MonaspaceNeonFrozen-Regular.ttf" ]]
-    [[ -f "$HOME/Library/Fonts/MonaspaceNeonFrozen-Bold.ttf" ]]
+    [[ -f "$HOME/Library/Fonts/MonaspaceNeonFrozen-Regular.ttf" ]] || false
+    [[ -f "$HOME/Library/Fonts/MonaspaceNeonFrozen-Bold.ttf" ]] || false
     [ "$(cat "$HOME/Library/Fonts/.monaspace-frozen-version")" = "1.400" ]
 
     run grep -cF "releases/download/v1.400/monaspace-frozen-v1.400.zip" "$CURL_LOG"
@@ -377,7 +377,7 @@ STUB
 
     run install_monaspace_frozen
     [ "$status" -eq 1 ]
-    [[ ! -f "$HOME/Library/Fonts/.monaspace-frozen-version" ]]
+    [[ ! -f "$HOME/Library/Fonts/.monaspace-frozen-version" ]] || false
 }
 
 @test "config turns on ligatures and turns off thin strokes in iTerm2" {
@@ -573,11 +573,20 @@ STUB
     [ "$(wc -l < "$INSTALL_LOG")" -eq 2 ]
 }
 
+# Points the checkout's origin at the trusted GitHub URL, and redirects git to the
+# local test origin for that URL, so the origin check passes without network access
+trust_test_origin() {
+    local trusted="https://github.com/octobooth-demos/repo-setup-scripts.git"
+    git -C "$1" remote set-url origin "$trusted"
+    git -C "$1" config "url.$2.insteadOf" "$trusted"
+}
+
 @test "install_demo_launcher fast-forwards an existing repo-setup-scripts clone" {
     local origin="$BATS_TEST_TMPDIR/origin.git"
     local repo="$HOME/repos/repo-setup-scripts"
     git init -q --bare "$origin"
     git clone -q "$origin" "$repo"
+    trust_test_origin "$repo" "$origin"
     git -C "$repo" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
     git -C "$repo" push -q origin HEAD
 
@@ -598,6 +607,237 @@ STUB
     [ "$(wc -l < "$INSTALL_LOG")" -eq 1 ]
 }
 
+# Creates a bare origin for repo-setup-scripts with a main branch, tags v1.0.0
+# and a moving v1 on the first commit, and a newer untagged commit on main.
+# Clones it into ~/repos/repo-setup-scripts at the first commit.
+make_release_origin() {
+    export RELEASE_ORIGIN="$BATS_TEST_TMPDIR/origin.git"
+    export RELEASE_WORK="$BATS_TEST_TMPDIR/work"
+    export RELEASE_REPO="$HOME/repos/repo-setup-scripts"
+    git -c init.defaultBranch=main init -q --bare "$RELEASE_ORIGIN"
+    git clone -q "$RELEASE_ORIGIN" "$RELEASE_WORK" 2>/dev/null
+    git -C "$RELEASE_WORK" checkout -q -b main
+    echo one > "$RELEASE_WORK/file.txt"
+    git -C "$RELEASE_WORK" add file.txt
+    git -C "$RELEASE_WORK" -c user.name=t -c user.email=t@t commit -q -m one
+    git -C "$RELEASE_WORK" tag v1.0.0
+    git -C "$RELEASE_WORK" tag v1
+    git -C "$RELEASE_WORK" push -q origin main --tags
+    git clone -q "$RELEASE_ORIGIN" "$RELEASE_REPO"
+    trust_test_origin "$RELEASE_REPO" "$RELEASE_ORIGIN"
+    release_commit two
+}
+
+# Commits a change to main in the origin
+release_commit() {
+    echo "$1" > "$RELEASE_WORK/file.txt"
+    git -C "$RELEASE_WORK" -c user.name=t -c user.email=t@t commit -q -am "$1"
+    git -C "$RELEASE_WORK" push -q origin main
+}
+
+@test "sync_demo_launcher_repo pins repo-setup-scripts to a release tag" {
+    make_release_origin
+    load_script
+
+    BOOTH_RELEASE=v1 run sync_demo_launcher_repo
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"pinned to release v1"* ]] || false
+    run git -C "$RELEASE_REPO" symbolic-ref -q HEAD
+    [ "$status" -ne 0 ]
+    [ "$(git -C "$RELEASE_REPO" rev-parse HEAD)" = "$(git -C "$RELEASE_WORK" rev-parse v1.0.0)" ]
+}
+
+@test "sync_demo_launcher_repo follows a moved major tag" {
+    make_release_origin
+    load_script
+    BOOTH_RELEASE=v1 run sync_demo_launcher_repo
+    [ "$status" -eq 0 ]
+
+    git -C "$RELEASE_WORK" tag v1.1.0
+    git -C "$RELEASE_WORK" tag -f v1 > /dev/null
+    git -C "$RELEASE_WORK" push -q origin v1.1.0
+    git -C "$RELEASE_WORK" push -q -f origin v1
+
+    BOOTH_RELEASE=v1 run sync_demo_launcher_repo
+    [ "$status" -eq 0 ]
+    [ "$(git -C "$RELEASE_REPO" rev-parse HEAD)" = "$(git -C "$RELEASE_WORK" rev-parse v1.1.0)" ]
+}
+
+@test "sync_demo_launcher_repo fails clearly when the release tag doesn't exist" {
+    make_release_origin
+    load_script
+    local before
+    before=$(git -C "$RELEASE_REPO" rev-parse HEAD)
+
+    BOOTH_RELEASE=v9 run sync_demo_launcher_repo
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"Release tag v9 doesn't exist"* ]] || false
+    [ "$(git -C "$RELEASE_REPO" symbolic-ref --short HEAD)" = main ]
+    [ "$(git -C "$RELEASE_REPO" rev-parse HEAD)" = "$before" ]
+}
+
+@test "sync_demo_launcher_repo refuses a release tag withdrawn on origin" {
+    make_release_origin
+    load_script
+    git -C "$RELEASE_REPO" fetch -q --tags origin
+    git -C "$RELEASE_WORK" push -q origin :refs/tags/v1.0.0
+
+    BOOTH_RELEASE=v1.0.0 run sync_demo_launcher_repo
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"Release tag v1.0.0 isn't on GitHub (it may have been withdrawn)"* ]] || false
+    [ "$(git -C "$RELEASE_REPO" symbolic-ref --short HEAD)" = main ]
+    run git -C "$RELEASE_REPO" rev-parse -q --verify refs/tags/v1.0.0
+    [ "$status" -ne 0 ]
+}
+
+@test "sync_demo_launcher_repo rejects an invalid release tag name" {
+    make_release_origin
+    load_script
+
+    BOOTH_RELEASE="--upload-pack=x" run sync_demo_launcher_repo
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"isn't a valid tag name"* ]] || false
+}
+
+@test "sync_demo_launcher_repo refuses to pin a checkout with local changes" {
+    make_release_origin
+    echo local > "$RELEASE_REPO/file.txt"
+    load_script
+
+    BOOTH_RELEASE=v1 run sync_demo_launcher_repo
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"has local changes"* ]] || false
+    [[ "$output" == *"stash"* ]] || false
+    [ "$(git -C "$RELEASE_REPO" symbolic-ref --short HEAD)" = main ]
+    [ "$(cat "$RELEASE_REPO/file.txt")" = local ]
+}
+
+@test "sync_demo_launcher_repo switches a pinned checkout back to main without a release" {
+    make_release_origin
+    load_script
+    BOOTH_RELEASE=v1 run sync_demo_launcher_repo
+    [ "$status" -eq 0 ]
+
+    BOOTH_RELEASE="" run sync_demo_launcher_repo
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"was pinned to v1"*"switching back to main"* ]] || false
+    [ "$(git -C "$RELEASE_REPO" symbolic-ref --short HEAD)" = main ]
+    [ "$(git -C "$RELEASE_REPO" rev-parse HEAD)" = "$(git -C "$RELEASE_WORK" rev-parse main)" ]
+}
+
+@test "sync_demo_launcher_repo won't leave a pinned release with local changes" {
+    make_release_origin
+    load_script
+    BOOTH_RELEASE=v1 run sync_demo_launcher_repo
+    echo local > "$RELEASE_REPO/file.txt"
+
+    BOOTH_RELEASE="" run sync_demo_launcher_repo
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"has local changes"* ]] || false
+    run git -C "$RELEASE_REPO" symbolic-ref -q HEAD
+    [ "$status" -ne 0 ]
+}
+
+@test "install_demo_launcher doesn't run install.sh when the release can't be checked out" {
+    make_release_origin
+    mkdir -p "$RELEASE_REPO/.github/extensions/demo-launcher"
+    printf '#!/bin/bash\necho run >> "$INSTALL_LOG"\n' > "$RELEASE_REPO/.github/extensions/demo-launcher/install.sh"
+    export INSTALL_LOG="$BATS_TEST_TMPDIR/install.log"
+    load_script
+
+    BOOTH_RELEASE=v9
+    failed_items=()
+    install_demo_launcher
+
+    [[ ! -f "$INSTALL_LOG" ]] || false
+    [[ " ${failed_items[*]} " == *"release: octobooth-demos/repo-setup-scripts at v9"* ]] || false
+}
+
+@test "install_demo_launcher rewrites an existing loader for a release" {
+    make_release_origin
+    mkdir -p "$RELEASE_REPO/.github/extensions/demo-launcher"
+    printf '#!/bin/bash\necho run >> "$INSTALL_LOG"\n' > "$RELEASE_REPO/.github/extensions/demo-launcher/install.sh"
+    mkdir -p "$COPILOT_HOME/extensions/demo-launcher"
+    touch "$COPILOT_HOME/extensions/demo-launcher/extension.mjs"
+    export INSTALL_LOG="$BATS_TEST_TMPDIR/install.log"
+    load_script
+
+    BOOTH_RELEASE=v1
+    install_demo_launcher
+
+    [ "$(wc -l < "$INSTALL_LOG")" -eq 1 ]
+}
+
+@test "install_demo_launcher doesn't run install.sh when a pinned checkout can't return to main" {
+    make_release_origin
+    git -C "$RELEASE_REPO" checkout -q --detach v1
+    echo local > "$RELEASE_REPO/file.txt"
+    mkdir -p "$RELEASE_REPO/.github/extensions/demo-launcher"
+    printf '#!/bin/bash\necho run >> "$INSTALL_LOG"\n' > "$RELEASE_REPO/.github/extensions/demo-launcher/install.sh"
+    export INSTALL_LOG="$BATS_TEST_TMPDIR/install.log"
+    load_script
+
+    FORCE_REINSTALL=true
+    failed_items=()
+    install_demo_launcher
+
+    [[ ! -f "$INSTALL_LOG" ]] || false
+    [ "${#failed_items[@]}" -eq 1 ]
+}
+
+@test "demo_launcher_remote_trusted accepts only the trusted repo on github.com" {
+    load_script
+    local repo="$BATS_TEST_TMPDIR/remote-check"
+    git init -q "$repo"
+    git -C "$repo" remote add origin x
+
+    local url
+    for url in https://github.com/octobooth-demos/repo-setup-scripts \
+        https://github.com/octobooth-demos/repo-setup-scripts.git \
+        https://github.com/octobooth-demos/repo-setup-scripts/ \
+        git@github.com:octobooth-demos/repo-setup-scripts.git \
+        ssh://git@github.com/Octobooth-Demos/repo-setup-scripts.git; do
+        git -C "$repo" remote set-url origin "$url"
+        demo_launcher_remote_trusted "$repo" || { echo "rejected $url"; false; }
+    done
+    for url in https://github.com/attacker/repo-setup-scripts.git \
+        https://ghe.example.com/octobooth-demos/repo-setup-scripts.git \
+        https://github.com/octobooth-demos/repo-setup-scripts-fork \
+        "$BATS_TEST_TMPDIR/origin.git"; do
+        git -C "$repo" remote set-url origin "$url"
+        ! demo_launcher_remote_trusted "$repo" || { echo "accepted $url"; false; }
+    done
+}
+
+@test "sync_demo_launcher_repo refuses an untrusted origin before fetching or installing" {
+    make_release_origin
+    mkdir -p "$RELEASE_REPO/.github/extensions/demo-launcher"
+    printf '#!/bin/bash\necho run >> "$INSTALL_LOG"\n' > "$RELEASE_REPO/.github/extensions/demo-launcher/install.sh"
+    export INSTALL_LOG="$BATS_TEST_TMPDIR/install.log"
+    git -C "$RELEASE_REPO" remote set-url origin https://github.com/attacker/repo-setup-scripts.git
+    git -C "$RELEASE_REPO" config "url.$RELEASE_ORIGIN.insteadOf" https://github.com/attacker/repo-setup-scripts.git
+    git -C "$RELEASE_WORK" tag v2.0.0
+    git -C "$RELEASE_WORK" push -q origin v2.0.0
+    load_script
+    local before
+    before=$(git -C "$RELEASE_REPO" rev-parse HEAD)
+
+    BOOTH_RELEASE=v2.0.0 run sync_demo_launcher_repo
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"doesn't point at octobooth-demos/repo-setup-scripts"* ]] || false
+    [[ "$output" != *"Fetching"* ]] || false
+    [ "$(git -C "$RELEASE_REPO" rev-parse HEAD)" = "$before" ]
+    run git -C "$RELEASE_REPO" rev-parse -q --verify refs/tags/v2.0.0
+    [ "$status" -ne 0 ]
+
+    BOOTH_RELEASE=""
+    FORCE_REINSTALL=true
+    failed_items=()
+    install_demo_launcher
+    [[ ! -f "$INSTALL_LOG" ]] || false
+    [ "$(git -C "$RELEASE_REPO" rev-parse HEAD)" = "$before" ]
+}
+
 @test "check_demo_launcher_prereqs fails with login instructions when gh is logged out" {
     mkdir -p "$BATS_TEST_TMPDIR/bin"
     printf '#!/bin/bash\nexit 1\n' > "$BATS_TEST_TMPDIR/bin/gh"
@@ -608,7 +848,7 @@ STUB
 
     run check_demo_launcher_prereqs
     [ "$status" -eq 1 ]
-    [[ "$output" == *"gh auth login -h github.com -s codespace,delete_repo,project,workflow"* ]]
+    [[ "$output" == *"gh auth login -h github.com -s codespace,delete_repo,project,workflow"* ]] || false
 }
 
 @test "check_demo_launcher_prereqs warns about missing scopes but continues" {
@@ -619,7 +859,7 @@ STUB
 
     run check_demo_launcher_prereqs
     [ "$status" -eq 0 ]
-    [[ "$output" == *"gh auth refresh -h github.com -s delete_repo,project,workflow"* ]]
+    [[ "$output" == *"gh auth refresh -h github.com -s delete_repo,project,workflow"* ]] || false
 }
 
 @test "sourcing install-demo-launcher.sh does not execute it" {
@@ -633,6 +873,32 @@ STUB
     run bash "$REPO_ROOT/install-demo-launcher.sh" --bogus
     [ "$status" -eq 2 ]
     [[ "$output" == *"Usage:"* ]]
+}
+
+@test "install-demo-launcher.sh requires a tag after --ref" {
+    run bash "$REPO_ROOT/install-demo-launcher.sh" --ref
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"--ref v1"* ]] || false
+}
+
+@test "install-demo-launcher.sh --ref sets the release" {
+    source "$REPO_ROOT/install-demo-launcher.sh"
+    load_config() { :; }
+    check_demo_launcher_prereqs() { :; }
+    install_demo_launcher() { echo "release=$BOOTH_RELEASE"; }
+    mkdir -p "$HOME/repos/repo-setup-scripts/.git"
+
+    run demo_launcher_main --ref v1.2.0
+    [[ "$output" == *"release=v1.2.0"* ]] || false
+
+    BOOTH_RELEASE=v1 run demo_launcher_main
+    [[ "$output" == *"release=v1"* ]] || false
+}
+
+@test "setup.sh rejects unknown arguments" {
+    run bash "$REPO_ROOT/setup.sh" --bogus
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"--ref v1"* ]] || false
 }
 
 # Stubs xcode-select so `-p` succeeds once the CLT "install" has had
@@ -686,7 +952,7 @@ STUB
 
     run install_xcode_clt
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Xcode Command Line Tools installed"* ]]
+    [[ "$output" == *"Xcode Command Line Tools installed"* ]] || false
 
     run grep -c -F -- "--install" "$XCODE_SELECT_LOG"
     [ "$output" = "1" ]
@@ -699,7 +965,7 @@ STUB
 
     run install_xcode_clt
     [ "$status" -eq 1 ]
-    [[ "$output" == *"xcode-select --install"* ]]
+    [[ "$output" == *"xcode-select --install"* ]] || false
 }
 
 # Stubs defaultbrowser: lists browsers with "*" on $DEFAULT_BROWSER_FILE's
@@ -737,7 +1003,7 @@ STUB
 
     run set_default_browser_chrome < /dev/null
     [ "$status" -eq 0 ]
-    [[ "$output" == *"already the default browser"* ]]
+    [[ "$output" == *"already the default browser"* ]] || false
 
     run grep -Fx "chrome" "$DEFAULTBROWSER_LOG"
     [ "$status" -ne 0 ]
@@ -749,7 +1015,7 @@ STUB
 
     run set_default_browser_chrome <<< ""
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Chrome is now the default browser"* ]]
+    [[ "$output" == *"Chrome is now the default browser"* ]] || false
     [ "$(cat "$DEFAULT_BROWSER_FILE")" = "chrome" ]
 }
 
@@ -760,7 +1026,7 @@ STUB
 
     run set_default_browser_chrome <<< ""
     [ "$status" -eq 1 ]
-    [[ "$output" == *"System Settings"* ]]
+    [[ "$output" == *"System Settings"* ]] || false
 }
 
 # Stubs dockutil, defaults, and killall with a Dock backed by files, and
@@ -851,8 +1117,8 @@ STUB
 
     run configure_dock
     [ "$status" -eq 1 ]
-    [[ "$output" == *"Could not hide suggested and recent apps in the Dock"* ]]
-    [[ "$output" != *"Hid suggested and recent apps"* ]]
+    [[ "$output" == *"Could not hide suggested and recent apps in the Dock"* ]] || false
+    [[ "$output" != *"Hid suggested and recent apps"* ]] || false
     [ ! -f "$SHOW_RECENTS_FILE" ]
 
     run grep -E 'killall' "$DOCK_LOG"
@@ -867,7 +1133,7 @@ STUB
 
     run configure_dock
     [ "$status" -eq 1 ]
-    [[ "$output" == *"iTerm not found"* ]]
+    [[ "$output" == *"iTerm not found"* ]] || false
 
     run grep -cxF "iTerm" "$DOCK_FILE"
     [ "$output" = "0" ]
@@ -882,11 +1148,11 @@ STUB
 
     run configure_dock
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Google Chrome is already in the Dock"* ]]
+    [[ "$output" == *"Google Chrome is already in the Dock"* ]] || false
 
     run grep -cxF "Google Chrome" "$DOCK_FILE"
     [ "$output" = "1" ]
 
     run grep -F 'dockutil --add' "$DOCK_LOG"
-    [[ "$output" != *"Google Chrome"* ]]
+    [[ "$output" != *"Google Chrome"* ]] || false
 }

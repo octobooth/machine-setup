@@ -29,6 +29,9 @@ readonly DEMO_LAUNCHER_REPO="octobooth-demos/repo-setup-scripts"
 # When true, skip detection is bypassed and everything is reinstalled
 FORCE_REINSTALL="${FORCE_REINSTALL:-false}"
 
+# Release tag to pin repo-setup-scripts to: a moving major tag (v1) or a full version (v1.2.0). Empty tracks main.
+BOOTH_RELEASE="${BOOTH_RELEASE:-}"
+
 # Returns 0 (true) if we should check for already-installed items
 should_skip_installed() {
     [[ "$FORCE_REINSTALL" != "true" ]]
@@ -673,20 +676,143 @@ check_demo_launcher_prereqs() {
     fi
 }
 
-# Clones repo-setup-scripts, or fast-forwards an existing checkout so the
-# loader (which imports from it) picks up Demo Launcher updates
-sync_demo_launcher_repo() {
-    local target
-    target=$(demo_launcher_repo_dir)
+# Returns 0 if the checkout at $1 has origin set to $DEMO_LAUNCHER_REPO on github.com
+# (https or ssh, with or without .git), the only repo trusted to run in every Copilot session
+demo_launcher_remote_trusted() {
+    local url
+    url=$(git -C "$1" config --get remote.origin.url 2>/dev/null) || return 1
+    url=$(printf '%s' "$url" | tr '[:upper:]' '[:lower:]')
+    url="${url%/}"
+    url="${url%.git}"
+    case "$url" in
+        https://github.com/*) url="${url#https://github.com/}" ;;
+        git@github.com:*) url="${url#git@github.com:}" ;;
+        ssh://git@github.com/*) url="${url#ssh://git@github.com/}" ;;
+        *) return 1 ;;
+    esac
+    [[ "$url" == "$(printf '%s' "$DEMO_LAUNCHER_REPO" | tr '[:upper:]' '[:lower:]')" ]]
+}
 
-    if [[ -d "$target/.git" ]]; then
-        log_info "Updating ${target/#$HOME/~}..."
-        git -C "$target" pull --ff-only --quiet ||
-            log_warn "Could not fast-forward ${target/#$HOME/~}; using it as is"
-    else
+# Returns 0 if the checkout at $1 has no uncommitted changes to tracked files
+git_worktree_clean() {
+    [[ -z "$(git -C "$1" status --porcelain --untracked-files=no 2>/dev/null)" ]]
+}
+
+# Prints how to clear local changes in the checkout at $1
+log_local_changes_help() {
+    local shown="${1/#$HOME/~}"
+    log_error "${shown} has local changes:"
+    git -C "$1" status --short --untracked-files=no >&2
+    log_error "Save them with: git -C \"$shown\" stash   (or discard them with: git -C \"$shown\" checkout -- .), then re-run."
+}
+
+# Pins the checkout at $1 to event release tag $2 (detached HEAD).
+# Returns 1, without changing the checkout, if the tag is missing or there are local changes.
+checkout_booth_release() {
+    local target="$1" ref="$2" shown="${1/#$HOME/~}"
+
+    if [[ "$ref" == -* ]] || ! git check-ref-format "refs/tags/$ref"; then
+        log_error "\"$ref\" isn't a valid tag name. Releases are tagged like v1 (latest tested v1.x.y) or v1.2.0."
+        return 1
+    fi
+
+    log_info "Fetching release tags for $shown..."
+    # --force so a moving major tag (v1) follows the remote when it's moved to a newer release
+    if ! git -C "$target" fetch --quiet --tags --force origin; then
+        log_error "Couldn't fetch tags for $shown. Check the network and the GitHub CLI login, then re-run."
+        return 1
+    fi
+
+    # fetch --tags doesn't remove tags deleted on origin, so check origin still has it
+    local remote_status=0
+    git -C "$target" ls-remote --quiet --exit-code --tags origin "refs/tags/$ref" > /dev/null || remote_status=$?
+    if [[ $remote_status -eq 2 ]]; then
+        if git -C "$target" tag -d "$ref" > /dev/null 2>&1; then
+            log_error "Release tag $ref isn't on GitHub (it may have been withdrawn), so its local copy was removed. Use the major the booth uses (currently v1), or run without a release to track main."
+        else
+            log_error "Release tag $ref doesn't exist in $DEMO_LAUNCHER_REPO. Use the major the booth uses (currently v1), or run without a release to track main."
+        fi
+        return 1
+    elif [[ $remote_status -ne 0 ]]; then
+        log_error "Couldn't check $DEMO_LAUNCHER_REPO for release tag $ref. Check the network and the GitHub CLI login, then re-run."
+        return 1
+    fi
+
+    if ! git -C "$target" rev-parse --quiet --verify "refs/tags/$ref^{commit}" > /dev/null; then
+        log_error "Release tag $ref doesn't exist in $DEMO_LAUNCHER_REPO. Use the major the booth uses (currently v1), or run without a release to track main."
+        return 1
+    fi
+
+    if ! git_worktree_clean "$target"; then
+        log_local_changes_help "$target"
+        return 1
+    fi
+
+    git -C "$target" checkout --quiet --detach "refs/tags/$ref" || return 1
+    log_success "$shown pinned to release $ref"
+}
+
+# If the checkout at $1 is on a detached HEAD (pinned to a release earlier),
+# switches it back to its default branch so it tracks main again
+return_to_default_branch() {
+    local target="$1" shown="${1/#$HOME/~}" branch pinned
+
+    git -C "$target" symbolic-ref --quiet HEAD > /dev/null && return 0
+
+    branch=$(git -C "$target" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null)
+    branch="${branch#origin/}"
+    branch="${branch:-main}"
+    pinned=$(git -C "$target" describe --tags --exact-match HEAD 2>/dev/null || git -C "$target" rev-parse --short HEAD)
+
+    if ! git_worktree_clean "$target"; then
+        log_local_changes_help "$target"
+        return 1
+    fi
+
+    log_info "$shown was pinned to $pinned; switching back to $branch to track the latest changes"
+    git -C "$target" checkout --quiet "$branch"
+}
+
+# Clones repo-setup-scripts, or updates an existing checkout so the loader
+# (which imports from it) picks up Demo Launcher updates. With BOOTH_RELEASE
+# set, pins the checkout to that event release tag instead of tracking main.
+# Returns 1 if the checkout couldn't be put on the requested release or branch.
+sync_demo_launcher_repo() {
+    local target shown
+    target=$(demo_launcher_repo_dir)
+    shown="${target/#$HOME/~}"
+
+    local fresh_clone=false
+    if [[ ! -d "$target/.git" ]]; then
         mkdir -p "$(dirname "$target")"
         try_install "clone: $DEMO_LAUNCHER_REPO" gh repo clone "$DEMO_LAUNCHER_REPO" "$target"
+        [[ -d "$target/.git" ]] || return 1
+        fresh_clone=true
     fi
+
+    # Checked before any fetch, pull, or checkout, and before install.sh runs from the checkout
+    if ! demo_launcher_remote_trusted "$target"; then
+        failed_items+=("update: $DEMO_LAUNCHER_REPO ($shown origin isn't $DEMO_LAUNCHER_REPO)")
+        log_error "$shown doesn't point at $DEMO_LAUNCHER_REPO, so it wasn't updated and the Demo Launcher wasn't installed. Check: git -C \"$shown\" remote -v"
+        return 1
+    fi
+    [[ "$fresh_clone" == true && -z "$BOOTH_RELEASE" ]] && return 0
+
+    if [[ -n "$BOOTH_RELEASE" ]]; then
+        if ! checkout_booth_release "$target" "$BOOTH_RELEASE"; then
+            failed_items+=("release: $DEMO_LAUNCHER_REPO at $BOOTH_RELEASE")
+            return 1
+        fi
+        return 0
+    fi
+
+    if ! return_to_default_branch "$target"; then
+        failed_items+=("update: $DEMO_LAUNCHER_REPO (couldn't leave its pinned release)")
+        return 1
+    fi
+    log_info "Updating $shown..."
+    git -C "$target" pull --ff-only --quiet ||
+        log_warn "Could not fast-forward $shown; using it as is"
 }
 
 # Makes the Demo Launcher canvas (from repo-setup-scripts) available in every
@@ -697,7 +823,10 @@ install_demo_launcher() {
     local loader="${COPILOT_HOME:-$HOME/.copilot}/extensions/demo-launcher/extension.mjs"
 
     if [[ -d "$(demo_launcher_repo_dir)/.git" ]]; then
-        sync_demo_launcher_repo
+        if ! sync_demo_launcher_repo; then
+            log_error "Demo Launcher not updated, because repo-setup-scripts isn't at ${BOOTH_RELEASE:-its default branch}"
+            return
+        fi
     fi
 
     if [[ ! -f "$installer" ]]; then
@@ -705,7 +834,8 @@ install_demo_launcher() {
         return
     fi
 
-    if should_skip_installed && [[ -f "$loader" ]]; then
+    # A release run always rewrites the loader, so it matches the checked-out release
+    if [[ -z "$BOOTH_RELEASE" ]] && should_skip_installed && [[ -f "$loader" ]]; then
         log_info "Demo Launcher already installed, skipping..."
         return
     fi
@@ -967,6 +1097,17 @@ register_mcp_servers() {
 # ----------------------------------------
 
 main() {
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --ref) [[ -n "${2:-}" ]] || { echo "Usage: ./setup.sh [--ref v1]" >&2; exit 2; }
+                BOOTH_RELEASE="$2"; shift 2 ;;
+            --ref=*) BOOTH_RELEASE="${1#--ref=}"; shift ;;
+            -h|--help) echo "Usage: ./setup.sh [--ref v1]"; return ;;
+            *) echo "Usage: ./setup.sh [--ref v1]" >&2; exit 2 ;;
+        esac
+    done
+    [[ -n "$BOOTH_RELEASE" ]] && log_info "Using event release $BOOTH_RELEASE of $DEMO_LAUNCHER_REPO"
+
     # Bootstrap: install Xcode CLT (for git), homebrew, and jq before loading config
     install_xcode_clt
     install_homebrew

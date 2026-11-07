@@ -21,7 +21,20 @@
 
     Reruns skip steps that are already done, including winget packages that are
     already installed. Set $env:FORCE_REINSTALL = "true" to redo them.
+
+.PARAMETER Ref
+    Checks out $HOME\repos\repo-setup-scripts at a release tag: the major
+    the booth uses (v1) or a full version (v1.2.0). Also read from
+    $env:BOOTH_RELEASE. Without one, a checkout pinned to a release (detached
+    HEAD) switches back to its default branch and pulls it (untested main),
+    while a checkout already on a branch is left as is.
+
+.EXAMPLE
+    .\setup.ps1 -Ref v1
+    Sets up the machine with the v1 release of the Demo Launcher
 #>
+
+param([string]$Ref)
 
 # ----------------------------------------
 # Constants
@@ -769,6 +782,152 @@ function Test-DemoLauncherRemote {
     return ("$url".Trim() -match $pattern)
 }
 
+# Release tag to pin repo-setup-scripts to: a moving major tag (v1) or a full
+# version (v1.2.0). -Ref wins over $env:BOOTH_RELEASE; empty tracks main.
+function Get-BoothRelease {
+    param([string]$Ref)
+    if ($Ref) { return $Ref }
+    if ($env:BOOTH_RELEASE) { return $env:BOOTH_RELEASE }
+    return ''
+}
+
+function Test-GitWorktreeClean {
+    param([string]$Target)
+    $status = git -C $Target status --porcelain --untracked-files=no 2>$null
+    return ($LASTEXITCODE -eq 0 -and -not $status)
+}
+
+function Test-GitDetachedHead {
+    param([string]$Target)
+    git -C $Target symbolic-ref --quiet HEAD 2>$null | Out-Null
+    return ($LASTEXITCODE -ne 0)
+}
+
+function Write-LocalChangesHelp {
+    param([string]$Target)
+    Write-Err "$Target has local changes:"
+    git -C $Target status --short --untracked-files=no 2>&1 | Out-Host
+    Write-Err "Save them with: git -C `"$Target`" stash   (or discard them with: git -C `"$Target`" checkout -- .), then re-run."
+}
+
+# Pins the checkout to release tag $Ref (detached HEAD). Returns $false, without
+# changing the checkout, if the tag is missing or there are local changes.
+function Switch-DemoLauncherRelease {
+    param(
+        [Parameter(Mandatory)][string]$Target,
+        [Parameter(Mandatory)][string]$Ref
+    )
+
+    $failure = "release: $script:TrustedDemoLauncherRepo at $Ref"
+    $validName = $false
+    if (-not $Ref.StartsWith('-')) {
+        git check-ref-format "refs/tags/$Ref" 2>$null | Out-Null
+        $validName = ($LASTEXITCODE -eq 0)
+    }
+    if (-not $validName) {
+        $script:failedItems += $failure
+        Write-Err "`"$Ref`" isn't a valid tag name. Releases are tagged like v1 (latest tested v1.x.y) or v1.2.0."
+        return $false
+    }
+
+    Write-Info "Fetching release tags for $Target..."
+    # --force so a moving major tag (v1) follows the remote when it's moved to a newer release
+    git -C $Target fetch --quiet --tags --force origin 2>&1 | Out-Host
+    if ($LASTEXITCODE -ne 0) {
+        $script:failedItems += $failure
+        Write-Err "Couldn't fetch tags for $Target. Check the network and the GitHub CLI login, then re-run."
+        return $false
+    }
+
+    # fetch --tags doesn't remove tags deleted on origin, so check origin still has it
+    git -C $Target ls-remote --quiet --exit-code --tags origin "refs/tags/$Ref" 2>$null | Out-Null
+    if ($LASTEXITCODE -eq 2) {
+        $script:failedItems += $failure
+        git -C $Target tag -d $Ref 2>$null | Out-Null
+        if ($LASTEXITCODE -eq 0) {
+            Write-Err "Release tag $Ref isn't on GitHub (it may have been withdrawn), so its local copy was removed. Use the major the booth uses (currently v1), or run without a release to track main."
+        } else {
+            Write-Err "Release tag $Ref doesn't exist in $script:TrustedDemoLauncherRepo. Use the major the booth uses (currently v1), or run without a release to track main."
+        }
+        return $false
+    }
+    if ($LASTEXITCODE -ne 0) {
+        $script:failedItems += $failure
+        Write-Err "Couldn't check $script:TrustedDemoLauncherRepo for release tag $Ref. Check the network and the GitHub CLI login, then re-run."
+        return $false
+    }
+
+    git -C $Target rev-parse --quiet --verify "refs/tags/$Ref^{commit}" 2>$null | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        $script:failedItems += $failure
+        Write-Err "Release tag $Ref doesn't exist in $script:TrustedDemoLauncherRepo. Use the major the booth uses (currently v1), or run without a release to track main."
+        return $false
+    }
+
+    if (-not (Test-GitWorktreeClean -Target $Target)) {
+        $script:failedItems += $failure
+        Write-LocalChangesHelp -Target $Target
+        return $false
+    }
+
+    git -C $Target checkout --quiet --detach "refs/tags/$Ref" 2>&1 | Out-Host
+    if ($LASTEXITCODE -ne 0) {
+        $script:failedItems += $failure
+        Write-Err "Couldn't check out $Ref in $Target."
+        return $false
+    }
+    Write-Success "$Target pinned to release $Ref"
+    return $true
+}
+
+# If the checkout is on a detached HEAD (pinned to a release earlier), switches
+# it back to its default branch so it tracks main again. Returns $false if it couldn't.
+function Restore-DemoLauncherDefaultBranch {
+    param([Parameter(Mandatory)][string]$Target)
+
+    if (-not (Test-GitDetachedHead -Target $Target)) { return $true }
+
+    $failure = "update: $script:TrustedDemoLauncherRepo (couldn't leave its pinned release)"
+    $branch = git -C $Target symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>$null
+    $branch = if ($LASTEXITCODE -eq 0 -and $branch) { "$branch".Trim() -replace '^origin/', '' } else { 'main' }
+    $pinned = git -C $Target describe --tags --exact-match HEAD 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not $pinned) { $pinned = git -C $Target rev-parse --short HEAD 2>$null }
+
+    if (-not (Test-GitWorktreeClean -Target $Target)) {
+        $script:failedItems += $failure
+        Write-LocalChangesHelp -Target $Target
+        return $false
+    }
+
+    Write-Info "$Target was pinned to $("$pinned".Trim()); switching back to $branch to track the latest changes"
+    git -C $Target checkout --quiet $branch 2>&1 | Out-Host
+    if ($LASTEXITCODE -ne 0) {
+        $script:failedItems += $failure
+        Write-Err "Couldn't switch $Target back to $branch."
+        return $false
+    }
+    return $true
+}
+
+# Pins repo-setup-scripts to the requested release, or, without one, moves a checkout that's
+# on a release back to main (like setup.sh). setup.ps1 otherwise leaves existing clones as
+# they are. Returns $false if the loader shouldn't be (re)written.
+function Sync-DemoLauncherRelease {
+    param([string]$Release)
+
+    $checkout = Get-DemoLauncherRepoDir
+    if (-not (Test-Path -LiteralPath (Join-Path $checkout ".git"))) { return $true }
+    if (-not $Release -and -not (Test-GitDetachedHead -Target $checkout)) { return $true }
+    # Install-DemoLauncher reports an untrusted origin, so don't fetch from it here
+    if (-not (Test-DemoLauncherRemote -Target $checkout)) { return $true }
+    if ($Release) { return (Switch-DemoLauncherRelease -Target $checkout -Ref $Release) }
+
+    if (-not (Restore-DemoLauncherDefaultBranch -Target $checkout)) { return $false }
+    git -C $checkout pull --ff-only --quiet 2>&1 | Out-Host
+    if ($LASTEXITCODE -ne 0) { Write-Warn "Couldn't fast-forward $checkout; using it as is." }
+    return $true
+}
+
 function Install-DemoLauncher {
     $checkout = Get-DemoLauncherRepoDir
     if (-not (Test-Path -LiteralPath (Join-Path $checkout ".git"))) {
@@ -835,6 +994,8 @@ function Register-MCPServers {
 # ----------------------------------------
 
 function Invoke-Main {
+    param([string]$Ref)
+
     $ErrorActionPreference = "Continue"
 
     Write-Host "========================================" -ForegroundColor Cyan
@@ -879,8 +1040,14 @@ function Invoke-Main {
     }
     Copy-Repos -SkipClone:$skipRepoClones
 
-    # Make the Demo Launcher available in every Copilot session
-    Install-DemoLauncher
+    # Make the Demo Launcher available in every Copilot session, at the requested release if any
+    $release = Get-BoothRelease -Ref $Ref
+    if ($release) { Write-Info "Using release $release of $script:TrustedDemoLauncherRepo" }
+    if (Sync-DemoLauncherRelease -Release $release) {
+        Install-DemoLauncher
+    } else {
+        Write-Err "Demo Launcher not updated, because repo-setup-scripts isn't at release $release"
+    }
 
     # PWA setup is intentionally disabled until the booth workflow needs it again.
     # See README for the rationale and re-enable notes.
@@ -906,5 +1073,5 @@ function Invoke-Main {
 }
 
 if ($MyInvocation.InvocationName -ne ".") {
-    Invoke-Main
+    Invoke-Main -Ref $Ref
 }

@@ -1,6 +1,6 @@
 # Booth playbook
 
-_Last updated by [@filmgirl](https://github.com/filmgirl) on November 5, 2026_
+_Last updated by [@filmgirl](https://github.com/filmgirl) on November 6, 2026_
 
 A step-by-step walkthrough for running a booth: set up each booth machine before the event, run demos on booth day, then clean up and reset the booth accounts afterwards. You can read this without logging in to anything. Each step lists the access and tools it needs.
 
@@ -9,7 +9,7 @@ A step-by-step walkthrough for running a booth: set up each booth machine before
 ## At a glance
 
 1. **[Before the event](#part-1-before-the-event-set-up-each-booth-machine)**: on each machine, sign in as its booth account, run setup, check the Demo Launcher opens, add browser bookmarks, sign in to VS Code and VS Code Insiders, and [check the machine is ready](#check-that-the-machine-is-ready).
-2. **[Each booth day](#before-each-booth-day-update-the-machine)**: pull the latest scripts and update the Demo Launcher.
+2. **[Each booth day](#before-each-booth-day-update-the-machine)**: update the scripts to the tested release (currently `v1`) and update the Demo Launcher.
 3. **[During the event](#part-2-during-the-event-run-demos)**: open the pinned apps and the Demo Launcher, and create demos.
 4. **[After the event](#part-3-after-the-event-clean-up-and-reset)**: delete the demo repos in the booth accounts and the org, clear the booth machines' demo folders, and have an org admin reset the booth accounts.
 
@@ -53,10 +53,11 @@ Then follow the steps for [macOS](#set-up-a-mac) or [Windows](#set-up-a-windows-
    git clone https://github.com/octobooth-demos/machine-setup.git ~/repos/machine-setup
    ```
 
-3. Before each booth day, and before re-running `setup.sh` or `install-demo-launcher.sh`, pull the latest:
+3. Put the scripts on the tested release the booth uses, currently `v1` (see [Using a release](../README.md#using-a-release)). Do this again before each booth day, and before re-running `setup.sh` or `install-demo-launcher.sh`:
 
    ```bash
-   git -C ~/repos/machine-setup pull
+   git -C ~/repos/machine-setup fetch --tags --force
+   git -C ~/repos/machine-setup checkout --detach v1
    ```
 
 If `git` still doesn't work, the README has a [ZIP fallback](../README.md#1-get-the-setup-scripts).
@@ -75,7 +76,7 @@ If `git` still doesn't work, the README has a [ZIP fallback](../README.md#1-get-
 
    ```bash
    cd ~/repos/machine-setup
-   bash setup.sh
+   bash setup.sh --ref v1
    ```
 
 4. Answer the prompts as they come up:
@@ -151,7 +152,12 @@ git clone https://github.com/octobooth-demos/machine-setup.git "$HOME\repos\mach
 cd "$HOME\repos\machine-setup"
 ```
 
-Before each booth day, and before re-running `setup.ps1` or `install-demo-launcher.ps1`, pull the latest with `git -C "$HOME\repos\machine-setup" pull`.
+Put the scripts on the tested release the booth uses, currently `v1` (see [Using a release](../README.md#using-a-release)). Do this again before each booth day, and before re-running `setup.ps1` or `install-demo-launcher.ps1`:
+
+```powershell
+git -C "$HOME\repos\machine-setup" fetch --tags --force
+git -C "$HOME\repos\machine-setup" checkout --detach v1
+```
 
 #### 4. Allow the script to run
 
@@ -164,10 +170,10 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 #### 5. Run setup
 
 1. If the GitHub CLI is already installed (for example, you're re-running setup), check which account it's logged in to with `gh auth status`. If it shows an account other than this machine's booth account, log it out with `gh auth logout -h github.com`. Setup only logs in when the GitHub CLI isn't logged in, so it would otherwise keep the wrong account. On a new machine, `gh` isn't installed yet; skip this.
-2. Run the setup script:
+2. Run the setup script with the same release:
 
    ```powershell
-   .\setup.ps1
+   .\setup.ps1 -Ref v1
    ```
 
 3. Answer the prompts as they come up:
@@ -185,7 +191,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 
 #### 7. Set up the Demo Launcher
 
-Setup already cloned `$HOME\repos\repo-setup-scripts` and installed the Demo Launcher for every Copilot chat. Don't also install the launcher from a URL in the Copilot app: that adds a second "Demo Launcher" (see [Troubleshooting](#troubleshooting)). To repair or update it, re-run `install-demo-launcher.ps1`. [Why the script](../README.md#demo-launcher).
+Setup already cloned `$HOME\repos\repo-setup-scripts` and installed the Demo Launcher for every Copilot chat. Don't also install the launcher from a URL in the Copilot app: that adds a second "Demo Launcher" (see [Troubleshooting](#troubleshooting)). To repair or update it, re-run `.\install-demo-launcher.ps1 -Ref v1`. [Why the script](../README.md#demo-launcher).
 
 1. Open the GitHub Copilot app and sign in with the booth account. If it was already open, fully quit it first (right-click its icon in the system tray and choose **Quit**), so it loads the launcher.
 2. Ask Copilot to "open the demo launcher" in any chat.
@@ -226,26 +232,30 @@ Check each item on every booth machine. `N` is this machine's booth account numb
 
 ### Before each booth day: update the machine
 
-Pull the latest setup scripts and update the Demo Launcher, then restart the GitHub Copilot app so it loads the new launcher. On Windows, fully quit it from its system tray icon (right-click, **Quit**) before reopening it.
+Update the setup scripts and the Demo Launcher to the tested release the booth uses, currently `v1`, then restart the GitHub Copilot app so it loads the new launcher. On Windows, fully quit it from its system tray icon (right-click, **Quit**) before reopening it.
 
 On macOS:
 
 ```bash
-git -C ~/repos/machine-setup pull
+git -C ~/repos/machine-setup fetch --tags --force
+git -C ~/repos/machine-setup checkout --detach v1
 cd ~/repos/machine-setup
-bash install-demo-launcher.sh
+bash install-demo-launcher.sh --ref v1
 ```
 
 On Windows, in a regular (non-administrator) PowerShell:
 
 ```powershell
-git -C "$HOME\repos\machine-setup" pull
+git -C "$HOME\repos\machine-setup" fetch --tags --force
+git -C "$HOME\repos\machine-setup" checkout --detach v1
 cd "$HOME\repos\machine-setup"
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
-.\install-demo-launcher.ps1
+.\install-demo-launcher.ps1 -Ref v1
 ```
 
-Both are safe to re-run. To also pick up changes in `config.json` (new apps, extensions, or repos), run setup again (`bash setup.sh` or `.\setup.ps1`) in addition to the launcher update above. Already-finished steps and already-installed packages are skipped. On Windows, run `.\setup.ps1` from **Terminal (Admin)**; otherwise it skips the taskbar pins. See [Re-running on a Windows machine that's already set up](../README.md#re-running-on-a-windows-machine-thats-already-set-up) for details, and [Demo Launcher](../README.md#demo-launcher) for what the install scripts do.
+`v1` always points at the latest tested `v1.x.y` release of both repos, so this picks up fixes without taking untested changes from `main`. If the script says the tag doesn't exist or the checkout has local changes, fix that before the booth opens; see [Using a release](../README.md#using-a-release). To track `main` instead (for example, to test changes before a release), run `git -C ~/repos/machine-setup checkout main`, pull, and run the install without `--ref` / `-Ref`.
+
+Both are safe to re-run. To also pick up changes in `config.json` (new apps, extensions, or repos), run setup again with the same release (`bash setup.sh --ref v1` or `.\setup.ps1 -Ref v1`) in addition to the launcher update above. Already-finished steps and already-installed packages are skipped. On Windows, run `.\setup.ps1` from **Terminal (Admin)**; otherwise it skips the taskbar pins. See [Re-running on a Windows machine that's already set up](../README.md#re-running-on-a-windows-machine-thats-already-set-up) for details, and [Demo Launcher](../README.md#demo-launcher) for what the install scripts do.
 
 ## Part 2: During the event: run demos
 

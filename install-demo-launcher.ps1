@@ -5,10 +5,17 @@
 .DESCRIPTION
     Windows counterpart to install-demo-launcher.sh. Clones
     $HOME\repos\repo-setup-scripts if it's missing, or fast-forwards it if
-    it's already there, then writes a user-level loader to
+    it's already there (or pins it to a release with -Ref), then writes a user-level loader to
     $env:COPILOT_HOME\extensions\demo-launcher\extension.mjs (default
     $HOME\.copilot) that imports the launcher from that checkout, so the
     Copilot app can open it from any chat. Doesn't need admin. Safe to re-run.
+
+.PARAMETER Ref
+    Checks out the release tag: the major the booth uses (v1) or a full
+    version (v1.2.0). Also read from $env:BOOTH_RELEASE. Without one, a
+    checkout pinned to a release (detached HEAD) switches back to its default
+    branch and pulls it (untested main), while a checkout on a branch stays
+    on that branch and pulls it.
 
 .PARAMETER Uninstall
     Removes only the loader file. The checkout and the launcher's run history
@@ -18,10 +25,19 @@
     .\install-demo-launcher.ps1
 
 .EXAMPLE
+    .\install-demo-launcher.ps1 -Ref v1
+
+.EXAMPLE
     .\install-demo-launcher.ps1 -Uninstall
 #>
 
-param([switch]$Uninstall)
+param(
+    [switch]$Uninstall,
+    [string]$Ref
+)
+
+# Dot-sourcing setup.ps1 resets its own $Ref parameter in this scope, so keep ours
+$requestedRef = $Ref
 
 # setup.ps1 only runs Invoke-Main when executed directly, so dot-sourcing it just loads its helpers
 . (Join-Path $PSScriptRoot "setup.ps1")
@@ -50,6 +66,8 @@ function Test-DemoLauncherPrerequisite {
 }
 
 function Sync-DemoLauncherRepo {
+    param([string]$Release)
+
     $repo = Get-DemoLauncherRepo
     $target = Get-DemoLauncherRepoDir
 
@@ -59,6 +77,11 @@ function Sync-DemoLauncherRepo {
             Write-Err "$target doesn't point at $repo. Check 'git -C `"$target`" remote -v' before using it as a Copilot project."
             return
         }
+        if ($Release) {
+            Switch-DemoLauncherRelease -Target $target -Ref $Release | Out-Null
+            return
+        }
+        if (-not (Restore-DemoLauncherDefaultBranch -Target $target)) { return }
         Write-Info "Updating $target..."
         Invoke-SafeInstall -Description "update: $repo" -Action {
             git -C $target pull --ff-only 2>&1
@@ -84,10 +107,16 @@ function Sync-DemoLauncherRepo {
     Invoke-SafeInstall -Description "clone: $repo" -Action {
         gh repo clone $repo $target 2>&1
     }
+    if ($Release -and $script:failedItems.Count -eq 0 -and (Test-DemoLauncherRemote -Target $target)) {
+        Switch-DemoLauncherRelease -Target $target -Ref $Release | Out-Null
+    }
 }
 
 function Invoke-DemoLauncherMain {
-    param([switch]$Uninstall)
+    param(
+        [switch]$Uninstall,
+        [string]$Ref
+    )
 
     $script:failedItems = @()
     if ($Uninstall) {
@@ -98,8 +127,11 @@ function Invoke-DemoLauncherMain {
 
     if (-not (Test-DemoLauncherPrerequisite)) { return 1 }
 
+    $release = Get-BoothRelease -Ref $Ref
+    if ($release) { Write-Info "Using release $release of $script:TrustedDemoLauncherRepo" }
+
     # Send git/gh output to the console so it doesn't become part of the return value
-    Sync-DemoLauncherRepo | Out-Host
+    Sync-DemoLauncherRepo -Release $release | Out-Host
 
     $target = Get-DemoLauncherRepoDir
     if ($script:failedItems.Count -eq 0) {
@@ -110,7 +142,11 @@ function Invoke-DemoLauncherMain {
     Write-Summary
     if ($script:failedItems.Count -gt 0) { return 1 }
 
-    Write-Success "Demo Launcher is up to date at $target"
+    if ($release) {
+        Write-Success "Demo Launcher is at release $release in $target"
+    } else {
+        Write-Success "Demo Launcher is up to date at $target"
+    }
     Write-Info "Fully quit the GitHub Copilot app (right-click its tray icon and choose Quit), then reopen it."
     Write-Info "Then ask Copilot to `"open the demo launcher`" in any chat."
     Write-Info "Optional, for quick access: add the existing $target folder as a project (don't clone it again) and pin a Current checkout session."
@@ -118,5 +154,5 @@ function Invoke-DemoLauncherMain {
 }
 
 if ($MyInvocation.InvocationName -ne ".") {
-    exit (Invoke-DemoLauncherMain -Uninstall:$Uninstall)
+    exit (Invoke-DemoLauncherMain -Uninstall:$Uninstall -Ref $requestedRef)
 }

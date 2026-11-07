@@ -109,7 +109,13 @@ Describe 'install-demo-launcher.ps1' {
 
     It 'reports a failed pull' {
         New-Item -Path (Join-Path (Get-DemoLauncherRepoDir) '.git') -ItemType Directory -Force | Out-Null
-        $script:gitExitCode = 1
+        Mock git {
+            if ($args -contains 'remote') {
+                $global:LASTEXITCODE = 0
+                return $script:originUrl
+            }
+            $global:LASTEXITCODE = if ($args -contains 'pull') { 1 } else { 0 }
+        }
 
         Invoke-DemoLauncherMain | Should -Be 1
 
