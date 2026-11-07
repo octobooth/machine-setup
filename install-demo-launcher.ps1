@@ -109,7 +109,7 @@ function Invoke-DemoLauncherMain {
     Write-Success "Demo Launcher checkout is up to date at $target"
     Write-Info "Restart the GitHub Copilot app (or reload extensions) to pick up the update."
     Write-Info "If you haven't yet, add the existing $target folder as a project in the Copilot app (don't clone it again)."
-    Write-Info "Then start a session in that project and ask Copilot to `"open the demo launcher`"."
+    Write-Info "Then start a session in that project (choose Current checkout, not New worktree) and ask Copilot to `"open the demo launcher`"."
     return 0
 }
 

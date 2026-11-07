@@ -94,8 +94,8 @@ Setup already cloned `~/repos/repo-setup-scripts` and installed the Demo Launche
 
 1. Open the GitHub Copilot app and sign in with the booth account.
 2. Add the existing local folder `~/repos/repo-setup-scripts` as a project. Use the local folder, not the repo's URL: adding it by URL makes the app clone a second copy, and only `~/repos/repo-setup-scripts` is updated by `install-demo-launcher.sh` and used by the installed Demo Launcher.
-3. Start a session in the repo-setup-scripts project. Then right-click that session in the Copilot app and choose **Pin** so it's easy to find on booth day.
-4. Ask Copilot to "open the demo launcher" in any session. If that doesn't work, ask from a session in the repo-setup-scripts project.
+3. Start a session in the repo-setup-scripts project, choosing **Current checkout** (not **New worktree**). Then right-click that session in the Copilot app and choose **Pin** so it's easy to find on booth day.
+4. Ask Copilot to "open the demo launcher" in any chat or session.
 
 More detail: [Demo Launcher](../README.md#demo-launcher).
 
@@ -189,7 +189,7 @@ Setup already cloned `$HOME\repos\repo-setup-scripts`. On Windows, the Demo Laun
 
 1. Open the GitHub Copilot app and sign in with the booth account.
 2. Add the existing local folder `$HOME\repos\repo-setup-scripts` as a project. Use the local folder, not the repo's URL: adding it by URL makes the app clone a second copy, and only `$HOME\repos\repo-setup-scripts` is updated by `install-demo-launcher.ps1`.
-3. Start a session in the repo-setup-scripts project. Then right-click that session in the Copilot app and choose **Pin** so it's easy to find on booth day.
+3. Start a session in the repo-setup-scripts project, choosing **Current checkout** (not **New worktree**). Then right-click that session in the Copilot app and choose **Pin** so it's easy to find on booth day.
 4. In the pinned repo-setup-scripts session, ask Copilot to "open the demo launcher".
 
 More detail: [Windows: repo-setup-scripts project](../README.md#windows-repo-setup-scripts-project).
@@ -219,7 +219,7 @@ Check each item on every booth machine. `N` is this machine's booth account numb
 
 1. **GitHub CLI.** Run `gh auth status`. It should show `octobooth-N` as the active account, with `codespace`, `delete_repo`, `project`, and `workflow` in its token scopes. If not, follow [GitHub CLI login](../README.md#github-cli-login). If `GH_TOKEN` or `GITHUB_TOKEN` is set, unset it.
 2. **Demo repos.** `~/repos` (`$HOME\repos` on Windows) contains `repo-setup-scripts`, `tailspin-toys`, and `security-octo-supply` (the `repos_to_clone` list in [`config.json`](../config.json)).
-3. **Copilot app.** It's signed in as `octobooth-N`, the repo-setup-scripts project is added from the local `~/repos/repo-setup-scripts` folder (`$HOME\repos\repo-setup-scripts` on Windows), a repo-setup-scripts session is pinned (right-click the session and choose **Pin**), and "open the demo launcher" opens the launcher.
+3. **Copilot app.** It's signed in as `octobooth-N`, the repo-setup-scripts project is added from the local `~/repos/repo-setup-scripts` folder (`$HOME\repos\repo-setup-scripts` on Windows), a **Current checkout** repo-setup-scripts session is pinned (right-click the session and choose **Pin**), and "open the demo launcher" opens the launcher.
 4. **VS Code and VS Code Insiders.** In each, **Accounts** shows `octobooth-N`, and GitHub Copilot is signed in and active.
 5. **Bookmarks.** The browser (Chrome on macOS, Edge on Windows) has bookmarks for `https://github.com/octobooth-N` and `https://github.com/octobooth-demos`.
 6. **Dock or taskbar.** On macOS, the Dock has Google Chrome, the GitHub Copilot app, VS Code, VS Code Insiders, iTerm2, and VLC. On Windows, the taskbar has VS Code, VS Code Insiders, the GitHub Copilot app, Windows Terminal, and VLC. Machines set up with an older version of the setup scripts may still have a `load-demos.sh` or `load-demos.ps1` script on the Desktop. Setup no longer creates it, and nothing uses it, so you can delete it.
@@ -408,6 +408,7 @@ Rerunning is safe; it replaces the token. The token belongs to the booth account
 | `gh auth status` shows your personal account (or another booth account) | Run `gh auth logout -h github.com`, then `gh auth login -h github.com` as this machine's booth account and add the scopes. See [GitHub CLI login](../README.md#github-cli-login). |
 | Setup ends with "The following items failed to install" | Fix the cause shown for each item and run setup again; finished steps are skipped. On Windows, see [Troubleshooting Windows package installs](../README.md#troubleshooting-windows-package-installs). |
 | "open the demo launcher" doesn't work | Ask from a session in the repo-setup-scripts project. If it still doesn't open, [update the Demo Launcher](#before-each-booth-day-update-the-machine) and restart the GitHub Copilot app. |
+| The pinned session still shows the old launcher after an update | It's probably a **New worktree** session, which keeps its own copy. Archive it and start a new **Current checkout** session in the repo-setup-scripts project. |
 | The launcher's **Clean up** says your `gh` login can't delete repos | Run `gh auth refresh -h github.com -s delete_repo` in a terminal as the booth account, then click **Delete** again. |
 | A booth account's weekly cleanup run failed | Open the failed run. If it mentions `CLEANUP_TOKEN`, ask an org admin to [set up that account again](#set-up-or-repair-the-weekly-cleanup). |
 | Demo repos in a booth account aren't being deleted | Check they're more than 7 days old and have the `demo-generated` topic (shown under **About** on the repo page). To delete them now, use the launcher's [Clean up](#from-the-demo-launcher) with **Any age**, or [run the weekly cleanup](#run-it-sooner-just-a-browser) with `older_than_days` set to `0`. |
