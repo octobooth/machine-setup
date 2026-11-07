@@ -20,7 +20,7 @@ Docs to read first:
 ## Branches and releases
 
 - Changes land on `main` through pull requests, and are tested there. Maintainer and dev machines track `main`.
-- Booth machines run the moving major tag **`v1`** of this repo *and* repo-setup-scripts: `--ref v1` (`-Ref v1` on Windows) or the `BOOTH_RELEASE` environment variable. Merging to `main` never changes a booth machine.
+- Booth machines run the moving major tag **`v1`** of this repo *and* repo-setup-scripts. That takes two steps: check out `v1` in this repo (`git checkout --detach v1`), then run setup or `install-demo-launcher` with `--ref v1` (`-Ref v1` on Windows) or `BOOTH_RELEASE`, which pins repo-setup-scripts. The flag doesn't change this repo's checkout. See [Using a release](README.md#using-a-release). Merging to `main` never changes a booth machine.
 - A release tags **both** repos with the same `vX.Y.Z`, at the commits that were tested on a booth Mac and a Windows machine, then moves the matching major tag (`v1`) to it.
 - Never move or delete a pushed `vX.Y.Z` tag. Only the major tag moves.
 - **Agents must not create, move, or delete tags, or publish releases, unless explicitly asked.**
