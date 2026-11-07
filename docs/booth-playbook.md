@@ -53,7 +53,7 @@ Then follow the steps for [macOS](#set-up-a-mac) or [Windows](#set-up-a-windows-
    git clone https://github.com/octobooth-demos/machine-setup.git ~/repos/machine-setup
    ```
 
-3. Put the scripts on the tested release the booth uses, currently `v1` (see [Using a release](../README.md#using-a-release)). Do this again before each booth day, and before re-running `setup.sh` or `install-demo-launcher.sh`:
+3. Put the scripts on the tested [`v1` release](https://github.com/octobooth-demos/machine-setup/releases) the booth uses (see [Using a release](../README.md#using-a-release)). Do this again before each booth day, and before re-running `setup.sh` or `install-demo-launcher.sh`:
 
    ```bash
    git -C ~/repos/machine-setup fetch --tags --force
@@ -152,7 +152,7 @@ git clone https://github.com/octobooth-demos/machine-setup.git "$HOME\repos\mach
 cd "$HOME\repos\machine-setup"
 ```
 
-Put the scripts on the tested release the booth uses, currently `v1` (see [Using a release](../README.md#using-a-release)). Do this again before each booth day, and before re-running `setup.ps1` or `install-demo-launcher.ps1`:
+Put the scripts on the tested [`v1` release](https://github.com/octobooth-demos/machine-setup/releases) the booth uses (see [Using a release](../README.md#using-a-release)). Do this again before each booth day, and before re-running `setup.ps1` or `install-demo-launcher.ps1`:
 
 ```powershell
 git -C "$HOME\repos\machine-setup" fetch --tags --force
@@ -185,7 +185,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 
 #### 6. After setup
 
-- Close the window and open a new terminal so it picks up the updated `PATH`. Check PowerShell 7 with `pwsh --version`. Windows Terminal adds a **PowerShell** profile for it, and Windows PowerShell 5.1 stays installed alongside it. Run future scripts with `pwsh`.
+- Close the window and open a new terminal so it picks up the updated `PATH`. Check PowerShell 7 with `pwsh --version`. Windows Terminal adds a **PowerShell** profile for it, but its default profile may still be **Windows PowerShell** 5.1, which stays installed alongside it (check with `$PSVersionTable.PSVersion`). The scripts work in either, but use PowerShell 7 from here on: open the **PowerShell** profile, or make it the default in Windows Terminal under **Settings** > **Startup** > **Default profile**.
 - To update the Demo Launcher later, see [Before each booth day: update the machine](#before-each-booth-day-update-the-machine).
 - Store booth videos in `C:\Users\<YourUsername>\Videos` and open them from VLC on the taskbar.
 
@@ -232,7 +232,7 @@ Check each item on every booth machine. `N` is this machine's booth account numb
 
 ### Before each booth day: update the machine
 
-Update the setup scripts and the Demo Launcher to the tested release the booth uses, currently `v1`, then restart the GitHub Copilot app so it loads the new launcher. On Windows, fully quit it from its system tray icon (right-click, **Quit**) before reopening it.
+Update the setup scripts and the Demo Launcher to the tested release the booth uses, currently `v1`, then fully restart the GitHub Copilot app so it loads the new launcher: on macOS, quit it with **Cmd+Q**; on Windows, right-click its system tray icon and choose **Quit**. Then reopen it.
 
 On macOS:
 
@@ -253,7 +253,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 .\install-demo-launcher.ps1 -Ref v1
 ```
 
-`v1` always points at the latest tested `v1.x.y` release of both repos, so this picks up fixes without taking untested changes from `main`. If the script says the tag doesn't exist or the checkout has local changes, fix that before the booth opens; see [Using a release](../README.md#using-a-release). To track `main` instead (for example, to test changes before a release), run `git -C ~/repos/machine-setup checkout main`, pull, and run the install without `--ref` / `-Ref`.
+`v1` always points at the latest tested `v1.x.y` release of both repos, so this picks up fixes without taking untested changes from `main`. If the script says the tag doesn't exist or the checkout has local changes, fix that before the booth opens; see [Using a release](../README.md#using-a-release). Developers testing changes before a release can track `main` instead: run `git -C ~/repos/machine-setup checkout main`, pull, and run the install without `--ref` / `-Ref`.
 
 Both are safe to re-run. To also pick up changes in `config.json` (new apps, extensions, or repos), run setup again with the same release (`bash setup.sh --ref v1` or `.\setup.ps1 -Ref v1`) in addition to the launcher update above. Already-finished steps and already-installed packages are skipped. On Windows, run `.\setup.ps1` from **Terminal (Admin)**; otherwise it skips the taskbar pins. See [Re-running on a Windows machine that's already set up](../README.md#re-running-on-a-windows-machine-thats-already-set-up) for details, and [Demo Launcher](../README.md#demo-launcher) for what the install scripts do.
 

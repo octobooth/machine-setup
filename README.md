@@ -73,14 +73,14 @@ Clone this repo so you can update the scripts before each run. A ZIP download ne
    git clone https://github.com/octobooth-demos/machine-setup.git ~/repos/machine-setup
    ```
 
-3. Before each booth day, and before re-running `setup.sh` or `install-demo-launcher.sh`, update the scripts. Booth machines use the `v1` release (see [Using a release](#using-a-release)):
+3. Put the scripts on the [`v1` release](https://github.com/octobooth-demos/machine-setup/releases) the booth uses (see [Using a release](#using-a-release)). Do this again before each booth day, and before re-running `setup.sh` or `install-demo-launcher.sh`:
 
    ```bash
    git -C ~/repos/machine-setup fetch --tags --force
    git -C ~/repos/machine-setup checkout --detach v1
    ```
 
-   To track the latest changes on `main` instead, run `git -C ~/repos/machine-setup checkout main`, then `git -C ~/repos/machine-setup pull` (see [Using a release](#using-a-release) for switching the Demo Launcher back too).
+   Developers testing changes can track `main` instead: run `git -C ~/repos/machine-setup checkout main`, then `git -C ~/repos/machine-setup pull` (see [Using a release](#using-a-release) for switching the Demo Launcher back too).
 
 **Fallback for a new Mac without Git:** [download the ZIP](https://github.com/octobooth-demos/machine-setup/archive/refs/heads/main.zip) and run commands from the extracted `machine-setup-main` folder. Keep all files together, because the scripts need `config.json` and `setup.sh` also needs the `iterm2/` folder. Setup installs the Xcode Command Line Tools and Git, so switch to a clone afterward. If you stay on the ZIP, download it again before re-running any script.
 
@@ -199,14 +199,14 @@ git clone https://github.com/octobooth-demos/machine-setup.git "$HOME\repos\mach
 cd "$HOME\repos\machine-setup"
 ```
 
-Before each booth day, and before re-running `setup.ps1` or `install-demo-launcher.ps1`, update the scripts. Booth machines use the `v1` release (see [Using a release](#using-a-release)):
+Put the scripts on the [`v1` release](https://github.com/octobooth-demos/machine-setup/releases) the booth uses (see [Using a release](#using-a-release)). Do this again before each booth day, and before re-running `setup.ps1` or `install-demo-launcher.ps1`:
 
 ```powershell
 git -C "$HOME\repos\machine-setup" fetch --tags --force
 git -C "$HOME\repos\machine-setup" checkout --detach v1
 ```
 
-To track the latest changes on `main` instead, run `git -C "$HOME\repos\machine-setup" checkout main`, then `git -C "$HOME\repos\machine-setup" pull` (see [Using a release](#using-a-release) for switching the Demo Launcher back too).
+Developers testing changes can track `main` instead: run `git -C "$HOME\repos\machine-setup" checkout main`, then `git -C "$HOME\repos\machine-setup" pull` (see [Using a release](#using-a-release) for switching the Demo Launcher back too).
 
 #### 4. Allow the script to run
 
@@ -238,7 +238,7 @@ Set `$env:NONINTERACTIVE = "true"` before running `setup.ps1` to skip GitHub bro
 
 #### 6. After setup
 
-- Close the window and open a new terminal so it picks up the updated `PATH`. Check PowerShell 7 with `pwsh --version`. Windows Terminal adds a **PowerShell** profile for it, and Windows PowerShell 5.1 stays installed alongside it. Run future scripts with `pwsh`.
+- Close the window and open a new terminal so it picks up the updated `PATH`. Check PowerShell 7 with `pwsh --version`. Windows Terminal adds a **PowerShell** profile for it, but its default profile may still be **Windows PowerShell** 5.1, which stays installed alongside it (check with `$PSVersionTable.PSVersion`). The scripts work in either, but use PowerShell 7 from here on: open the **PowerShell** profile, or make it the default in Windows Terminal under **Settings** > **Startup** > **Default profile**.
 - Store booth videos in `C:\Users\<YourUsername>\Videos` and open them from VLC on the taskbar.
 - To update the Demo Launcher later, run `.\install-demo-launcher.ps1 -Ref v1` (see [Install or update the launcher on Windows](#install-or-update-the-launcher-on-windows)).
 - To add the taskbar pins on a machine that ran setup before they existed, or after a run from a window that wasn't elevated, pull the latest and run `.\setup.ps1` again from **Terminal (Admin)**. You can also run only that step from an Administrator prompt in the repo folder:
@@ -352,7 +352,7 @@ If the error persists, update App Installer through Microsoft Store and check wh
 
 ## Using a release
 
-`main` of this repo and of [`octobooth-demos/repo-setup-scripts`](https://github.com/octobooth-demos/repo-setup-scripts) change often, and booth machines would otherwise pick up whatever is on `main` the night before an event. Booth machines use a tested release instead. **Booth machines currently use `v1`.**
+`main` of this repo and of [`octobooth-demos/repo-setup-scripts`](https://github.com/octobooth-demos/repo-setup-scripts) change often, and booth machines would otherwise pick up whatever is on `main` the night before an event. Booth machines use a tested release instead. **Booth machines use `v1`** (first released as `v1.0.0`). See the release notes for [machine-setup](https://github.com/octobooth-demos/machine-setup/releases) and [repo-setup-scripts](https://github.com/octobooth-demos/repo-setup-scripts/releases).
 
 - Each tested release is tagged `vX.Y.Z` (for example `v1.0.0`, `v1.1.0`), with the same version on both repos. A release is tagged only after the setup has been tested on a booth Mac and a Windows machine.
 - The major tag (`v1`) moves to the latest tested `v1.x.y`, like GitHub Actions' major tags. Use it on booth machines. Use a full tag (`v1.1.0`) to pin an exact version.
@@ -362,7 +362,7 @@ Pin both repos to the same release: check out the tag in `machine-setup` (a deta
 
 Always move to a new release with `install-demo-launcher` (or setup) and the release, not with `git checkout` in `repo-setup-scripts` alone: the scripts also rewrite the installed loader. Then restart the GitHub Copilot app (on Windows, fully quit it from the system tray) so it loads the launcher from that release.
 
-If `v1` doesn't exist yet in both repos, the commands below stop with "doesn't exist". Until the first release is tagged, track `main` (see below).
+To set up or update a booth machine (before each booth day), check out `v1` and run the launcher install (or setup) with it, then fully restart the GitHub Copilot app:
 
 On macOS:
 
@@ -383,7 +383,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 .\install-demo-launcher.ps1 -Ref v1        # or for a full setup, from Terminal (Admin): .\setup.ps1 -Ref v1
 ```
 
-To go back to tracking `main`, check out `main` in `machine-setup` and run the launcher install without a release. It switches `repo-setup-scripts` back to its default branch (saying so), then pulls:
+Developers testing changes before a release can track `main` instead: check out `main` in `machine-setup` and run the launcher install without a release. It switches `repo-setup-scripts` back to its default branch (saying so), then pulls:
 
 ```bash
 git -C ~/repos/machine-setup checkout main
@@ -424,7 +424,7 @@ On booth machines, do both. The loader that `install.sh` writes makes the launch
 
 1. On macOS, run `setup.sh`. On Linux, or a Mac that's already set up, run `install-demo-launcher.sh` (see below). Either one clones the repo to `~/repos/repo-setup-scripts` and runs its `install.sh`.
 2. Open the GitHub Copilot app and sign in with the booth/demo account.
-3. Add the existing local folder `~/repos/repo-setup-scripts` as a project. Don't add it by URL or clone it again, which makes a second copy: then the loader and the project use the same checkout, and one `bash install-demo-launcher.sh` (or `git -C ~/repos/repo-setup-scripts pull`) plus an app restart updates both.
+3. Add the existing local folder `~/repos/repo-setup-scripts` as a project. Don't add it by URL or clone it again, which makes a second copy: then the loader and the project use the same checkout, and one `bash install-demo-launcher.sh --ref v1` plus an app restart updates both.
 4. Start a session in that project with **Current checkout** (not **New worktree**), right-click the session in the Copilot app, and choose **Pin**.
 5. Ask Copilot to "open the demo launcher" in any chat or session.
 
@@ -457,7 +457,7 @@ Re-running is safe. It checks for `git` and `gh`, clones `octobooth-demos/repo-s
 
 To remove the loader (the checkout and run history are kept), run `.\install-demo-launcher.ps1 -Uninstall`.
 
-To update by hand instead:
+If you track `main` (for example, to test changes), you can update by hand instead:
 
 ```powershell
 git -C "$HOME\repos\repo-setup-scripts" remote get-url origin   # should be octobooth-demos/repo-setup-scripts
