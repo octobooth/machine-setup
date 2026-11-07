@@ -101,6 +101,49 @@ function Invoke-SafeInstall {
     }
 }
 
+# Runs a native command and returns its output as plain strings: stdout and stderr, or
+# with -StdoutOnly just stdout. Windows PowerShell 5.1 turns redirected stderr, such as
+# git's normal progress, into red NativeCommandError records even when the command
+# succeeded, so callers must decide success from $LASTEXITCODE, which this leaves set.
+function Invoke-NativeCommandLine {
+    param(
+        [object[]]$CommandLine,
+        [switch]$StdoutOnly
+    )
+    $command = $CommandLine[0]
+    # Assigned rather than returned from an if, which would unwrap a lone argument into a
+    # string that splatting then passes one character at a time
+    $arguments = @()
+    if ($CommandLine.Count -gt 1) { $arguments = @($CommandLine[1..($CommandLine.Count - 1)]) }
+    # With 'Stop', 5.1 would throw on the first stderr line instead of returning it
+    $savedPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & $command @arguments 2>&1 | ForEach-Object {
+            if ($_ -is [System.Management.Automation.ErrorRecord]) {
+                if ($StdoutOnly) { Write-Verbose "$command (stderr): $($_.Exception.Message)" } else { $_.Exception.Message }
+            } else {
+                "$_"
+            }
+        }
+    }
+    finally {
+        $ErrorActionPreference = $savedPreference
+    }
+}
+
+# For output that's shown or searched for messages (Invoke-NativeCommand git -C $dir pull).
+# Uses $args rather than a param block so flags like -C pass straight through.
+function Invoke-NativeCommand {
+    Invoke-NativeCommandLine -CommandLine $args
+}
+
+# For output that's parsed as a value (a URL, branch, or list), so warnings or trace
+# lines on stderr (CRLF, safe.directory, GIT_TRACE) can't end up in it
+function Get-NativeCommandOutput {
+    Invoke-NativeCommandLine -CommandLine $args -StdoutOnly
+}
+
 function Write-Summary {
     if ($script:failedItems.Count -gt 0) {
         Write-Host ""
@@ -211,7 +254,7 @@ function Install-WingetPackage {
 
     try {
         # Use the winget source to avoid unrelated Microsoft Store certificate failures.
-        $output = winget install --id $PackageId -e --source winget --accept-source-agreements --accept-package-agreements --silent 2>&1
+        $output = Invoke-NativeCommand winget install --id $PackageId -e --source winget --accept-source-agreements --accept-package-agreements --silent
         $exitCode = $LASTEXITCODE
 
         if ($script:WingetAlreadyInstalledExitCodes -contains $exitCode) {
@@ -391,7 +434,7 @@ function Install-EditorExtensions {
 
     $installedExts = @()
     if (Test-ShouldSkipInstalled) {
-        $rawExts = & $Command --list-extensions 2>&1
+        $rawExts = Get-NativeCommandOutput $Command --list-extensions
         if ($rawExts) {
             $installedExts = $rawExts | ForEach-Object { $_.ToLower() }
         }
@@ -406,7 +449,7 @@ function Install-EditorExtensions {
         # Attempt install; handle built-in conflicts gracefully
         # (e.g., Copilot is now bundled in VS Code/Insiders)
         try {
-            $output = & $Command --install-extension $ext 2>&1
+            $output = Invoke-NativeCommand $Command --install-extension $ext
             if ($LASTEXITCODE -ne 0) {
                 if ($output -match "built-in extension") {
                     Write-Success "Built-in: $ext ($Name), skipping..."
@@ -428,7 +471,7 @@ function Install-GHExtension {
 
     $description = "gh extension: $Extension"
     try {
-        $output = gh extension install $Extension 2>&1
+        $output = Invoke-NativeCommand gh extension install $Extension
         $exitCode = $LASTEXITCODE
         $text = ($output | Out-String)
 
@@ -466,7 +509,7 @@ function Install-GHExtensions {
 
     $installedExts = @()
     if (Test-ShouldSkipInstalled) {
-        $rawList = gh extension list 2>&1
+        $rawList = Get-NativeCommandOutput gh extension list
         if ($LASTEXITCODE -eq 0 -and $rawList) {
             $installedExts = $rawList | ForEach-Object { ($_ -split '\t')[1] } | Where-Object { $_ }
         }
@@ -677,7 +720,7 @@ function Copy-Repos {
             Write-Warn "Skipping clone: $repo. Authenticate with 'gh auth login' and rerun setup."
         } else {
             Invoke-SafeInstall -Description "clone: $repo" -Action {
-                gh repo clone $repo $target 2>&1
+                Invoke-NativeCommand gh repo clone $repo $target
             }
         }
     }
@@ -776,7 +819,7 @@ function Get-DemoLauncherRepoDir {
 function Test-DemoLauncherRemote {
     param([string]$Target)
 
-    $url = git -C $Target remote get-url origin 2>$null
+    $url = Get-NativeCommandOutput git -C $Target remote get-url origin
     if ($LASTEXITCODE -ne 0) { return $false }
     $pattern = '^(https://github\.com/|git@github\.com:|ssh://git@github\.com/)' + [regex]::Escape($script:TrustedDemoLauncherRepo) + '(\.git)?/?$'
     return ("$url".Trim() -match $pattern)
@@ -793,20 +836,20 @@ function Get-BoothRelease {
 
 function Test-GitWorktreeClean {
     param([string]$Target)
-    $status = git -C $Target status --porcelain --untracked-files=no 2>$null
+    $status = Get-NativeCommandOutput git -C $Target status --porcelain --untracked-files=no
     return ($LASTEXITCODE -eq 0 -and -not $status)
 }
 
 function Test-GitDetachedHead {
     param([string]$Target)
-    git -C $Target symbolic-ref --quiet HEAD 2>$null | Out-Null
+    Invoke-NativeCommand git -C $Target symbolic-ref --quiet HEAD | Out-Null
     return ($LASTEXITCODE -ne 0)
 }
 
 function Write-LocalChangesHelp {
     param([string]$Target)
     Write-Err "$Target has local changes:"
-    git -C $Target status --short --untracked-files=no 2>&1 | Out-Host
+    Invoke-NativeCommand git -C $Target status --short --untracked-files=no | Out-Host
     Write-Err "Save them with: git -C `"$Target`" stash   (or discard them with: git -C `"$Target`" checkout -- .), then re-run."
 }
 
@@ -821,7 +864,7 @@ function Switch-DemoLauncherRelease {
     $failure = "release: $script:TrustedDemoLauncherRepo at $Ref"
     $validName = $false
     if (-not $Ref.StartsWith('-')) {
-        git check-ref-format "refs/tags/$Ref" 2>$null | Out-Null
+        Invoke-NativeCommand git check-ref-format "refs/tags/$Ref" | Out-Null
         $validName = ($LASTEXITCODE -eq 0)
     }
     if (-not $validName) {
@@ -832,7 +875,7 @@ function Switch-DemoLauncherRelease {
 
     Write-Info "Fetching release tags for $Target..."
     # --force so a moving major tag (v1) follows the remote when it's moved to a newer release
-    git -C $Target fetch --quiet --tags --force origin 2>&1 | Out-Host
+    Invoke-NativeCommand git -C $Target fetch --quiet --tags --force origin | Out-Host
     if ($LASTEXITCODE -ne 0) {
         $script:failedItems += $failure
         Write-Err "Couldn't fetch tags for $Target. Check the network and the GitHub CLI login, then re-run."
@@ -840,10 +883,10 @@ function Switch-DemoLauncherRelease {
     }
 
     # fetch --tags doesn't remove tags deleted on origin, so check origin still has it
-    git -C $Target ls-remote --quiet --exit-code --tags origin "refs/tags/$Ref" 2>$null | Out-Null
+    Invoke-NativeCommand git -C $Target ls-remote --quiet --exit-code --tags origin "refs/tags/$Ref" | Out-Null
     if ($LASTEXITCODE -eq 2) {
         $script:failedItems += $failure
-        git -C $Target tag -d $Ref 2>$null | Out-Null
+        Invoke-NativeCommand git -C $Target tag -d $Ref | Out-Null
         if ($LASTEXITCODE -eq 0) {
             Write-Err "Release tag $Ref isn't on GitHub (it may have been withdrawn), so its local copy was removed. Use the major the booth uses (currently v1), or run without a release to track main."
         } else {
@@ -857,7 +900,7 @@ function Switch-DemoLauncherRelease {
         return $false
     }
 
-    git -C $Target rev-parse --quiet --verify "refs/tags/$Ref^{commit}" 2>$null | Out-Null
+    Invoke-NativeCommand git -C $Target rev-parse --quiet --verify "refs/tags/$Ref^{commit}" | Out-Null
     if ($LASTEXITCODE -ne 0) {
         $script:failedItems += $failure
         Write-Err "Release tag $Ref doesn't exist in $script:TrustedDemoLauncherRepo. Use the major the booth uses (currently v1), or run without a release to track main."
@@ -870,7 +913,7 @@ function Switch-DemoLauncherRelease {
         return $false
     }
 
-    git -C $Target checkout --quiet --detach "refs/tags/$Ref" 2>&1 | Out-Host
+    Invoke-NativeCommand git -C $Target checkout --quiet --detach "refs/tags/$Ref" | Out-Host
     if ($LASTEXITCODE -ne 0) {
         $script:failedItems += $failure
         Write-Err "Couldn't check out $Ref in $Target."
@@ -888,10 +931,10 @@ function Restore-DemoLauncherDefaultBranch {
     if (-not (Test-GitDetachedHead -Target $Target)) { return $true }
 
     $failure = "update: $script:TrustedDemoLauncherRepo (couldn't leave its pinned release)"
-    $branch = git -C $Target symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>$null
+    $branch = Get-NativeCommandOutput git -C $Target symbolic-ref --quiet --short refs/remotes/origin/HEAD
     $branch = if ($LASTEXITCODE -eq 0 -and $branch) { "$branch".Trim() -replace '^origin/', '' } else { 'main' }
-    $pinned = git -C $Target describe --tags --exact-match HEAD 2>$null
-    if ($LASTEXITCODE -ne 0 -or -not $pinned) { $pinned = git -C $Target rev-parse --short HEAD 2>$null }
+    $pinned = Get-NativeCommandOutput git -C $Target describe --tags --exact-match HEAD
+    if ($LASTEXITCODE -ne 0 -or -not $pinned) { $pinned = Get-NativeCommandOutput git -C $Target rev-parse --short HEAD }
 
     if (-not (Test-GitWorktreeClean -Target $Target)) {
         $script:failedItems += $failure
@@ -900,7 +943,7 @@ function Restore-DemoLauncherDefaultBranch {
     }
 
     Write-Info "$Target was pinned to $("$pinned".Trim()); switching back to $branch to track the latest changes"
-    git -C $Target checkout --quiet $branch 2>&1 | Out-Host
+    Invoke-NativeCommand git -C $Target checkout --quiet $branch | Out-Host
     if ($LASTEXITCODE -ne 0) {
         $script:failedItems += $failure
         Write-Err "Couldn't switch $Target back to $branch."
@@ -923,7 +966,7 @@ function Sync-DemoLauncherRelease {
     if ($Release) { return (Switch-DemoLauncherRelease -Target $checkout -Ref $Release) }
 
     if (-not (Restore-DemoLauncherDefaultBranch -Target $checkout)) { return $false }
-    git -C $checkout pull --ff-only --quiet 2>&1 | Out-Host
+    Invoke-NativeCommand git -C $checkout pull --ff-only --quiet | Out-Host
     if ($LASTEXITCODE -ne 0) { Write-Warn "Couldn't fast-forward $checkout; using it as is." }
     return $true
 }
@@ -1021,7 +1064,7 @@ function Invoke-Main {
         Write-Warn "NONINTERACTIVE set: skipping GitHub web and CLI authentication"
         $skipRepoClones = $true
         if (Get-Command gh -ErrorAction SilentlyContinue) {
-            gh auth status --active -h github.com 2>&1 | Out-Null
+            Invoke-NativeCommand gh auth status --active -h github.com | Out-Null
             if ($LASTEXITCODE -eq 0) {
                 $skipRepoClones = $false
                 Install-GHExtensions

@@ -157,6 +157,22 @@ Describe 'Demo Launcher releases' {
         Should -Invoke Write-Info -ParameterFilter { $Message -like '*was pinned to v1*switching back to main*' }
     }
 
+    It 'switches a pinned checkout back to main when git writes trace lines to stderr' {
+        Invoke-DemoLauncherMain -Ref v1 | Should -Be 0
+
+        # Trace lines on stderr must not end up in the branch name it parses
+        $env:GIT_TRACE = '1'
+        try {
+            Invoke-DemoLauncherMain | Should -Be 0
+        }
+        finally {
+            Remove-Item Env:\GIT_TRACE -ErrorAction SilentlyContinue
+        }
+
+        "$(git -C $script:checkout symbolic-ref --short HEAD)".Trim() | Should -Be 'main'
+        Should -Invoke Write-Info -ParameterFilter { $Message -like '*was pinned to v1;*switching back to main*' }
+    }
+
     It 'stays on the pinned release when it has local changes' {
         Invoke-DemoLauncherMain -Ref v1 | Should -Be 0
         [System.IO.File]::WriteAllText((Join-Path $script:checkout 'file.txt'), 'local')
