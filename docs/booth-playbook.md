@@ -124,7 +124,7 @@ These steps assume a brand-new Windows 10 or 11 machine with nothing installed b
 
 #### 1. Open an administrator PowerShell
 
-Right-click **Start** and choose **Terminal (Admin)** (Windows 11) or **Windows PowerShell (Admin)** (Windows 10), then approve the User Account Control prompt. Run every command below in this window. `setup.ps1` warns, and some installs can fail, when it isn't run as an administrator.
+Right-click **Start** and choose **Terminal (Admin)** (Windows 11) or **Windows PowerShell (Admin)** (Windows 10), then approve the User Account Control prompt. Run every command below in this window. If `setup.ps1` isn't run as an administrator, it shows a warning and pauses: press Enter to continue anyway, or Ctrl+C to stop and reopen **Terminal (Admin)**. Without admin, setup skips the taskbar pins and lists them in the final summary, and some installs can fail.
 
 #### 2. Make sure winget works
 
@@ -175,7 +175,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
    2. **GitHub.com in Edge.** The script opens Microsoft Edge and pauses. Sign in to GitHub.com as **the booth account**, then press Enter.
    3. **GitHub CLI login.** The GitHub CLI shows a one-time code. Press Enter to open the browser, enter the code, and approve the login (or scope upgrade) while signed in as the booth account. See [GitHub CLI login](../README.md#github-cli-login).
 4. Setup then installs GitHub CLI extensions, clones the demo repos into `$HOME\repos`, installs VS Code extensions and the theme, and registers MCP servers for Copilot CLI.
-5. At the end, setup prints a summary of anything that failed. Fix the cause and run `.\setup.ps1` again; finished steps are skipped. For `winget` errors, see [Troubleshooting Windows package installs](../README.md#troubleshooting-windows-package-installs).
+5. At the end, setup prints a summary of anything that failed. Fix the cause and run `.\setup.ps1` again; finished steps and `winget` packages that are already installed are skipped. For `winget` errors, see [Troubleshooting Windows package installs](../README.md#troubleshooting-windows-package-installs).
 
 #### 6. After setup
 
@@ -246,7 +246,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 .\install-demo-launcher.ps1
 ```
 
-Both are safe to re-run. To also pick up changes in `config.json` (new apps, extensions, or repos), run setup again (`bash setup.sh` or `.\setup.ps1`) in addition to the launcher update above. Already-finished steps are skipped. See [Demo Launcher](../README.md#demo-launcher) for what the install scripts do.
+Both are safe to re-run. To also pick up changes in `config.json` (new apps, extensions, or repos), run setup again (`bash setup.sh` or `.\setup.ps1`) in addition to the launcher update above. Already-finished steps and already-installed packages are skipped. On Windows, run `.\setup.ps1` from **Terminal (Admin)**; otherwise it skips the taskbar pins. See [Re-running on a Windows machine that's already set up](../README.md#re-running-on-a-windows-machine-thats-already-set-up) for details, and [Demo Launcher](../README.md#demo-launcher) for what the install scripts do.
 
 ## Part 2: During the event: run demos
 
