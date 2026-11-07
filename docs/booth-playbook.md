@@ -9,7 +9,7 @@ A step-by-step walkthrough for running a booth: set up each booth machine before
 ## At a glance
 
 1. **[Before the event](#part-1-before-the-event-set-up-each-booth-machine)**: on each machine, sign in as its booth account, run setup, check the Demo Launcher opens, add browser bookmarks, sign in to VS Code and VS Code Insiders, and [check the machine is ready](#check-that-the-machine-is-ready).
-2. **[Each booth day](#before-each-booth-day-update-the-machine)**: update the scripts to the tested release (currently `v1`) and update the Demo Launcher, then [create the security demos ahead of time](#create-the-security-demos-ahead-of-time) and bookmark them.
+2. **[Each booth day](#before-each-booth-day-update-the-machine)**: update the scripts to the tested release (currently `v1`) and update the Demo Launcher, then [create the security demos ahead of time](#create-the-security-demos-ahead-of-time) once on one machine, and bookmark their repos on every machine.
 3. **[During the event](#part-2-during-the-event-run-demos)**: open the pinned apps and the Demo Launcher, and create demos.
 4. **[After the event](#part-3-after-the-event-clean-up-and-reset)**: delete the demo repos in the booth accounts and the org, clear the booth machines' demo folders, and have an org admin reset the booth accounts.
 
@@ -259,12 +259,13 @@ Both are safe to re-run. To also pick up changes in `config.json` (new apps, ext
 
 #### Create the security demos ahead of time
 
-Two demos take too long to create while a visitor waits: **AI Security** (about 20 minutes until it's fully ready) and **Security Supply Chain (v4)** (about 10 minutes). Create them before the booth opens:
+Two demos take too long to create while a visitor waits: **AI Security** (about 20 minutes until it's fully ready) and **Security Supply Chain (v4)** (about 10 minutes). Create each one once, on one machine, before the booth opens. Every booth machine can share it:
 
-1. Signed in to the Copilot app as the booth account, ask Copilot to "open the demo launcher", and create **AI Security** and **Security Supply Chain (v4)**.
+1. On one machine, signed in to the Copilot app as its booth account, ask Copilot to "open the demo launcher", and create **AI Security** and **Security Supply Chain (v4)**.
 2. When each is ready, open its demo repo in the browser (Chrome on macOS, Edge on Windows) and bookmark it (**Cmd+D** in Chrome, **Ctrl+D** in Edge).
+3. On each of the other booth machines, open the same repo URLs and bookmark them there. Don't create the demos again on every machine.
 
-Both demos create repos in the `octobooth-demos` org, where the [nightly cleanup](#org-nightly-cleanup) deletes them once they're more than 72 hours old. Create them within 72 hours of when you'll use them; one of each can serve the whole day. Before-the-demo checks: [AI Security](https://github.com/octobooth-demos/repo-setup-scripts#ai-security-ai-scan--agentic-autofix) and [Security Supply Chain (v4)](https://github.com/octobooth-demos/repo-setup-scripts#security-supply-chain-v4) in the `repo-setup-scripts` README.
+Both demos create repos in the `octobooth-demos` org, where the [nightly cleanup](#org-nightly-cleanup) deletes them once they're more than 72 hours old. Create them within 72 hours of when you'll use them; one of each can serve every machine for the whole day. Before-the-demo checks: [AI Security](https://github.com/octobooth-demos/repo-setup-scripts#ai-security-ai-scan--agentic-autofix) and [Security Supply Chain (v4)](https://github.com/octobooth-demos/repo-setup-scripts#security-supply-chain-v4) in the `repo-setup-scripts` README.
 
 ## Part 2: During the event: run demos
 
