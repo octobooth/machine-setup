@@ -1,6 +1,6 @@
 # Booth Machine Setup
 
-_Last updated by [@filmgirl](https://github.com/filmgirl) on November 5, 2026_
+_Last updated by [@filmgirl](https://github.com/filmgirl) on November 8, 2026_
 
 ![CI](https://github.com/octobooth-demos/machine-setup/actions/workflows/ci.yml/badge.svg)
 
@@ -14,6 +14,13 @@ _Last updated by [@filmgirl](https://github.com/filmgirl) on November 5, 2026_
 > Cleaning up demo repos any time: [Clean up demo repos](docs/booth-playbook.md#clean-up-demo-repos). Deleting every repo in the booth accounts (org admins): [How to clean all Octobooth repos](docs/booth-playbook.md#how-to-clean-all-octobooth-repos).
 
 This repository contains setup scripts for configuring booth machines. The scripts install and configure the GitHub Copilot app, Visual Studio Code, Visual Studio Code Insiders, GitHub CLI, VLC media player, Node.js, PowerShell 7 (Windows), iTerm2 (macOS), and related tooling from a shared `config.json`.
+
+> [!IMPORTANT]
+> **Booth machines can't download npm or Python packages.** Booth networks block `registry.npmjs.org` and `files.pythonhosted.org`, so `npm install`, `npx`, scaffolders like `npm create vite`, and `pip install` fail or hang in local Copilot sessions. (`pypi.org` loads, but package downloads don't.)
+>
+> - Setup adds [Copilot booth instructions](#copilot-booth-instructions) that steer local sessions to plain HTML/CSS/JavaScript, Node.js built-ins, or the Python standard library.
+> - For anything that needs packages (React, Next.js, Vite, Flask, etc.), use a **Cloud** session in a GitHub repo, such as one made with the Demo Launcher's **GitHub Copilot Fusion: Blank Prompt** demo, or a Codespace. See [Framework apps need a Cloud session](docs/booth-playbook.md#framework-apps-need-a-cloud-session).
+> - Setup doesn't register any MCP server that runs through `npx`. See [Copilot sessions stuck at "busy"](#copilot-sessions-stuck-at-busy).
 
 ## Features
 
