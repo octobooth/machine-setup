@@ -140,6 +140,8 @@ function Invoke-DemoLauncherMain {
         # Also checks the origin of a fresh clone before installing code that runs in every chat
         Install-DemoLauncher
     }
+    # Booth-day updates run this script, so it also refreshes the booth's Copilot instructions
+    Install-BoothInstruction
 
     # Also roll out the pinned Playwright MCP bundle and MCP servers. Only reinstall the
     # bundle when its version changes, and never fail the launcher install over it.

@@ -844,6 +844,77 @@ install_demo_launcher() {
     try_install "Demo Launcher" bash "$installer"
 }
 
+# User-level Copilot instructions that keep booth sessions away from npm and pip, which
+# booth networks block. Only the block between these markers is managed; the rest of the
+# user's copilot-instructions.md is left alone. setup.ps1 uses the same markers.
+BOOTH_INSTRUCTIONS_SOURCE="$SCRIPT_DIR/copilot/booth-instructions.md"
+readonly BOOTH_INSTRUCTIONS_BEGIN="<!-- BEGIN machine-setup booth instructions (managed by setup; changes inside this block are replaced) -->"
+readonly BOOTH_INSTRUCTIONS_END="<!-- END machine-setup booth instructions -->"
+
+booth_instructions_path() {
+    echo "${COPILOT_HOME:-$HOME/.copilot}/copilot-instructions.md"
+}
+
+# Prints $1 (an instructions file, which may be missing) with the managed block replaced by
+# the current booth instructions, or appended if it has none. Returns 1, printing nothing,
+# if the markers aren't a single BEGIN/END pair.
+booth_instructions_content() {
+    local existing="$1"
+    local script='
+        function strip(s) { sub(/\r$/, "", s); return s }
+        function emit(   i) { print begin; for (i = 1; i <= n; i++) print src[i]; print end }
+        BEGIN {
+            while ((getline line < source) > 0) src[++n] = strip(line)
+            close(source)
+            while (n > 0 && src[n] ~ /^[ \t]*$/) n--
+            if (only_block) { emit(); exit }
+        }
+        FNR == NR {
+            l = strip($0)
+            if (l == begin) { nb++; bl = FNR } else if (l == end) { ne++; el = FNR }
+            next
+        }
+        FNR == 1 && (nb > 1 || nb != ne || el < bl) { bad = 1; exit 1 }
+        skipping { if (strip($0) == end) skipping = 0; next }
+        strip($0) == begin { emit(); skipping = 1; replaced = 1; next }
+        { print; last = $0 }
+        END {
+            if (bad || only_block) exit bad
+            if (!replaced) { if (last !~ /^[ \t\r]*$/) print ""; emit() }
+        }'
+    if [[ -s "$existing" ]]; then
+        awk -v source="$BOOTH_INSTRUCTIONS_SOURCE" -v begin="$BOOTH_INSTRUCTIONS_BEGIN" \
+            -v end="$BOOTH_INSTRUCTIONS_END" -v only_block=0 "$script" "$existing" "$existing"
+    else
+        awk -v source="$BOOTH_INSTRUCTIONS_SOURCE" -v begin="$BOOTH_INSTRUCTIONS_BEGIN" \
+            -v end="$BOOTH_INSTRUCTIONS_END" -v only_block=1 "$script"
+    fi
+}
+
+# Adds or refreshes the booth instructions block in the user-level Copilot instructions
+install_booth_instructions() {
+    local target shown content
+    target="$(booth_instructions_path)"
+    shown="${target/#$HOME/~}"
+
+    if [[ ! -f "$BOOTH_INSTRUCTIONS_SOURCE" ]]; then
+        log_error "$BOOTH_INSTRUCTIONS_SOURCE not found, so the Copilot booth instructions weren't installed"
+        return 1
+    fi
+    if ! content="$(booth_instructions_content "$target")"; then
+        log_error "$shown has unmatched machine-setup booth instructions markers. Remove them and re-run."
+        return 1
+    fi
+    if [[ -f "$target" ]] && [[ "$(cat "$target")" == "$content" ]]; then
+        log_success "Copilot booth instructions are up to date in $shown"
+        return 0
+    fi
+
+    mkdir -p "$(dirname "$target")" || return 1
+    printf '%s\n' "$content" > "$target" || return 1
+    log_success "Copilot booth instructions written to $shown"
+}
+
 # Installs VS Code extensions for a given editor
 # $1 = display name, $2 = binary path
 install_vscode_extensions() {
@@ -1301,6 +1372,7 @@ main() {
     authenticate_gh
     clone_repos
     install_demo_launcher
+    try_install "Copilot booth instructions" install_booth_instructions
 
     # PWA setup is intentionally disabled until the booth workflow needs it again.
     # See README for the rationale and re-enable notes.

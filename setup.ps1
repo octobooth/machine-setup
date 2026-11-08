@@ -1008,8 +1008,7 @@ function Get-PlaywrightMcpBundleVersion {
 }
 
 function Get-PlaywrightMcpDir {
-    $copilotHome = if ($env:COPILOT_HOME) { $env:COPILOT_HOME } else { Join-Path $env:USERPROFILE ".copilot" }
-    return Join-Path (Join-Path $copilotHome 'mcp-servers') 'playwright'
+    return Join-Path (Join-Path (Get-CopilotHome) 'mcp-servers') 'playwright'
 }
 
 function Get-PlaywrightMcpCli {
@@ -1190,6 +1189,95 @@ function Add-PlaywrightMcpServer {
     Write-Success "Registered MCP server: playwright (prebuilt)"
 }
 
+# User-level Copilot instructions that keep booth sessions away from npm and pip, which
+# booth networks block. Only the block between these markers is managed; the rest of the
+# user's copilot-instructions.md is left alone. setup.sh uses the same markers.
+$script:BoothInstructionsSource = Join-Path (Join-Path $PSScriptRoot "copilot") "booth-instructions.md"
+$script:BoothInstructionsBegin = '<!-- BEGIN machine-setup booth instructions (managed by setup; changes inside this block are replaced) -->'
+$script:BoothInstructionsEnd = '<!-- END machine-setup booth instructions -->'
+
+function Get-BoothInstructionsPath {
+    return Join-Path (Get-CopilotHome) "copilot-instructions.md"
+}
+
+# Returns $Existing with the managed block replaced by $Instructions, or appended if it has
+# none. Returns $null if the markers aren't a single BEGIN/END pair.
+function Get-BoothInstructionsContent {
+    param(
+        [AllowEmptyString()][string]$Existing,
+        [Parameter(Mandatory)][string]$Instructions
+    )
+
+    $newline = if ($Existing -match "`r`n") { "`r`n" } else { "`n" }
+    $source = New-Object System.Collections.Generic.List[string]
+    foreach ($line in ($Instructions -split "`r?`n")) { $source.Add($line) }
+    while ($source.Count -gt 0 -and $source[$source.Count - 1].Trim() -eq '') { $source.RemoveAt($source.Count - 1) }
+    $block = New-Object System.Collections.Generic.List[string]
+    $block.Add($script:BoothInstructionsBegin)
+    $block.AddRange($source)
+    $block.Add($script:BoothInstructionsEnd)
+
+    $lines = New-Object System.Collections.Generic.List[string]
+    if ($Existing) {
+        foreach ($line in ($Existing -split "`r?`n")) { $lines.Add($line) }
+        # A final newline leaves one empty entry at the end
+        if ($lines[$lines.Count - 1] -eq '') { $lines.RemoveAt($lines.Count - 1) }
+    }
+
+    $begins = @(); $ends = @()
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($lines[$i] -eq $script:BoothInstructionsBegin) { $begins += $i }
+        elseif ($lines[$i] -eq $script:BoothInstructionsEnd) { $ends += $i }
+    }
+    if ($begins.Count -gt 1 -or $begins.Count -ne $ends.Count -or ($begins.Count -eq 1 -and $ends[0] -lt $begins[0])) {
+        return $null
+    }
+
+    $result = New-Object System.Collections.Generic.List[string]
+    if ($begins.Count -eq 1) {
+        for ($i = 0; $i -lt $begins[0]; $i++) { $result.Add($lines[$i]) }
+        $result.AddRange($block)
+        for ($i = $ends[0] + 1; $i -lt $lines.Count; $i++) { $result.Add($lines[$i]) }
+    } else {
+        $result.AddRange($lines)
+        if ($result.Count -gt 0 -and $result[$result.Count - 1].Trim() -ne '') { $result.Add('') }
+        $result.AddRange($block)
+    }
+    return ($result -join $newline) + $newline
+}
+
+# Adds or refreshes the booth instructions block in the user-level Copilot instructions
+function Install-BoothInstruction {
+    $target = Get-BoothInstructionsPath
+    if (-not (Test-Path -LiteralPath $script:BoothInstructionsSource -PathType Leaf)) {
+        $script:failedItems += "Copilot booth instructions ($script:BoothInstructionsSource not found)"
+        Write-Err "$script:BoothInstructionsSource not found, so the Copilot booth instructions weren't installed."
+        return
+    }
+    try {
+        $instructions = [System.IO.File]::ReadAllText($script:BoothInstructionsSource)
+        $existing = if (Test-Path -LiteralPath $target -PathType Leaf) { [System.IO.File]::ReadAllText($target) } else { '' }
+        $content = Get-BoothInstructionsContent -Existing $existing -Instructions $instructions
+        if ($null -eq $content) {
+            $script:failedItems += "Copilot booth instructions ($target has unmatched markers)"
+            Write-Err "$target has unmatched machine-setup booth instructions markers. Remove them and re-run."
+            return
+        }
+        if ($content -ceq $existing) {
+            Write-Success "Copilot booth instructions are up to date in $target"
+            return
+        }
+        New-Item -Path (Split-Path $target) -ItemType Directory -Force -ErrorAction Stop | Out-Null
+        # Windows PowerShell 5.1's -Encoding UTF8 adds a BOM, so write the bytes directly
+        [System.IO.File]::WriteAllText($target, $content, (New-Object System.Text.UTF8Encoding $false))
+    } catch {
+        $script:failedItems += "Copilot booth instructions ($target)"
+        Write-Err "Couldn't write the Copilot booth instructions to ${target}: $($_.Exception.Message)"
+        return
+    }
+    Write-Success "Copilot booth instructions written to $target"
+}
+
 function Register-MCPServers {
     Write-Info "Registering MCP servers for Copilot CLI..."
 
@@ -1308,6 +1396,7 @@ function Invoke-Main {
     } else {
         Write-Err "Demo Launcher not updated, because repo-setup-scripts isn't at release $release"
     }
+    Install-BoothInstruction
 
     # PWA setup is intentionally disabled until the booth workflow needs it again.
     # See README for the rationale and re-enable notes.
