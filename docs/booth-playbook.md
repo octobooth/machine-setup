@@ -259,6 +259,8 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 
 `v1` always points at the latest tested `v1.x.y` release of both repos, so this picks up fixes without taking untested changes from `main`. If the script says the tag doesn't exist or the checkout has local changes, fix that before the booth opens; see [Using a release](../README.md#using-a-release). Developers testing changes before a release can track `main` instead: run `git -C ~/repos/machine-setup checkout main`, pull, and run the install without `--ref` / `-Ref`.
 
+The install script also refreshes the booth's Copilot instructions (see [Copilot booth instructions](../README.md#copilot-booth-instructions)).
+
 Both are safe to re-run. To also pick up changes in `config.json` (new apps, extensions, or repos), run setup again with the same release (`bash setup.sh --ref v1` or `.\setup.ps1 -Ref v1`) in addition to the launcher update above. Already-finished steps and already-installed packages are skipped. On Windows, run `.\setup.ps1` from **Terminal (Admin)**; otherwise it skips the taskbar pins. See [Re-running on a Windows machine that's already set up](../README.md#re-running-on-a-windows-machine-thats-already-set-up) for details, and [Demo Launcher](../README.md#demo-launcher) for what the install scripts do.
 
 #### Create the security demos ahead of time
@@ -276,6 +278,12 @@ Both demos create repos in the `octobooth-demos` org, where the [nightly cleanup
 1. **Open the demo apps.** Open the GitHub Copilot app, VS Code, VS Code Insiders, and VLC from the Dock (macOS) or taskbar (Windows). Open your booth videos in VLC from `~/Videos` (`C:\Users\<YourUsername>\Videos` on Windows). In the browser (Chrome on macOS, Edge on Windows), use the bookmarks for the booth account, `octobooth-demos`, and the [security demo repos you created ahead of time](#create-the-security-demos-ahead-of-time).
 2. **Open the Demo Launcher.** Ask Copilot to "open the demo launcher" in any chat.
 3. **Create demos from the launcher.** It creates each demo repo in the background and opens a session for it. The launcher, the demo list, and per-demo notes are documented in the `repo-setup-scripts` README (org members only).
+
+4. **Framework apps need a Cloud session.** Booth networks block npm and Python package downloads, so local sessions can't install packages. Setup adds [instructions](../copilot/booth-instructions.md) that tell Copilot to build plain HTML/CSS/JavaScript apps (or use only Node.js built-ins or the Python standard library) and to send framework requests to you. If an attendee wants a React, Next.js, Vite, or other framework app:
+   1. Create a repo: in the Demo Launcher, create **GitHub Copilot Fusion: Blank Prompt** (or use any GitHub repo the booth account can push to).
+   2. Start a new session in that repo and select **Cloud** before sending the prompt. Cloud sessions run on GitHub, where packages install normally.
+
+   You can also open the repo in a GitHub Codespace (**Code** > **Codespaces** > **Create codespace on main**), which can install packages too.
 
 Each demo repo gets the `demo-generated` topic, which is how every cleanup finds it. Old demo repos are deleted automatically, but you can clear them out sooner (for example, at the end of a booth day): see [Clean up demo repos](#clean-up-demo-repos).
 

@@ -29,6 +29,7 @@ This repository contains setup scripts for configuring booth machines. The scrip
 - Makes Google Chrome the default browser on macOS (via `defaultbrowser`), including when Chrome was already installed.
 - Configures VLC media player settings.
 - Registers shared MCP servers for Copilot CLI. These are all remote (HTTP) servers, because booth machines can't reach the npm registry. Setup also removes the Playwright MCP server (`npx @playwright/mcp`) that earlier versions registered, since it hangs without npm and leaves Copilot sessions stuck at "busy". A `playwright` entry that doesn't use `npx` is left alone.
+- Adds [Copilot booth instructions](#copilot-booth-instructions) that keep Copilot from installing npm or Python packages, which booth networks block.
 - Clones the demo repos into `~/repos` and installs the Demo Launcher canvas for every Copilot session. `install-demo-launcher.sh` (macOS/Linux) and `install-demo-launcher.ps1` (Windows) do just that step on a machine that is already set up (see [Demo Launcher](#demo-launcher)). Both can pin the demo scripts to a tested [release](#using-a-release).
 
 ## Configuration
@@ -110,7 +111,7 @@ Clone this repo so you can update the scripts before each run. A ZIP download ne
    4. **Default browser.** If Chrome isn't the default browser yet, macOS asks whether to change it. Click **Use “Google Chrome”**, then press Enter. This also works if Chrome was installed before setup ran. If Chrome is already the default, the script skips this step.
    5. **GitHub CLI login.** The GitHub CLI shows a one-time code. Press Enter to open the browser, enter the code, and approve the login (or scope upgrade) while signed in as the booth account. See [GitHub CLI login](#github-cli-login).
 5. At the end, setup prints a summary of anything that failed. Fix the cause and run `bash setup.sh --ref v1` again; finished steps are skipped.
-6. Setup adds Google Chrome, the GitHub Copilot app, VS Code, VS Code Insiders, iTerm2, and VLC to the Dock.
+6. Setup adds Google Chrome, the GitHub Copilot app, VS Code, VS Code Insiders, iTerm2, and VLC to the Dock. It also adds the [Copilot booth instructions](#copilot-booth-instructions).
 7. Store booth videos in `$HOME/Videos` and open them from VLC in the Dock.
 
 #### 3. Set up the Demo Launcher
@@ -233,7 +234,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
    1. **Installs.** `winget` installs everything in `windows.packages` in [`config.json`](config.json). PowerShell 7 (`Microsoft.PowerShell`) is installed first, followed by VS Code, VS Code Insiders, Windows Terminal, Git, GitHub CLI, Node.js LTS, Python, VLC, Copilot CLI, the GitHub Copilot app, and GitHub Desktop. This takes a while, and some installers briefly show their own windows. Setup then configures VLC and pins VS Code, VS Code Insiders, the GitHub Copilot app, Windows Terminal, and VLC to the taskbar. The taskbar briefly disappears while Explorer restarts.
    2. **GitHub.com in Edge.** The script opens Microsoft Edge and pauses. Sign in to GitHub.com as **the booth account**, then press Enter.
    3. **GitHub CLI login.** The GitHub CLI shows a one-time code. Press Enter to open the browser, enter the code, and approve the login (or scope upgrade) while signed in as the booth account. See [GitHub CLI login](#github-cli-login).
-4. Setup then installs GitHub CLI extensions, clones the demo repos into `$HOME\repos`, installs the Demo Launcher for every Copilot chat, installs VS Code extensions and the theme, and registers MCP servers for Copilot CLI.
+4. Setup then installs GitHub CLI extensions, clones the demo repos into `$HOME\repos`, installs the Demo Launcher for every Copilot chat, adds the [Copilot booth instructions](#copilot-booth-instructions), installs VS Code extensions and the theme, and registers MCP servers for Copilot CLI.
 5. At the end, setup prints a summary of anything that failed. Fix the cause and run `.\setup.ps1 -Ref v1` again; finished steps and `winget` packages that are already installed are skipped. For `winget` errors, see [Troubleshooting Windows package installs](#troubleshooting-windows-package-installs).
 
 Set `$env:NONINTERACTIVE = "true"` before running `setup.ps1` to skip GitHub browser login, CLI login, scope refresh, and the pause when setup isn't running as an administrator. Existing CLI credentials (including `GH_TOKEN` or `GITHUB_TOKEN`) are used to install extensions and clone repositories. Without usable credentials, those steps are deferred with warnings; authenticate with `gh auth login` and rerun setup to complete them. Set `$env:FORCE_REINSTALL = "true"` to redo steps that are normally skipped on reruns, including `winget` installs of packages that are already installed. See [Re-running on a Windows machine that's already set up](#re-running-on-a-windows-machine-thats-already-set-up).
@@ -353,6 +354,25 @@ winget install --id Microsoft.VisualStudioCode -e --source winget --accept-sourc
 ```
 
 If the error persists, update App Installer through Microsoft Store and check whether a proxy or security product is intercepting HTTPS traffic. Do not disable certificate checks or certificate pinning.
+
+### Copilot booth instructions
+
+Booth networks block npm and Python package downloads (`registry.npmjs.org` and `files.pythonhosted.org`), so `npm install`, `npx`, `create-*` scaffolders, and `pip install` fail or hang in local Copilot sessions. Setup adds [`copilot/booth-instructions.md`](copilot/booth-instructions.md) to the booth account's user-level Copilot instructions, which every local Copilot session reads:
+
+- macOS: `~/.copilot/copilot-instructions.md`
+- Windows: `$HOME\.copilot\copilot-instructions.md`
+
+(`$COPILOT_HOME/copilot-instructions.md` if `COPILOT_HOME` is set.) They tell Copilot to build apps with plain HTML, CSS, and JavaScript, Node.js built-ins, or the Python standard library, and to send framework requests to booth staff, who can start a Cloud session (see the [booth playbook](docs/booth-playbook.md#part-2-during-the-event-run-demos)).
+
+Setup only manages the part of the file between the `BEGIN machine-setup booth instructions` and `END machine-setup booth instructions` lines, and replaces it on every run; anything else in the file is kept. `install-demo-launcher.sh` and `install-demo-launcher.ps1` refresh it too, so the booth-day update picks up changes. To change the text, edit `copilot/booth-instructions.md`. To remove it, delete the lines from `BEGIN` to `END`. If you run setup on a machine that isn't a booth machine, remove the block afterwards. To refresh only this step:
+
+```bash
+source setup.sh && install_booth_instructions
+```
+
+```powershell
+. .\setup.ps1; Install-BoothInstruction
+```
 
 ## Using a release
 

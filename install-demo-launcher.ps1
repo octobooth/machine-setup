@@ -138,6 +138,8 @@ function Invoke-DemoLauncherMain {
         # Also checks the origin of a fresh clone before installing code that runs in every chat
         Install-DemoLauncher
     }
+    # Booth-day updates run this script, so it also refreshes the booth's Copilot instructions
+    Install-BoothInstruction
 
     Write-Summary
     if ($script:failedItems.Count -gt 0) { return 1 }
