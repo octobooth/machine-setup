@@ -8,7 +8,9 @@
     it's already there (or pins it to a release with -Ref), then writes a user-level loader to
     $env:COPILOT_HOME\extensions\demo-launcher\extension.mjs (default
     $HOME\.copilot) that imports the launcher from that checkout, so the
-    Copilot app can open it from any chat. Doesn't need admin. Safe to re-run.
+    Copilot app can open it from any chat. It also installs the pinned
+    Playwright MCP bundle and refreshes the Copilot CLI MCP servers.
+    Doesn't need admin. Safe to re-run.
 
 .PARAMETER Ref
     Checks out the release tag: the major the booth uses (v1) or a full
@@ -140,6 +142,11 @@ function Invoke-DemoLauncherMain {
     }
     # Booth-day updates run this script, so it also refreshes the booth's Copilot instructions
     Install-BoothInstruction
+
+    # Also roll out the pinned Playwright MCP bundle and MCP servers. Only reinstall the
+    # bundle when its version changes, and never fail the launcher install over it.
+    Install-PlaywrightMcpBundle
+    Register-MCPServers
 
     Write-Summary
     if ($script:failedItems.Count -gt 0) { return 1 }

@@ -12,6 +12,9 @@ Describe 'Demo Launcher releases' {
         # The test origin is a local folder, so treat it as the trusted repo
         Mock Test-DemoLauncherRemote { $true }
         Mock Test-DemoLauncherPrerequisite { $true }
+        # MCP setup is covered in Setup.Tests.ps1
+        Mock Install-PlaywrightMcpBundle { }
+        Mock Register-MCPServers { }
 
         function Invoke-TestGit {
             param([Parameter(ValueFromRemainingArguments)][string[]]$GitArgs)

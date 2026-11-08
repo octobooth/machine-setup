@@ -1,0 +1,200 @@
+name: Playwright MCP bundle
+
+# Builds the prebuilt Playwright MCP server that setup installs on booth machines, which
+# can't reach the npm registry. Pull requests build and test it and upload it as a workflow
+# artifact. On main, it's published once per version as the release playwright-mcp-v<version>.
+
+on:
+  pull_request:
+    paths:
+      - mcp-bundle/**
+      - setup.sh
+      - setup.ps1
+      - .github/workflows/playwright-mcp-bundle.yml
+  push:
+    branches:
+      - main
+    paths:
+      - mcp-bundle/**
+      - .github/workflows/playwright-mcp-bundle.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: Build bundle
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.build.outputs.version }}
+      tag: ${{ steps.build.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+
+      - name: Build and package
+        id: build
+        working-directory: mcp-bundle
+        run: |
+          set -euo pipefail
+          version=$(jq -r '.dependencies["@playwright/mcp"]' package.json)
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Pin @playwright/mcp to an exact version in mcp-bundle/package.json (found '$version')"
+            exit 1
+          fi
+
+          # Booth machines and CI resolve from the public registry, so the lockfile must too
+          if jq -r '.packages[] | .resolved // empty' package-lock.json | grep -v '^https://registry\.npmjs\.org/'; then
+            echo "::error::mcp-bundle/package-lock.json has packages from another registry. Regenerate it against registry.npmjs.org."
+            exit 1
+          fi
+
+          npm ci --omit=dev --ignore-scripts --no-audit --no-fund
+          installed=$(node -p "require('./node_modules/@playwright/mcp/package.json').version")
+          if [[ "$installed" != "$version" ]]; then
+            echo "::error::package-lock.json installs @playwright/mcp $installed, but package.json pins $version. Regenerate the lockfile."
+            exit 1
+          fi
+          node node_modules/@playwright/mcp/cli.js --help > /dev/null
+
+          asset="playwright-mcp-$version.tgz"
+          mkdir -p ../dist
+          # Leave out node_modules/.bin: its symlinks need extra privileges to unpack on Windows,
+          # and the server runs cli.js directly
+          tar -czf "../dist/$asset" --owner=0 --group=0 --exclude=node_modules/.bin package.json package-lock.json node_modules
+          # awk reads the whole listing, so pipefail can't trip on tar getting SIGPIPE
+          if tar -tvzf "../dist/$asset" | awk '/^l/ { found = 1 } END { exit !found }'; then
+            echo "::error::The bundle contains symlinks, which may not unpack on Windows"
+            exit 1
+          fi
+          (cd ../dist && sha256sum "$asset" > "$asset.sha256")
+          cat "../dist/$asset.sha256"
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=playwright-mcp-v$version" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: playwright-mcp-bundle
+          path: dist/
+          if-no-files-found: error
+
+  test-macos:
+    name: Install on macOS
+    needs: build
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: playwright-mcp-bundle
+          path: dist
+
+      - name: Install and register with setup.sh
+        env:
+          COPILOT_HOME: ${{ runner.temp }}/copilot
+          PLAYWRIGHT_MCP_BUNDLE_URL: ${{ github.workspace }}/dist
+        run: |
+          set -eo pipefail
+          source ./setup.sh
+          load_config
+          install_playwright_mcp_bundle
+          register_mcp_servers
+          config="$COPILOT_HOME/mcp-config.json"
+          jq -e '.mcpServers.playwright' "$config"
+          command=$(jq -r '.mcpServers.playwright.command' "$config")
+          args=()
+          while IFS= read -r arg; do args+=("$arg"); done < <(jq -r '.mcpServers.playwright.args[]' "$config")
+          "$command" "${args[@]}" --help > help.txt
+          head -5 help.txt
+
+  test-windows:
+    name: Install on Windows PowerShell 5.1
+    needs: build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: playwright-mcp-bundle
+          path: dist
+
+      - name: Install and register with setup.ps1
+        shell: powershell
+        env:
+          COPILOT_HOME: ${{ runner.temp }}\copilot
+          PLAYWRIGHT_MCP_BUNDLE_URL: ${{ github.workspace }}\dist
+        run: |
+          $ErrorActionPreference = 'Stop'
+          . .\setup.ps1
+          Import-Config
+          Install-PlaywrightMcpBundle
+          Register-MCPServers
+          $mcpConfig = Get-Content -Raw -Path (Join-Path $env:COPILOT_HOME 'mcp-config.json') | ConvertFrom-Json
+          $server = $mcpConfig.mcpServers.playwright
+          if (-not $server) { throw 'playwright MCP server was not registered' }
+          $server | ConvertTo-Json
+          $serverArgs = @($server.args) + '--help'
+          # Capture all output first: stopping the pipeline early would kill node
+          $help = & $server.command @serverArgs
+          if ($LASTEXITCODE -ne 0) { throw "playwright MCP server exited with $LASTEXITCODE" }
+          $help | Select-Object -First 5
+
+  release:
+    name: Publish release
+    needs: [build, test-macos, test-windows]
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: playwright-mcp-bundle
+          path: dist
+
+      - name: Create release if this version is new
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.build.outputs.tag }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          set -euo pipefail
+          asset="playwright-mcp-$VERSION.tgz"
+          # Releases are immutable per version: a rebuild never replaces published assets.
+          # gh release view also finds drafts, so check the release is published and complete.
+          if release=$(gh release view "$TAG" -R "$GITHUB_REPOSITORY" --json isDraft,assets 2>/dev/null); then
+            if jq -e --arg a "$asset" \
+                '(.isDraft | not) and ([.assets[].name] | index($a) != null and index($a + ".sha256") != null)' \
+                <<< "$release" > /dev/null; then
+              echo "Release $TAG is already published with both assets, nothing to publish."
+              exit 0
+            fi
+            echo "::error::Release $TAG exists but is a draft or is missing $asset or $asset.sha256, so booth machines can't install it."
+            echo "Setup needs both files and a matching checksum, so no machine can have installed this release. To recover, delete it and its tag, then rerun this workflow on main:"
+            echo "  gh release delete $TAG --cleanup-tag --yes -R $GITHUB_REPOSITORY"
+            exit 1
+          fi
+          gh release create "$TAG" dist/* -R "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --latest=false \
+            --title "Playwright MCP $VERSION bundle" \
+            --notes "Prebuilt [@playwright/mcp](https://www.npmjs.com/package/@playwright/mcp/v/$VERSION) $VERSION with its production dependencies, for booth machines that can't reach the npm registry. setup and install-demo-launcher download it and check it against the .sha256 file. Built from $GITHUB_SHA."

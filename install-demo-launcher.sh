@@ -1,7 +1,8 @@
 #!/bin/bash
 #
 # Installs (or updates) the Demo Launcher canvas so it's available in every
-# GitHub Copilot session, without rerunning the full setup.sh.
+# GitHub Copilot session, without rerunning the full setup.sh. It also installs
+# the pinned Playwright MCP bundle and refreshes the Copilot CLI MCP servers.
 # Safe to re-run. See https://github.com/octobooth-demos/repo-setup-scripts#quick-start-booth-machine
 #
 # Usage: bash install-demo-launcher.sh [--ref <tag>] [--uninstall]
@@ -57,6 +58,7 @@ demo_launcher_main() {
     fi
 
     # install.sh is idempotent, so always run it to refresh the loader
+    local requested_force="$FORCE_REINSTALL"
     FORCE_REINSTALL=true
     install_demo_launcher
     # Booth-day updates run this script, so it also refreshes the booth's Copilot instructions
@@ -65,6 +67,13 @@ demo_launcher_main() {
     if [[ ! -f "$installer" ]]; then
         failed_items+=("Demo Launcher (install.sh not found in $DEMO_LAUNCHER_REPO)")
     fi
+
+    # Also roll out the pinned Playwright MCP bundle and MCP servers. Only reinstall the
+    # bundle when its version changes (or the caller set FORCE_REINSTALL), and never
+    # fail the launcher install over it.
+    FORCE_REINSTALL="$requested_force"
+    install_playwright_mcp_bundle
+    register_mcp_servers
 
     print_summary
     if [[ ${#failed_items[@]} -gt 0 ]]; then

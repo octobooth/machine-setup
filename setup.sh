@@ -1108,6 +1108,166 @@ configure_editors() {
     done
 }
 
+# ----------------------------------------
+# Playwright MCP bundle
+# ----------------------------------------
+# Booth machines can't reach the npm registry, so the Playwright MCP server comes prebuilt
+# from this repo's releases. mcp-bundle/package.json pins the version, and the
+# "Playwright MCP bundle" workflow publishes it as playwright-mcp-v<version>.
+
+readonly PLAYWRIGHT_MCP_BUNDLE_REPO="octobooth-demos/machine-setup"
+readonly PLAYWRIGHT_MCP_BROWSER="chrome"
+
+playwright_mcp_bundle_version() {
+    jq -r '.dependencies["@playwright/mcp"] // empty' "$SCRIPT_DIR/mcp-bundle/package.json" 2>/dev/null
+}
+
+playwright_mcp_dir() {
+    echo "${COPILOT_HOME:-$HOME/.copilot}/mcp-servers/playwright"
+}
+
+playwright_mcp_cli() {
+    echo "$(playwright_mcp_dir)/node_modules/@playwright/mcp/cli.js"
+}
+
+# Absolute path to node, loading nvm if it isn't on PATH yet. GUI apps don't read
+# shell profiles, so the MCP config needs the absolute path.
+find_node_bin() {
+    if ! command -v node &> /dev/null; then
+        local nvm_sh
+        for nvm_sh in "${NVM_DIR:-$HOME/.nvm}/nvm.sh" /opt/homebrew/opt/nvm/nvm.sh /usr/local/opt/nvm/nvm.sh; do
+            if [[ -s "$nvm_sh" ]]; then
+                export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+                # shellcheck source=/dev/null
+                . "$nvm_sh" &> /dev/null || true
+                break
+            fi
+        done
+    fi
+    command -v node
+}
+
+# Copies one bundle file from a release URL or, for offline installs and tests, a local folder
+# (PLAYWRIGHT_MCP_BUNDLE_URL)
+fetch_playwright_mcp_file() {
+    local source="$1" name="$2" dest_dir="$3"
+    if [[ "$source" =~ ^https?:// ]]; then
+        curl -fsSL --connect-timeout 15 --max-time 300 --retry 2 -o "$dest_dir/$name" "$source/$name"
+    else
+        cp "$source/$name" "$dest_dir/$name"
+    fi
+}
+
+# Downloads, verifies, and unpacks the pinned bundle into ~/.copilot/mcp-servers/playwright.
+# Never fails setup: it warns and skips if the bundle can't be installed.
+install_playwright_mcp_bundle() {
+    local version
+    version=$(playwright_mcp_bundle_version)
+    if [[ -z "$version" ]]; then
+        log_warn "No Playwright MCP version pinned in mcp-bundle/package.json, skipping it"
+        return 0
+    fi
+
+    local dest
+    dest=$(playwright_mcp_dir)
+    if should_skip_installed && [[ -f "$(playwright_mcp_cli)" ]] && \
+        [[ "$(cat "$dest/.bundle-version" 2>/dev/null)" == "$version" ]]; then
+        log_info "Playwright MCP $version already installed, skipping..."
+        return 0
+    fi
+
+    local asset="playwright-mcp-$version.tgz"
+    local source="${PLAYWRIGHT_MCP_BUNDLE_URL:-https://github.com/$PLAYWRIGHT_MCP_BUNDLE_REPO/releases/download/playwright-mcp-v$version}"
+    log_info "Installing Playwright MCP $version..."
+
+    # Stage next to the destination so the final move is a rename
+    local parent tmp
+    parent=$(dirname "$dest")
+    if ! mkdir -p "$parent" || ! tmp=$(mktemp -d "$parent/.playwright-download.XXXXXX"); then
+        log_warn "Couldn't create a staging folder in ${parent/#$HOME/~}, skipping Playwright MCP $version"
+        return 0
+    fi
+
+    if ! fetch_playwright_mcp_file "$source" "$asset" "$tmp" || \
+       ! fetch_playwright_mcp_file "$source" "$asset.sha256" "$tmp"; then
+        log_warn "Couldn't download Playwright MCP $version from $source, skipping it"
+        rm -rf "$tmp"
+        return 0
+    fi
+
+    local expected actual
+    expected=$(awk '{print $1; exit}' "$tmp/$asset.sha256")
+    actual=$(shasum -a 256 "$tmp/$asset" | awk '{print $1}')
+    if [[ -z "$expected" || "$expected" != "$actual" ]]; then
+        log_warn "Playwright MCP $version download failed its checksum, skipping it"
+        rm -rf "$tmp"
+        return 0
+    fi
+
+    mkdir -p "$tmp/bundle"
+    if ! tar -xzf "$tmp/$asset" -C "$tmp/bundle" || [[ ! -f "$tmp/bundle/node_modules/@playwright/mcp/cli.js" ]]; then
+        log_warn "Couldn't unpack Playwright MCP $version, skipping it"
+        rm -rf "$tmp"
+        return 0
+    fi
+    echo "$version" > "$tmp/bundle/.bundle-version"
+
+    # Keep the previous version until the new one is in place, so a failed move can't lose both
+    local backup="$dest.old" had_previous=false
+    rm -rf "$backup"
+    if [[ -e "$dest" ]]; then
+        if ! mv "$dest" "$backup"; then
+            log_warn "Couldn't replace Playwright MCP in ${dest/#$HOME/~}, keeping the previous version"
+            rm -rf "$tmp"
+            return 0
+        fi
+        had_previous=true
+    fi
+
+    if ! mv "$tmp/bundle" "$dest"; then
+        if [[ "$had_previous" == true ]]; then
+            rm -rf "$dest"
+            mv "$backup" "$dest"
+            log_warn "Couldn't install Playwright MCP $version, keeping the previous version"
+        else
+            log_warn "Couldn't install Playwright MCP $version, skipping it"
+        fi
+        rm -rf "$tmp"
+        return 0
+    fi
+
+    rm -rf "$backup" "$tmp"
+    log_success "Installed Playwright MCP $version to ${dest/#$HOME/~}"
+}
+
+# Prints the mcp-config.json with the bundled Playwright server added, if it's installed.
+# Leaves a playwright entry alone if someone set up their own.
+add_playwright_mcp_server() {
+    local existing="$1" cli node_bin
+    cli=$(playwright_mcp_cli)
+    if [[ ! -f "$cli" ]]; then
+        echo "$existing"
+        return 0
+    fi
+
+    if ! node_bin=$(find_node_bin) || [[ -z "$node_bin" ]]; then
+        log_warn "Node.js not found, so the Playwright MCP server wasn't registered" >&2
+        echo "$existing"
+        return 0
+    fi
+
+    if [[ "$(echo "$existing" | jq --arg cli "$cli" \
+            '(.mcpServers.playwright? // null) as $p | $p != null and (($p.args? // [])[0]? // "") != $cli')" == "true" ]]; then
+        log_info "Keeping your own 'playwright' MCP server entry" >&2
+        echo "$existing"
+        return 0
+    fi
+
+    echo "$existing" | jq --arg cmd "$node_bin" --arg cli "$cli" --arg browser "--browser=$PLAYWRIGHT_MCP_BROWSER" \
+        '.mcpServers.playwright = {"tools": ["*"], "type": "local", "command": $cmd, "args": [$cli, $browser]}'
+    log_success "Registered MCP server: playwright (prebuilt)" >&2
+}
+
 # Registers MCP servers in Copilot CLI config
 register_mcp_servers() {
     local copilot_home="${COPILOT_HOME:-$HOME/.copilot}"
@@ -1169,6 +1329,8 @@ register_mcp_servers() {
         log_success "Registered MCP server: $name"
     done
 
+    existing=$(add_playwright_mcp_server "$existing")
+
     echo "$existing" | jq . > "$mcp_config"
     log_success "MCP servers written to $mcp_config"
 }
@@ -1222,7 +1384,8 @@ main() {
     # Install extensions and configure themes
     configure_editors
 
-    # Register MCP servers for Copilot CLI
+    # Register MCP servers for Copilot CLI, including the prebuilt Playwright server
+    install_playwright_mcp_bundle
     register_mcp_servers
 
     # Print summary and finish

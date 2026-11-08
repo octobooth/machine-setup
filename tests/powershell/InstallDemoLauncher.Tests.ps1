@@ -8,6 +8,9 @@ Describe 'install-demo-launcher.ps1' {
         Mock Write-Err { }
         Mock Write-Host { }
         Mock Out-Host { }
+        # MCP setup is covered in Setup.Tests.ps1
+        Mock Install-PlaywrightMcpBundle { }
+        Mock Register-MCPServers { }
     }
 
     BeforeEach {

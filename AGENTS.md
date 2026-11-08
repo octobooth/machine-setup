@@ -8,6 +8,7 @@ Booth machine setup for GitHub event booths. It's public and MIT-licensed.
 
 - **macOS:** [`setup.sh`](setup.sh), [`install-demo-launcher.sh`](install-demo-launcher.sh) (also works on Linux), and iTerm2 color schemes in [`iterm2/`](iterm2/).
 - **Windows:** [`setup.ps1`](setup.ps1), [`install-demo-launcher.ps1`](install-demo-launcher.ps1), and [`windows/demo-launcher-loader.mjs`](windows/demo-launcher-loader.mjs) (a fallback copy of repo-setup-scripts' loader; keep it in sync).
+- **[`mcp-bundle/`](mcp-bundle/package.json)** pins the prebuilt Playwright MCP server. The [Playwright MCP bundle workflow](.github/workflows/playwright-mcp-bundle.yml) publishes it as the `playwright-mcp-v<version>` release, and setup and `install-demo-launcher` install it from there, never with `npx` (booth machines can't reach npm). See [Playwright MCP server](README.md#playwright-mcp-server).
 - **[`config.json`](config.json)** drives both: packages, editors, VS Code extensions, `gh` extensions and scopes, MCP servers, Dock/taskbar apps, and `repos_to_clone`.
 - Setup clones the demo repos to `~/repos` (`$HOME\repos` on Windows) and installs the Demo Launcher loader for [`octobooth-demos/repo-setup-scripts`](https://github.com/octobooth-demos/repo-setup-scripts), which holds the demos and the launcher itself.
 
@@ -24,6 +25,7 @@ Docs to read first:
 - A release tags **both** repos with the same `vX.Y.Z`, at the commits that were tested on a booth Mac and a Windows machine, then moves the matching major tag (`v1`) to it.
 - Never move or delete a pushed `vX.Y.Z` tag. Only the major tag moves.
 - **Agents must not create, move, or delete tags, or publish releases, unless explicitly asked.**
+- The Playwright MCP bundle workflow publishes its own `playwright-mcp-v<version>` release when a version bump merges to `main`. Those releases are separate from `vX.Y.Z`. Never replace or delete one. Don't run the workflow by hand unless asked.
 
 ## Change rules
 
