@@ -169,6 +169,22 @@ Describe 'setup.ps1' {
             Should -Invoke Write-Success -ParameterFilter { $Message -like 'Installed Playwright MCP*' } -Times 0 -Exactly
         }
 
+        It 'warns and skips when it cannot create a staging folder, even with ErrorActionPreference Stop' {
+            Mock New-Item { throw 'disk full' } -ParameterFilter { $Path -like '*.playwright-download-*' }
+
+            $savedPreference = $ErrorActionPreference
+            $ErrorActionPreference = 'Stop'
+            try {
+                { Install-PlaywrightMcpBundle } | Should -Not -Throw
+            }
+            finally {
+                $ErrorActionPreference = $savedPreference
+            }
+
+            Should -Invoke Write-Warn -ParameterFilter { $Message -like "Couldn't install Playwright MCP*" } -Times 1 -Exactly
+            $script:failedItems.Count | Should -Be 0
+        }
+
         It 'warns and skips when the download fails' {
             $env:PLAYWRIGHT_MCP_BUNDLE_URL = Join-Path $TestDrive 'missing'
 

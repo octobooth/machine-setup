@@ -1181,9 +1181,12 @@ install_playwright_mcp_bundle() {
     log_info "Installing Playwright MCP $version..."
 
     # Stage next to the destination so the final move is a rename
-    mkdir -p "$(dirname "$dest")"
-    local tmp
-    tmp=$(mktemp -d "$(dirname "$dest")/.playwright-download.XXXXXX")
+    local parent tmp
+    parent=$(dirname "$dest")
+    if ! mkdir -p "$parent" || ! tmp=$(mktemp -d "$parent/.playwright-download.XXXXXX"); then
+        log_warn "Couldn't create a staging folder in ${parent/#$HOME/~}, skipping Playwright MCP $version"
+        return 0
+    fi
 
     if ! fetch_playwright_mcp_file "$source" "$asset" "$tmp" || \
        ! fetch_playwright_mcp_file "$source" "$asset.sha256" "$tmp"; then

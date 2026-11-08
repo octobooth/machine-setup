@@ -1086,11 +1086,12 @@ function Install-PlaywrightMcpBundle {
 
     # Stage next to the destination so the final move stays on the same drive
     $parent = Split-Path $dest
-    New-Item -Path $parent -ItemType Directory -Force | Out-Null
     $tmp = Join-Path $parent (".playwright-download-" + [guid]::NewGuid().ToString('N'))
-    New-Item -Path $tmp -ItemType Directory -Force | Out-Null
 
     try {
+        New-Item -Path $parent -ItemType Directory -Force -ErrorAction Stop | Out-Null
+        New-Item -Path $tmp -ItemType Directory -Force -ErrorAction Stop | Out-Null
+
         try {
             Save-PlaywrightMcpBundleFile -Source $source -Name $asset -Destination $tmp
             Save-PlaywrightMcpBundleFile -Source $source -Name "$asset.sha256" -Destination $tmp

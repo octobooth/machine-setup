@@ -178,10 +178,20 @@ jobs:
           VERSION: ${{ needs.build.outputs.version }}
         run: |
           set -euo pipefail
-          # Releases are immutable per version: a rebuild never replaces published assets
-          if gh release view "$TAG" -R "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
-            echo "Release $TAG already exists, nothing to publish."
-            exit 0
+          asset="playwright-mcp-$VERSION.tgz"
+          # Releases are immutable per version: a rebuild never replaces published assets.
+          # gh release view also finds drafts, so check the release is published and complete.
+          if release=$(gh release view "$TAG" -R "$GITHUB_REPOSITORY" --json isDraft,assets 2>/dev/null); then
+            if jq -e --arg a "$asset" \
+                '(.isDraft | not) and ([.assets[].name] | index($a) != null and index($a + ".sha256") != null)' \
+                <<< "$release" > /dev/null; then
+              echo "Release $TAG is already published with both assets, nothing to publish."
+              exit 0
+            fi
+            echo "::error::Release $TAG exists but is a draft or is missing $asset or $asset.sha256, so booth machines can't install it."
+            echo "Setup needs both files and a matching checksum, so no machine can have installed this release. To recover, delete it and its tag, then rerun this workflow on main:"
+            echo "  gh release delete $TAG --cleanup-tag --yes -R $GITHUB_REPOSITORY"
+            exit 1
           fi
           gh release create "$TAG" dist/* -R "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \

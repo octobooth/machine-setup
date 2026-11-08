@@ -161,6 +161,19 @@ use_fake_node() {
     [ "$(find "$COPILOT_HOME/mcp-servers" -mindepth 1 -maxdepth 1 | wc -l | tr -d ' ')" = "1" ]
 }
 
+@test "install_playwright_mcp_bundle warns and skips when it can't create a staging folder, even under set -e" {
+    load_script
+    make_playwright_mcp_release "$BATS_TEST_TMPDIR/release"
+    export PLAYWRIGHT_MCP_BUNDLE_URL="$BATS_TEST_TMPDIR/release"
+    # A file where the mcp-servers folder should be makes mkdir fail
+    echo "not a folder" > "$COPILOT_HOME/mcp-servers"
+
+    run bash -c 'set -e; source "$1/setup.sh"; install_playwright_mcp_bundle; echo "still running"' _ "$REPO_ROOT"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Couldn't create a staging folder"* ]] || false
+    [[ "$output" == *"still running"* ]] || false
+}
+
 @test "install_playwright_mcp_bundle warns and skips when the download fails" {
     load_script
     export PLAYWRIGHT_MCP_BUNDLE_URL="$BATS_TEST_TMPDIR/missing"
