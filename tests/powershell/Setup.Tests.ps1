@@ -152,6 +152,23 @@ Describe 'setup.ps1' {
             $script:failedItems.Count | Should -Be 0
         }
 
+        It 'keeps the previous version when the new one cannot be moved into place' {
+            $dest = Get-PlaywrightMcpDir
+            $cliDir = Split-Path (Get-PlaywrightMcpCli)
+            New-Item -Path $cliDir -ItemType Directory -Force | Out-Null
+            'old' | Set-Content -Path (Get-PlaywrightMcpCli)
+            '0.0.1' | Set-Content -Path (Join-Path $dest '.bundle-version')
+            Mock Move-Item { throw 'locked' } -ParameterFilter { $Path -like '*bundle' }
+
+            Install-PlaywrightMcpBundle
+
+            (Get-Content -Raw -Path (Join-Path $dest '.bundle-version')).Trim() | Should -Be '0.0.1'
+            (Get-Content -Raw -Path (Get-PlaywrightMcpCli)).Trim() | Should -Be 'old'
+            @(Get-ChildItem -Force -Path (Split-Path $dest)).Count | Should -Be 1
+            Should -Invoke Write-Warn -ParameterFilter { $Message -like '*keeping the previous version*' } -Times 1 -Exactly
+            Should -Invoke Write-Success -ParameterFilter { $Message -like 'Installed Playwright MCP*' } -Times 0 -Exactly
+        }
+
         It 'warns and skips when the download fails' {
             $env:PLAYWRIGHT_MCP_BUNDLE_URL = Join-Path $TestDrive 'missing'
 

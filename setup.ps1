@@ -1118,8 +1118,35 @@ function Install-PlaywrightMcpBundle {
         }
         Set-Content -Path (Join-Path $bundle '.bundle-version') -Value $version -Encoding ASCII
 
-        if (Test-Path $dest) { Remove-Item -Path $dest -Recurse -Force -ErrorAction Stop }
-        Move-Item -Path $bundle -Destination $dest -ErrorAction Stop
+        # Keep the previous version until the new one is in place, so a failed move can't lose both
+        $backup = "$dest.old"
+        if (Test-Path $backup) { Remove-Item -Path $backup -Recurse -Force -ErrorAction Stop }
+        $hadPrevious = Test-Path $dest
+        if ($hadPrevious) {
+            try {
+                Move-Item -Path $dest -Destination $backup -ErrorAction Stop
+            }
+            catch {
+                Write-Warn "Couldn't replace Playwright MCP in $dest, keeping the previous version: $_"
+                return
+            }
+        }
+
+        try {
+            Move-Item -Path $bundle -Destination $dest -ErrorAction Stop
+        }
+        catch {
+            if ($hadPrevious) {
+                if (Test-Path $dest) { Remove-Item -Path $dest -Recurse -Force -ErrorAction SilentlyContinue }
+                Move-Item -Path $backup -Destination $dest -ErrorAction SilentlyContinue
+                Write-Warn "Couldn't install Playwright MCP $version, keeping the previous version: $_"
+            } else {
+                Write-Warn "Couldn't install Playwright MCP $version, skipping it: $_"
+            }
+            return
+        }
+
+        Remove-Item -Path $backup -Recurse -Force -ErrorAction SilentlyContinue
         Write-Success "Installed Playwright MCP $version to $dest"
     }
     catch {

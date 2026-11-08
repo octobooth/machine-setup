@@ -136,6 +136,31 @@ use_fake_node() {
     [[ ! -e "$COPILOT_HOME/mcp-servers/playwright" ]]
 }
 
+@test "install_playwright_mcp_bundle keeps the previous version when the new one can't be moved into place" {
+    load_script
+    make_playwright_mcp_release "$BATS_TEST_TMPDIR/release"
+    export PLAYWRIGHT_MCP_BUNDLE_URL="$BATS_TEST_TMPDIR/release"
+    local dest="$COPILOT_HOME/mcp-servers/playwright"
+    mkdir -p "$dest/node_modules/@playwright/mcp"
+    echo "old" > "$dest/node_modules/@playwright/mcp/cli.js"
+    echo "0.0.1" > "$dest/.bundle-version"
+
+    # Fail only the move of the new bundle into place
+    mv() {
+        if [[ "$1" == */bundle ]]; then return 1; fi
+        command mv "$@"
+    }
+
+    run install_playwright_mcp_bundle
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"keeping the previous version"* ]] || false
+    [[ "$output" != *"Installed Playwright MCP"* ]] || false
+    [ "$(cat "$dest/.bundle-version")" = "0.0.1" ]
+    [ "$(cat "$dest/node_modules/@playwright/mcp/cli.js")" = "old" ]
+    # No backup or staging folders are left behind
+    [ "$(find "$COPILOT_HOME/mcp-servers" -mindepth 1 -maxdepth 1 | wc -l | tr -d ' ')" = "1" ]
+}
+
 @test "install_playwright_mcp_bundle warns and skips when the download fails" {
     load_script
     export PLAYWRIGHT_MCP_BUNDLE_URL="$BATS_TEST_TMPDIR/missing"

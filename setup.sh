@@ -1138,9 +1138,31 @@ install_playwright_mcp_bundle() {
     fi
     echo "$version" > "$tmp/bundle/.bundle-version"
 
-    rm -rf "$dest"
-    mv "$tmp/bundle" "$dest"
-    rm -rf "$tmp"
+    # Keep the previous version until the new one is in place, so a failed move can't lose both
+    local backup="$dest.old" had_previous=false
+    rm -rf "$backup"
+    if [[ -e "$dest" ]]; then
+        if ! mv "$dest" "$backup"; then
+            log_warn "Couldn't replace Playwright MCP in ${dest/#$HOME/~}, keeping the previous version"
+            rm -rf "$tmp"
+            return 0
+        fi
+        had_previous=true
+    fi
+
+    if ! mv "$tmp/bundle" "$dest"; then
+        if [[ "$had_previous" == true ]]; then
+            rm -rf "$dest"
+            mv "$backup" "$dest"
+            log_warn "Couldn't install Playwright MCP $version, keeping the previous version"
+        else
+            log_warn "Couldn't install Playwright MCP $version, skipping it"
+        fi
+        rm -rf "$tmp"
+        return 0
+    fi
+
+    rm -rf "$backup" "$tmp"
     log_success "Installed Playwright MCP $version to ${dest/#$HOME/~}"
 }
 
