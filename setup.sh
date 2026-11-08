@@ -1055,6 +1055,16 @@ register_mcp_servers() {
         local existing='{"mcpServers":{}}'
     fi
 
+    # Earlier setups registered Playwright MCP via npx, which hangs where npm is blocked
+    local stale_playwright_filter='(.mcpServers.playwright? // null) as $p
+        | ($p | type) == "object" and $p.command == "npx"
+          and (($p.args // []) | type) == "array"
+          and (($p.args // []) | any(type == "string" and contains("@playwright/mcp")))'
+    if [[ "$(echo "$existing" | jq "$stale_playwright_filter")" == "true" ]]; then
+        existing=$(echo "$existing" | jq 'del(.mcpServers.playwright)')
+        log_success "Removed old Playwright MCP server (npx @playwright/mcp)"
+    fi
+
     local server_count
     server_count=$(jq '.shared.mcp_servers | length' "$CONFIG_FILE")
 
