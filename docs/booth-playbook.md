@@ -1,6 +1,6 @@
 # Booth playbook
 
-_Last updated by [@filmgirl](https://github.com/filmgirl) on November 6, 2026_
+_Last updated by [@filmgirl](https://github.com/filmgirl) on November 8, 2026_
 
 A step-by-step walkthrough for running a booth: set up each booth machine before the event, run demos on booth day, then clean up and reset the booth accounts afterwards. You can read this without logging in to anything. Each step lists the access and tools it needs.
 
@@ -14,6 +14,13 @@ A step-by-step walkthrough for running a booth: set up each booth machine before
 4. **[After the event](#part-3-after-the-event-clean-up-and-reset)**: delete the demo repos in the booth accounts and the org, clear the booth machines' demo folders, and have an org admin reset the booth accounts.
 
 Any time, [Clean up demo repos](#clean-up-demo-repos) covers the everyday cleanups: the Demo Launcher, the weekly cleanup in each booth account, and the org's nightly cleanup and `/cleanup` command. [How to clean all Octobooth repos](#how-to-clean-all-octobooth-repos) is for org admins.
+
+> [!IMPORTANT]
+> **Booth machines can't download npm or Python packages.** Booth networks block `registry.npmjs.org` and `files.pythonhosted.org`, so `npm install`, `npx`, scaffolders like `npm create vite`, and `pip install` fail or hang in local Copilot sessions. (`pypi.org` loads, but package downloads don't.)
+>
+> - Setup adds [Copilot booth instructions](../README.md#copilot-booth-instructions) that steer local sessions to plain HTML/CSS/JavaScript, Node.js built-ins, or the Python standard library.
+> - For anything that needs packages (React, Next.js, Vite, Flask, etc.), use a **Cloud** session in a GitHub repo, such as one made with the Demo Launcher's **GitHub Copilot Fusion: Blank Prompt** demo, or a Codespace. See [Framework apps need a Cloud session](#framework-apps-need-a-cloud-session).
+> - Setup doesn't register any MCP server that runs through `npx`. See [Copilot sessions stuck at "busy"](../README.md#copilot-sessions-stuck-at-busy).
 
 ## Where things live
 
@@ -278,14 +285,18 @@ Both demos create repos in the `octobooth-demos` org, where the [nightly cleanup
 1. **Open the demo apps.** Open the GitHub Copilot app, VS Code, VS Code Insiders, and VLC from the Dock (macOS) or taskbar (Windows). Open your booth videos in VLC from `~/Videos` (`C:\Users\<YourUsername>\Videos` on Windows). In the browser (Chrome on macOS, Edge on Windows), use the bookmarks for the booth account, `octobooth-demos`, and the [security demo repos you created ahead of time](#create-the-security-demos-ahead-of-time).
 2. **Open the Demo Launcher.** Ask Copilot to "open the demo launcher" in any chat.
 3. **Create demos from the launcher.** It creates each demo repo in the background and opens a session for it. The launcher, the demo list, and per-demo notes are documented in the `repo-setup-scripts` README (org members only).
-
-4. **Framework apps need a Cloud session.** Booth networks block npm and Python package downloads, so local sessions can't install packages. Setup adds [instructions](../copilot/booth-instructions.md) that tell Copilot to build plain HTML/CSS/JavaScript apps (or use only Node.js built-ins or the Python standard library) and to send framework requests to you. If an attendee wants a React, Next.js, Vite, or other framework app:
-   1. Create a repo: in the Demo Launcher, create **GitHub Copilot Fusion: Blank Prompt** (or use any GitHub repo the booth account can push to).
-   2. Start a new session in that repo and select **Cloud** before sending the prompt. Cloud sessions run on GitHub, where packages install normally.
-
-   You can also open the repo in a GitHub Codespace (**Code** > **Codespaces** > **Create codespace on main**), which can install packages too.
+4. **Send framework requests to a Cloud session.** See [Framework apps need a Cloud session](#framework-apps-need-a-cloud-session).
 
 Each demo repo gets the `demo-generated` topic, which is how every cleanup finds it. Old demo repos are deleted automatically, but you can clear them out sooner (for example, at the end of a booth day): see [Clean up demo repos](#clean-up-demo-repos).
+
+### Framework apps need a Cloud session
+
+Booth networks block npm and Python package downloads, so local sessions can't install packages. Setup adds [Copilot booth instructions](../README.md#copilot-booth-instructions) that tell Copilot to build plain HTML/CSS/JavaScript apps (or use only Node.js built-ins or the Python standard library) and to send framework requests to you. If an attendee wants a React, Next.js, Vite, Flask, or other framework app:
+
+1. Create a repo: in the Demo Launcher, create **GitHub Copilot Fusion: Blank Prompt** (or use any GitHub repo the booth account can push to).
+2. Start a new session in that repo and select **Cloud** before sending the prompt. Cloud sessions run on GitHub, where packages install normally.
+
+You can also open the repo in a GitHub Codespace (**Code** > **Codespaces** > **Create codespace on main**), which can install packages too.
 
 ## Part 3: After the event: clean up and reset
 
