@@ -209,7 +209,7 @@ Describe 'install-demo-launcher.ps1' {
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const vm = require("node:vm");
-const loader = fs.readFileSync(process.argv[1], "utf8");
+const loader = fs.readFileSync(process.argv[2], "utf8");
 const fn = loader.match(/function loadedFromCheckout\(\) \{[\s\S]*?\n\}/)[0];
 for (const [dir, present, expected] of [
     ["/repos/demo/.github/extensions/demo-launcher-loader", true, true],
@@ -225,7 +225,9 @@ for (const [dir, present, expected] of [
     assert.equal(result, expected, dir);
 }
 '@
-            node -e $check $script:VendoredDemoLauncherLoader
+            $file = Join-Path $TestDrive 'loader-guard-check.cjs'
+            [System.IO.File]::WriteAllText($file, $check, (New-Object System.Text.UTF8Encoding $false))
+            node $file $script:VendoredDemoLauncherLoader
             $LASTEXITCODE | Should -Be 0
         }
 
