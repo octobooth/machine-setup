@@ -112,7 +112,7 @@ Describe 'Demo Launcher releases' {
 
         Invoke-DemoLauncherMain -Ref v9 | Should -Be 1
 
-        $script:failedItems | Should -Contain 'release: octobooth-demos/repo-setup-scripts at v9'
+        $script:failedItems | Should -Contain 'release: octobooth/repo-setup-scripts at v9'
         Should -Invoke Write-Err -ParameterFilter { $Message -like "Release tag v9 doesn't exist*" }
         Test-Detached | Should -BeFalse
         Get-Head $script:checkout | Should -Be $before
@@ -182,7 +182,7 @@ Describe 'Demo Launcher releases' {
 
         Invoke-DemoLauncherMain | Should -Be 1
 
-        $script:failedItems | Should -Contain "update: octobooth-demos/repo-setup-scripts (couldn't leave its pinned release)"
+        $script:failedItems | Should -Contain "update: octobooth/repo-setup-scripts (couldn't leave its pinned release)"
         Test-Detached | Should -BeTrue
     }
 

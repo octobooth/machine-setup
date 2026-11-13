@@ -104,7 +104,7 @@ Describe 'Invoke-NativeCommand' {
         It 'keeps a trusted origin URL clean when git traces to stderr' {
             $repo = Join-Path $TestDrive ([guid]::NewGuid().ToString())
             Invoke-TestGit -c init.defaultBranch=main init -q $repo
-            Invoke-TestGit -C $repo remote add origin 'https://github.com/octobooth-demos/repo-setup-scripts.git'
+            Invoke-TestGit -C $repo remote add origin 'https://github.com/octobooth/repo-setup-scripts.git'
             $env:GIT_TRACE = '1'
             try {
                 $url = @(Get-NativeCommandOutput git -C $repo remote get-url origin)
@@ -113,7 +113,7 @@ Describe 'Invoke-NativeCommand' {
             finally {
                 Remove-Item Env:\GIT_TRACE -ErrorAction SilentlyContinue
             }
-            $url | Should -Be @('https://github.com/octobooth-demos/repo-setup-scripts.git')
+            $url | Should -Be @('https://github.com/octobooth/repo-setup-scripts.git')
             $trusted | Should -BeTrue
         }
     }
@@ -163,10 +163,10 @@ Describe 'Invoke-NativeCommand' {
         It 'reports a failed pull' {
             Remove-Item -LiteralPath $script:origin -Recurse -Force
             $output = @(Sync-DemoLauncherRepo)
-            $script:failedItems | Should -Be @('update: octobooth-demos/repo-setup-scripts')
+            $script:failedItems | Should -Be @('update: octobooth/repo-setup-scripts')
             ($output -join "`n") | Should -Match 'fatal:'
             $output | ForEach-Object { $_ | Should -BeOfType [string] }
-            Should -Invoke Write-Err -ParameterFilter { $Message -eq 'Failed: update: octobooth-demos/repo-setup-scripts' }
+            Should -Invoke Write-Err -ParameterFilter { $Message -eq 'Failed: update: octobooth/repo-setup-scripts' }
         }
     }
 }

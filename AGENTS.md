@@ -10,18 +10,18 @@ Booth machine setup for GitHub event booths. It's public and MIT-licensed.
 - **Windows:** [`setup.ps1`](setup.ps1), [`install-demo-launcher.ps1`](install-demo-launcher.ps1), and [`windows/demo-launcher-loader.mjs`](windows/demo-launcher-loader.mjs) (a fallback copy of repo-setup-scripts' loader; keep it in sync).
 - **[`mcp-bundle/`](mcp-bundle/package.json)** pins the prebuilt Playwright MCP server. The [Playwright MCP bundle workflow](.github/workflows/playwright-mcp-bundle.yml) publishes it as the `playwright-mcp-v<version>` release, and setup and `install-demo-launcher` install it from there, never with `npx` (booth machines can't reach npm). See [Playwright MCP server](README.md#playwright-mcp-server).
 - **[`config.json`](config.json)** drives both: packages, editors, VS Code extensions, `gh` extensions and scopes, MCP servers, Dock/taskbar apps, and `repos_to_clone`.
-- Setup clones the demo repos to `~/repos` (`$HOME\repos` on Windows) and installs the Demo Launcher loader for [`octobooth-demos/repo-setup-scripts`](https://github.com/octobooth-demos/repo-setup-scripts), which holds the demos and the launcher itself.
+- Setup clones the demo repos to `~/repos` (`$HOME\repos` on Windows) and installs the Demo Launcher loader for [`octobooth/repo-setup-scripts`](https://github.com/octobooth/repo-setup-scripts), which holds the demos and the launcher itself.
 
 Docs to read first:
 
 - [README](README.md): [macOS setup](README.md#macos-setup), [Windows setup](README.md#windows-setup-clean-machine), [GitHub CLI login](README.md#github-cli-login), [Using a release](README.md#using-a-release), [Demo Launcher](README.md#demo-launcher), [Development and Testing](README.md#development-and-testing).
 - [Booth playbook](docs/booth-playbook.md): before, during, and after an event.
-- [Releasing](https://github.com/octobooth-demos/repo-setup-scripts/blob/main/docs/releasing.md) (in repo-setup-scripts): the shared release process for both repos.
+- [Releasing](https://github.com/octobooth/repo-setup-scripts/blob/main/docs/releasing.md) (in repo-setup-scripts): the shared release process for both repos.
 
 ## Branches and releases
 
 - Changes land on `main` through pull requests, and are tested there. Maintainer and dev machines track `main`.
-- Booth machines run the moving major tag **`v1`** of this repo *and* repo-setup-scripts. That takes two steps: check out `v1` in this repo (`git checkout --detach v1`), then run setup or `install-demo-launcher` with `--ref v1` (`-Ref v1` on Windows) or `BOOTH_RELEASE`, which pins repo-setup-scripts. The flag doesn't change this repo's checkout. See [Using a release](README.md#using-a-release). Merging to `main` never changes a booth machine.
+- Booth machines require the same tested release of this repo *and* repo-setup-scripts. **The copied destination `v1` / `v1.2.0` is not migration-ready; no destination release is approved yet.** After approval, check out the release in this repo, then run setup or `install-demo-launcher` with the same `--ref` (`-Ref` on Windows) or `BOOTH_RELEASE`, which pins repo-setup-scripts. The flag doesn't change this repo's checkout. See [Using a release](README.md#using-a-release) and [Upgrading existing machines](README.md#upgrade-an-existing-machine-to-octobooth). Merging to `main` never changes a booth machine.
 - A release tags **both** repos with the same `vX.Y.Z`, at the commits that were tested on a booth Mac and a Windows machine, then moves the matching major tag (`v1`) to it.
 - Never move or delete a pushed `vX.Y.Z` tag. Only the major tag moves.
 - **Agents must not create, move, or delete tags, or publish releases, unless explicitly asked.**
@@ -35,7 +35,8 @@ Follow these when changing the scripts, and check for them when reviewing a pull
 - **Windows PowerShell 5.1.** Fresh Windows machines only have 5.1, so the `.ps1` scripts must run there. No PowerShell 7-only syntax (`??`, `?.`, ternary `? :`, `&&`/`||` pipeline chains, `ForEach-Object -Parallel`, etc.).
 - **Native commands on Windows.** Run `git`, `gh`, `winget`, and editor CLIs through the native-command helper (`Invoke-NativeCommand` in `setup.ps1`, shared with `install-demo-launcher.ps1`). In 5.1, `2>&1` turns normal stderr progress into red `ErrorRecord`s, and under `$ErrorActionPreference = 'Stop'` it throws even with `2>$null`. The helper prints stderr as plain text and leaves success to `$LASTEXITCODE`. Interactive `gh auth login`/`refresh` stay direct.
 - **Admin.** `install-demo-launcher.ps1` must not require an Administrator prompt. `setup.ps1` needs Terminal (Admin) for some steps; it warns and skips them when not elevated (`Test-IsAdmin`, `Write-NotAdminWarning`).
-- **Trusted origin.** Keep the checks that only fetch, pull, check out, or install the loader for a checkout whose `origin` is `octobooth-demos/repo-setup-scripts` (`demo_launcher_remote_trusted` in `setup.sh`, `Test-DemoLauncherRemote` in `setup.ps1`). The loader runs that code in every Copilot chat.
+- **Trusted origin.** Keep the checks that only fetch, pull, check out, or install the loader for a checkout whose `origin` is `octobooth/repo-setup-scripts` (`demo_launcher_remote_trusted` in `setup.sh`, `Test-DemoLauncherRemote` in `setup.ps1`). The loader runs that code in every Copilot chat.
+- **Migration.** Do not silently rewrite existing clones' remotes or discard local work, commits, or worktrees. Keep destination Actions disabled until activation is explicitly approved. Required Playwright release assets must be published before machine cutover; do not fall back to source releases.
 - **Release tag check.** Keep the `git ls-remote` check that a release tag exists on GitHub before checking it out (`checkout_booth_release` in `setup.sh`, `Switch-DemoLauncherRelease` in `setup.ps1`). The scripts stop without changing the checkout if the tag is missing or the checkout has local changes.
 - **Testable scripts.** The scripts guard their main entry point so tests can source or dot-source them without installing anything. Keep that guard.
 - **Tests and CI.** Update the bats tests (`tests/bash`) and Pester tests (`tests/powershell`) with behavior changes, and keep [CI](.github/workflows/ci.yml) green, including the Windows PowerShell 5.1 job. When adding a `config.json` key, add it to the CI shape check.

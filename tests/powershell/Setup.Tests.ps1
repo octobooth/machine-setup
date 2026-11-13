@@ -152,6 +152,26 @@ Describe 'setup.ps1' {
             $script:failedItems.Count | Should -Be 0
         }
 
+        It 'downloads both assets from octobooth by default' {
+            Remove-Item Env:PLAYWRIGHT_MCP_BUNDLE_URL
+            Mock Save-PlaywrightMcpBundleFile {
+                param($Source, $Name, $Destination)
+                Copy-Item -Path (Join-Path $script:releaseDir $Name) -Destination (Join-Path $Destination $Name)
+            }
+
+            Install-PlaywrightMcpBundle
+
+            Test-Path (Get-PlaywrightMcpCli) | Should -BeTrue
+            Should -Invoke Save-PlaywrightMcpBundleFile -Times 1 -Exactly -ParameterFilter {
+                $Source -eq "https://github.com/octobooth/machine-setup/releases/download/playwright-mcp-v$script:bundleVersion" -and
+                $Name -eq "playwright-mcp-$script:bundleVersion.tgz"
+            }
+            Should -Invoke Save-PlaywrightMcpBundleFile -Times 1 -Exactly -ParameterFilter {
+                $Source -eq "https://github.com/octobooth/machine-setup/releases/download/playwright-mcp-v$script:bundleVersion" -and
+                $Name -eq "playwright-mcp-$script:bundleVersion.tgz.sha256"
+            }
+        }
+
         It 'keeps the previous version when the new one cannot be moved into place' {
             $dest = Get-PlaywrightMcpDir
             $cliDir = Split-Path (Get-PlaywrightMcpCli)
@@ -570,7 +590,7 @@ Describe 'setup.ps1' {
             $env:USERPROFILE = Join-Path $TestDrive ([guid]::NewGuid().ToString())
             $env:COPILOT_HOME = $null
             $script:failedItems = @()
-            $script:originUrl = 'https://github.com/octobooth-demos/repo-setup-scripts.git'
+            $script:originUrl = 'https://github.com/octobooth/repo-setup-scripts.git'
             Mock git { $global:LASTEXITCODE = 0; return $script:originUrl }
         }
 

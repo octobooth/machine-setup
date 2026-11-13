@@ -810,7 +810,7 @@ function Uninstall-DemoLauncherLoader {
 
 # Only this repo is trusted as the Demo Launcher source, because the loader runs its code in
 # every Copilot session and its checkout may be added as a Copilot project.
-$script:TrustedDemoLauncherRepo = "octobooth-demos/repo-setup-scripts"
+$script:TrustedDemoLauncherRepo = "octobooth/repo-setup-scripts"
 
 function Get-DemoLauncherRepoDir {
     return Join-Path (Join-Path $env:USERPROFILE "repos") "repo-setup-scripts"
@@ -888,9 +888,9 @@ function Switch-DemoLauncherRelease {
         $script:failedItems += $failure
         Invoke-NativeCommand git -C $Target tag -d $Ref | Out-Null
         if ($LASTEXITCODE -eq 0) {
-            Write-Err "Release tag $Ref isn't on GitHub (it may have been withdrawn), so its local copy was removed. Use the major the booth uses (currently v1), or run without a release to track main."
+            Write-Err "Release tag $Ref isn't on GitHub (it may have been withdrawn), so its local copy was removed. Use an approved booth release, or run without a release to track main for development."
         } else {
-            Write-Err "Release tag $Ref doesn't exist in $script:TrustedDemoLauncherRepo. Use the major the booth uses (currently v1), or run without a release to track main."
+            Write-Err "Release tag $Ref doesn't exist in $script:TrustedDemoLauncherRepo. Use an approved booth release, or run without a release to track main for development."
         }
         return $false
     }
@@ -903,7 +903,7 @@ function Switch-DemoLauncherRelease {
     Invoke-NativeCommand git -C $Target rev-parse --quiet --verify "refs/tags/$Ref^{commit}" | Out-Null
     if ($LASTEXITCODE -ne 0) {
         $script:failedItems += $failure
-        Write-Err "Release tag $Ref doesn't exist in $script:TrustedDemoLauncherRepo. Use the major the booth uses (currently v1), or run without a release to track main."
+        Write-Err "Release tag $Ref doesn't exist in $script:TrustedDemoLauncherRepo. Use an approved booth release, or run without a release to track main for development."
         return $false
     }
 
@@ -992,7 +992,7 @@ function Install-DemoLauncher {
 # from this repo's releases. mcp-bundle\package.json pins the version, and the
 # "Playwright MCP bundle" workflow publishes it as playwright-mcp-v<version>.
 
-$script:PlaywrightMcpBundleRepo = 'octobooth-demos/machine-setup'
+$script:PlaywrightMcpBundleRepo = 'octobooth/machine-setup'
 $script:PlaywrightMcpBrowser = 'msedge'
 $script:McpBundlePackagePath = Join-Path (Join-Path $PSScriptRoot 'mcp-bundle') 'package.json'
 

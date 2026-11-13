@@ -24,7 +24,7 @@ readonly ERROR="❌"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly SCRIPT_DIR
 readonly CONFIG_FILE="$SCRIPT_DIR/config.json"
-readonly DEMO_LAUNCHER_REPO="octobooth-demos/repo-setup-scripts"
+readonly DEMO_LAUNCHER_REPO="octobooth/repo-setup-scripts"
 
 # When true, skip detection is bypassed and everything is reinstalled
 FORCE_REINSTALL="${FORCE_REINSTALL:-false}"
@@ -728,9 +728,9 @@ checkout_booth_release() {
     git -C "$target" ls-remote --quiet --exit-code --tags origin "refs/tags/$ref" > /dev/null || remote_status=$?
     if [[ $remote_status -eq 2 ]]; then
         if git -C "$target" tag -d "$ref" > /dev/null 2>&1; then
-            log_error "Release tag $ref isn't on GitHub (it may have been withdrawn), so its local copy was removed. Use the major the booth uses (currently v1), or run without a release to track main."
+            log_error "Release tag $ref isn't on GitHub (it may have been withdrawn), so its local copy was removed. Use an approved booth release, or run without a release to track main for development."
         else
-            log_error "Release tag $ref doesn't exist in $DEMO_LAUNCHER_REPO. Use the major the booth uses (currently v1), or run without a release to track main."
+            log_error "Release tag $ref doesn't exist in $DEMO_LAUNCHER_REPO. Use an approved booth release, or run without a release to track main for development."
         fi
         return 1
     elif [[ $remote_status -ne 0 ]]; then
@@ -739,7 +739,7 @@ checkout_booth_release() {
     fi
 
     if ! git -C "$target" rev-parse --quiet --verify "refs/tags/$ref^{commit}" > /dev/null; then
-        log_error "Release tag $ref doesn't exist in $DEMO_LAUNCHER_REPO. Use the major the booth uses (currently v1), or run without a release to track main."
+        log_error "Release tag $ref doesn't exist in $DEMO_LAUNCHER_REPO. Use an approved booth release, or run without a release to track main for development."
         return 1
     fi
 
@@ -1115,7 +1115,7 @@ configure_editors() {
 # from this repo's releases. mcp-bundle/package.json pins the version, and the
 # "Playwright MCP bundle" workflow publishes it as playwright-mcp-v<version>.
 
-readonly PLAYWRIGHT_MCP_BUNDLE_REPO="octobooth-demos/machine-setup"
+readonly PLAYWRIGHT_MCP_BUNDLE_REPO="octobooth/machine-setup"
 readonly PLAYWRIGHT_MCP_BROWSER="chrome"
 
 playwright_mcp_bundle_version() {

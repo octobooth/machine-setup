@@ -3,7 +3,7 @@
 # Installs (or updates) the Demo Launcher canvas so it's available in every
 # GitHub Copilot session, without rerunning the full setup.sh. It also installs
 # the pinned Playwright MCP bundle and refreshes the Copilot CLI MCP servers.
-# Safe to re-run. See https://github.com/octobooth-demos/repo-setup-scripts#quick-start-booth-machine
+# Safe to re-run. See https://github.com/octobooth/repo-setup-scripts#quick-start-booth-machine
 #
 # Usage: bash install-demo-launcher.sh [--ref <tag>] [--uninstall]
 #

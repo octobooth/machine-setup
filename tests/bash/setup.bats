@@ -136,6 +136,24 @@ use_fake_node() {
     [[ ! -e "$COPILOT_HOME/mcp-servers/playwright" ]]
 }
 
+@test "install_playwright_mcp_bundle downloads both assets from octobooth by default" {
+    load_script
+    make_playwright_mcp_release "$BATS_TEST_TMPDIR/release"
+    unset PLAYWRIGHT_MCP_BUNDLE_URL
+    fetch_playwright_mcp_file() {
+        printf '%s\n' "$1/$2" >> "$BATS_TEST_TMPDIR/downloads"
+        cp "$BATS_TEST_TMPDIR/release/$2" "$3/$2"
+    }
+
+    install_playwright_mcp_bundle
+
+    local version base
+    version=$(playwright_mcp_bundle_version)
+    base="https://github.com/octobooth/machine-setup/releases/download/playwright-mcp-v$version"
+    [ "$(cat "$BATS_TEST_TMPDIR/downloads")" = "$(printf '%s\n' "$base/playwright-mcp-$version.tgz" "$base/playwright-mcp-$version.tgz.sha256")" ]
+    [[ -f "$(playwright_mcp_cli)" ]]
+}
+
 @test "install_playwright_mcp_bundle keeps the previous version when the new one can't be moved into place" {
     load_script
     make_playwright_mcp_release "$BATS_TEST_TMPDIR/release"
@@ -738,7 +756,7 @@ STUB
 # Points the checkout's origin at the trusted GitHub URL, and redirects git to the
 # local test origin for that URL, so the origin check passes without network access
 trust_test_origin() {
-    local trusted="https://github.com/octobooth-demos/repo-setup-scripts.git"
+    local trusted="https://github.com/octobooth/repo-setup-scripts.git"
     git -C "$1" remote set-url origin "$trusted"
     git -C "$1" config "url.$2.insteadOf" "$trusted"
 }
@@ -912,7 +930,7 @@ release_commit() {
     install_demo_launcher
 
     [[ ! -f "$INSTALL_LOG" ]] || false
-    [[ " ${failed_items[*]} " == *"release: octobooth-demos/repo-setup-scripts at v9"* ]] || false
+    [[ " ${failed_items[*]} " == *"release: octobooth/repo-setup-scripts at v9"* ]] || false
 }
 
 @test "install_demo_launcher rewrites an existing loader for a release" {
@@ -954,30 +972,31 @@ release_commit() {
     git -C "$repo" remote add origin x
 
     local url
-    for url in https://github.com/octobooth-demos/repo-setup-scripts \
-        https://github.com/octobooth-demos/repo-setup-scripts.git \
-        https://github.com/octobooth-demos/repo-setup-scripts/ \
-        git@github.com:octobooth-demos/repo-setup-scripts.git \
-        ssh://git@github.com/Octobooth-Demos/repo-setup-scripts.git; do
+    for url in https://github.com/octobooth/repo-setup-scripts \
+        https://github.com/octobooth/repo-setup-scripts.git \
+        https://github.com/octobooth/repo-setup-scripts/ \
+        git@github.com:octobooth/repo-setup-scripts.git \
+        ssh://git@github.com/Octobooth/repo-setup-scripts.git; do
         git -C "$repo" remote set-url origin "$url"
         demo_launcher_remote_trusted "$repo" || { echo "rejected $url"; false; }
     done
     for url in https://github.com/attacker/repo-setup-scripts.git \
-        https://ghe.example.com/octobooth-demos/repo-setup-scripts.git \
-        https://github.com/octobooth-demos/repo-setup-scripts-fork \
+        https://github.com/octobooth-demos/repo-setup-scripts.git \
+        https://ghe.example.com/octobooth/repo-setup-scripts.git \
+        https://github.com/octobooth/repo-setup-scripts-fork \
         "$BATS_TEST_TMPDIR/origin.git"; do
         git -C "$repo" remote set-url origin "$url"
         ! demo_launcher_remote_trusted "$repo" || { echo "accepted $url"; false; }
     done
 }
 
-@test "sync_demo_launcher_repo refuses an untrusted origin before fetching or installing" {
+@test "sync_demo_launcher_repo refuses the source organization before fetching or installing" {
     make_release_origin
     mkdir -p "$RELEASE_REPO/.github/extensions/demo-launcher"
     printf '#!/bin/bash\necho run >> "$INSTALL_LOG"\n' > "$RELEASE_REPO/.github/extensions/demo-launcher/install.sh"
     export INSTALL_LOG="$BATS_TEST_TMPDIR/install.log"
-    git -C "$RELEASE_REPO" remote set-url origin https://github.com/attacker/repo-setup-scripts.git
-    git -C "$RELEASE_REPO" config "url.$RELEASE_ORIGIN.insteadOf" https://github.com/attacker/repo-setup-scripts.git
+    git -C "$RELEASE_REPO" remote set-url origin https://github.com/octobooth-demos/repo-setup-scripts.git
+    git -C "$RELEASE_REPO" config "url.$RELEASE_ORIGIN.insteadOf" https://github.com/octobooth-demos/repo-setup-scripts.git
     git -C "$RELEASE_WORK" tag v2.0.0
     git -C "$RELEASE_WORK" push -q origin v2.0.0
     load_script
@@ -986,7 +1005,7 @@ release_commit() {
 
     BOOTH_RELEASE=v2.0.0 run sync_demo_launcher_repo
     [ "$status" -eq 1 ]
-    [[ "$output" == *"doesn't point at octobooth-demos/repo-setup-scripts"* ]] || false
+    [[ "$output" == *"doesn't point at octobooth/repo-setup-scripts"* ]] || false
     [[ "$output" != *"Fetching"* ]] || false
     [ "$(git -C "$RELEASE_REPO" rev-parse HEAD)" = "$before" ]
     run git -C "$RELEASE_REPO" rev-parse -q --verify refs/tags/v2.0.0

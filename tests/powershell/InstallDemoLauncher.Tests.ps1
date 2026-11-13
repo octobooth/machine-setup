@@ -22,7 +22,7 @@ Describe 'install-demo-launcher.ps1' {
         $script:calls = [System.Collections.Generic.List[string]]::new()
         $script:ghLoggedIn = $true
         $script:gitExitCode = 0
-        $script:originUrl = 'https://github.com/octobooth-demos/repo-setup-scripts.git'
+        $script:originUrl = 'https://github.com/octobooth/repo-setup-scripts.git'
 
         Mock git {
             if ($args -contains 'remote') {
@@ -58,18 +58,18 @@ Describe 'install-demo-launcher.ps1' {
 
     It 'reads the repo-setup-scripts repo from config.json' {
         Import-Config
-        Get-DemoLauncherRepo | Should -Be 'octobooth-demos/repo-setup-scripts'
+        Get-DemoLauncherRepo | Should -Be 'octobooth/repo-setup-scripts'
     }
 
     It 'ignores an untrusted repo-setup-scripts entry in config.json' {
         $script:config = [pscustomobject]@{ shared = [pscustomobject]@{ repos_to_clone = @('attacker/repo-setup-scripts') } }
 
-        Get-DemoLauncherRepo | Should -Be 'octobooth-demos/repo-setup-scripts'
+        Get-DemoLauncherRepo | Should -Be 'octobooth/repo-setup-scripts'
         Should -Invoke Write-Warn -Times 1 -Exactly
     }
 
     It 'accepts SSH remotes for the trusted repo' {
-        $script:originUrl = 'git@github.com:octobooth-demos/repo-setup-scripts.git'
+        $script:originUrl = 'git@github.com:octobooth/repo-setup-scripts.git'
         Test-DemoLauncherRemote -Target (Get-DemoLauncherRepoDir) | Should -BeTrue
     }
 
@@ -82,12 +82,22 @@ Describe 'install-demo-launcher.ps1' {
         $script:calls | Where-Object { $_ -like 'git *pull*' } | Should -BeNullOrEmpty
     }
 
+    It 'refuses a source-organization checkout before fetching or installing' {
+        New-FakeCheckout -Target (Get-DemoLauncherRepoDir)
+        $script:originUrl = 'https://github.com/octobooth-demos/repo-setup-scripts.git'
+
+        Invoke-DemoLauncherMain -Ref v1 | Should -Be 1
+
+        $script:calls | Where-Object { $_ -like 'git *' -or $_ -like 'gh repo clone*' } | Should -BeNullOrEmpty
+        Test-Path (Get-DemoLauncherLoaderPath) | Should -BeFalse
+    }
+
     It 'clones repo-setup-scripts when the checkout is missing' {
         $target = Get-DemoLauncherRepoDir
 
         Invoke-DemoLauncherMain | Should -Be 0
 
-        $script:calls | Should -Contain "gh repo clone octobooth-demos/repo-setup-scripts $target"
+        $script:calls | Should -Contain "gh repo clone octobooth/repo-setup-scripts $target"
         $script:calls | Where-Object { $_ -like 'git *pull*' } | Should -BeNullOrEmpty
     }
 
@@ -122,7 +132,7 @@ Describe 'install-demo-launcher.ps1' {
 
         Invoke-DemoLauncherMain | Should -Be 1
 
-        $script:failedItems | Should -Contain 'update: octobooth-demos/repo-setup-scripts'
+        $script:failedItems | Should -Contain 'update: octobooth/repo-setup-scripts'
     }
 
     It 'refuses to overwrite a folder that is not a git checkout' {
@@ -194,6 +204,31 @@ Describe 'install-demo-launcher.ps1' {
             $bytes[0] | Should -Not -Be 0xEF
         }
 
+        It 'only treats a loader in the checkout extension folder as project-local' -Skip:(-not (Get-Command node -ErrorAction SilentlyContinue)) {
+            $check = @'
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const vm = require("node:vm");
+const loader = fs.readFileSync(process.argv[1], "utf8");
+const fn = loader.match(/function loadedFromCheckout\(\) \{[\s\S]*?\n\}/)[0];
+for (const [dir, present, expected] of [
+    ["/repos/demo/.github/extensions/demo-launcher-loader", true, true],
+    ["C:\\repos\\demo\\.github\\extensions\\demo-launcher-loader", true, true],
+    ["/repos/demo/.github/extensions/demo-launcher-loader", false, false],
+    ["/home/user/.copilot/extensions/demo-launcher", true, false],
+    ["/home/user/.copilot/extensions/demo-launcher-loader", true, false],
+]) {
+    const result = vm.runInNewContext(fn + "\nloadedFromCheckout()", {
+        LOADER_DIR: dir, LAUNCHER: "extension.mjs",
+        existsSync: () => present, join: (...parts) => parts.join("/"),
+    });
+    assert.equal(result, expected, dir);
+}
+'@
+            node -e $check $script:VendoredDemoLauncherLoader
+            $LASTEXITCODE | Should -Be 0
+        }
+
         It 'keeps a shipped loader without an INSTALLED_REPO line as is' {
             Get-DemoLauncherLoaderContent -Template '// other loader' -CheckoutDir 'C:\x' | Should -BeExactly '// other loader'
             Should -Invoke Write-Warn -Times 1 -Exactly
@@ -241,7 +276,7 @@ Describe 'install-demo-launcher.ps1' {
         }
 
         It 'does not install the loader when a fresh clone has an untrusted origin' {
-            $script:originUrl = 'https://ghe.example.com/octobooth-demos/repo-setup-scripts.git'
+            $script:originUrl = 'https://ghe.example.com/octobooth/repo-setup-scripts.git'
 
             Invoke-DemoLauncherMain | Should -Be 1
 

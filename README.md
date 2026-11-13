@@ -2,7 +2,7 @@
 
 _Last updated by [@filmgirl](https://github.com/filmgirl) on November 8, 2026_
 
-![CI](https://github.com/octobooth-demos/machine-setup/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/octobooth/machine-setup/actions/workflows/ci.yml/badge.svg)
 
 > [!IMPORTANT]
 > **Setting up or running a booth? Start with the [booth playbook](docs/booth-playbook.md).** It walks through the whole event step by step:
@@ -14,6 +14,9 @@ _Last updated by [@filmgirl](https://github.com/filmgirl) on November 8, 2026_
 > Cleaning up demo repos any time: [Clean up demo repos](docs/booth-playbook.md#clean-up-demo-repos). Deleting every repo in the booth accounts (org admins): [How to clean all Octobooth repos](docs/booth-playbook.md#how-to-clean-all-octobooth-repos).
 
 This repository contains setup scripts for configuring booth machines. The scripts install and configure the GitHub Copilot app, Visual Studio Code, Visual Studio Code Insiders, GitHub CLI, VLC media player, Node.js, PowerShell 7 (Windows), iTerm2 (macOS), and related tooling from a shared `config.json`.
+
+> [!WARNING]
+> **Destination machine cutover is not ready.** The copied `v1` / `v1.2.0` tags still contain source-organization code; no migration-ready destination release has been approved. The required Playwright archive and checksum are not yet published in [destination releases](https://github.com/octobooth/machine-setup/releases). Do not run the booth setup/update commands below until a matching destination release is tested and approved. Existing machines need the deliberate [upgrade procedure](#upgrade-an-existing-machine-to-octobooth), not just `git pull`.
 
 > [!IMPORTANT]
 > **Booth machines can't download npm or Python packages.** Booth networks block `registry.npmjs.org` and `files.pythonhosted.org`, so `npm install`, `npx`, scaffolders like `npm create vite`, and `pip install` fail or hang in local Copilot sessions. (`pypi.org` loads, but package downloads don't.)
@@ -78,10 +81,10 @@ Clone this repo so you can update the scripts before each run. A ZIP download ne
 2. Clone the repo:
 
    ```bash
-   git clone https://github.com/octobooth-demos/machine-setup.git ~/repos/machine-setup
+   git clone https://github.com/octobooth/machine-setup.git ~/repos/machine-setup
    ```
 
-3. Put the scripts on the [`v1` release](https://github.com/octobooth-demos/machine-setup/releases) the booth uses (see [Using a release](#using-a-release)). Do this again before each booth day, and before re-running `setup.sh` or `install-demo-launcher.sh`:
+3. Put the scripts on the [`v1` release](https://github.com/octobooth/machine-setup/releases) the booth uses (see [Using a release](#using-a-release)). Do this again before each booth day, and before re-running `setup.sh` or `install-demo-launcher.sh`:
 
    ```bash
    git -C ~/repos/machine-setup fetch --tags --force
@@ -90,7 +93,7 @@ Clone this repo so you can update the scripts before each run. A ZIP download ne
 
    Developers testing changes can track `main` instead: run `git -C ~/repos/machine-setup checkout main`, then `git -C ~/repos/machine-setup pull` (see [Using a release](#using-a-release) for switching the Demo Launcher back too).
 
-**Fallback for a new Mac without Git:** [download the ZIP](https://github.com/octobooth-demos/machine-setup/archive/refs/heads/main.zip) and run commands from the extracted `machine-setup-main` folder. Keep all files together, because the scripts need `config.json` and `setup.sh` also needs the `iterm2/` folder. Setup installs the Xcode Command Line Tools and Git, so switch to a clone afterward. If you stay on the ZIP, download it again before re-running any script.
+**Fallback for a new Mac without Git:** [download the ZIP](https://github.com/octobooth/machine-setup/archive/refs/heads/main.zip) and run commands from the extracted `machine-setup-main` folder. Keep all files together, because the scripts need `config.json` and `setup.sh` also needs the `iterm2/` folder. Setup installs the Xcode Command Line Tools and Git, so switch to a clone afterward. If you stay on the ZIP, download it again before re-running any script.
 
 #### 2. Run setup
 
@@ -137,7 +140,7 @@ More detail: [Demo Launcher](#demo-launcher).
 In Chrome, still signed in to GitHub.com as the booth account, open each page below and press **Cmd+D** to bookmark it:
 
 - `https://github.com/octobooth-N`: the booth account's profile, using this machine's number (for example `https://github.com/octobooth-1`).
-- `https://github.com/octobooth-demos`: the `octobooth-demos` org.
+- `https://github.com/octobooth`: the `octobooth` org.
 
 On booth day, you'll also bookmark the security demo repos (AI Security and Security Supply Chain (v4)). You can't add them during setup: they're created within 72 hours of use. Create each demo once, on one machine, then open that same repo in Chrome on every booth machine and press **Cmd+D**. See [Create the security demos ahead of time](docs/booth-playbook.md#create-the-security-demos-ahead-of-time).
 
@@ -205,11 +208,11 @@ winget install --id Git.Git -e --source winget --accept-source-agreements --acce
 Close the window and open a new administrator PowerShell so `git` is on your `PATH`, then clone:
 
 ```powershell
-git clone https://github.com/octobooth-demos/machine-setup.git "$HOME\repos\machine-setup"
+git clone https://github.com/octobooth/machine-setup.git "$HOME\repos\machine-setup"
 cd "$HOME\repos\machine-setup"
 ```
 
-Put the scripts on the [`v1` release](https://github.com/octobooth-demos/machine-setup/releases) the booth uses (see [Using a release](#using-a-release)). Do this again before each booth day, and before re-running `setup.ps1` or `install-demo-launcher.ps1`:
+Put the scripts on the [`v1` release](https://github.com/octobooth/machine-setup/releases) the booth uses (see [Using a release](#using-a-release)). Do this again before each booth day, and before re-running `setup.ps1` or `install-demo-launcher.ps1`:
 
 ```powershell
 git -C "$HOME\repos\machine-setup" fetch --tags --force
@@ -274,7 +277,7 @@ More detail: [Windows: installed loader and project](#windows-installed-loader-a
 Setup signed in to GitHub.com in Microsoft Edge, and Chrome isn't installed on Windows, so use Edge. Edge calls bookmarks favorites. In Edge, still signed in to GitHub.com as the booth account, open each page below and press **Ctrl+D** to bookmark it:
 
 - `https://github.com/octobooth-N`: the booth account's profile, using this machine's number (for example `https://github.com/octobooth-1`).
-- `https://github.com/octobooth-demos`: the `octobooth-demos` org.
+- `https://github.com/octobooth`: the `octobooth` org.
 
 On booth day, you'll also bookmark the security demo repos (AI Security and Security Supply Chain (v4)). You can't add them during setup: they're created within 72 hours of use. Create each demo once, on one machine, then open that same repo in Edge on every booth machine and press **Ctrl+D**. See [Create the security demos ahead of time](docs/booth-playbook.md#create-the-security-demos-ahead-of-time).
 
@@ -315,7 +318,7 @@ Check each item on every booth machine. `N` is this machine's booth account numb
 2. **Demo repos.** `~/repos` (`$HOME\repos` on Windows) contains `repo-setup-scripts`, `tailspin-toys`, and `security-octo-supply` (the `repos_to_clone` list in [`config.json`](config.json)).
 3. **Copilot app.** It's signed in as `octobooth-N`, and "open the demo launcher" opens the launcher from a new chat. If you added the optional repo-setup-scripts project, it's from the local `~/repos/repo-setup-scripts` folder (`$HOME\repos\repo-setup-scripts` on Windows) and its pinned session is a **Current checkout** one.
 4. **VS Code and VS Code Insiders.** In each, **Accounts** shows `octobooth-N`, and GitHub Copilot is signed in and active.
-5. **Bookmarks.** The browser (Chrome on macOS, Edge on Windows) has bookmarks for `https://github.com/octobooth-N` and `https://github.com/octobooth-demos`.
+5. **Bookmarks.** The browser (Chrome on macOS, Edge on Windows) has bookmarks for `https://github.com/octobooth-N` and `https://github.com/octobooth`.
 6. **Dock or taskbar.** On macOS, the Dock has Google Chrome, the GitHub Copilot app, VS Code, VS Code Insiders, iTerm2, and VLC. On Windows, the taskbar has VS Code, VS Code Insiders, the GitHub Copilot app, Windows Terminal, and VLC. Machines set up with an older version of the setup scripts may still have a `load-demos.sh` or `load-demos.ps1` script on the Desktop. Setup no longer creates it, and nothing uses it, so you can delete it.
 7. **Weekly cleanup.** In a browser signed in as the booth account, open `https://github.com/octobooth-N/demo-cleanup/actions`. It should have a **Weekly demo cleanup** workflow with green runs. If the repo is missing or runs fail, ask an org admin to [set up the weekly cleanup](docs/booth-playbook.md#set-up-or-repair-the-weekly-cleanup) for that account.
 
@@ -343,7 +346,9 @@ The setup scripts handle this for you, but check it on every booth machine (and 
    `gh`'s default scopes (`repo`, `read:org`, `gist`) cover everything else.
 3. Check it with `gh auth status`. It should show the booth account as active, with `codespace`, `delete_repo`, `project`, and `workflow` in its token scopes.
 
-The booth account must be a member of the `octobooth-demos` org and allowed to create repositories there, because several demos create their repo in that org. It also needs a Copilot seat for the demos that use Copilot code review, assigning issues to Copilot, and Codespaces.
+The booth account must have access to the [octobooth organization](https://github.com/octobooth), permission to create demo repositories there, and read access to the internal [Tailspin Toys](https://github.com/octobooth/tailspin-toys) and [Octo Supply](https://github.com/octobooth/security-octo-supply) templates. [Machine setup](https://github.com/octobooth/machine-setup) and [repo-setup-scripts](https://github.com/octobooth/repo-setup-scripts) are public; that does not make every template public. Verify Copilot licensing and policy for code review and coding agent, Codespaces access and billing, and the security features each demo needs with the booth account. A maintainer's access or a successful `gh auth status` does not establish those permissions.
+
+Destination ChatOps also needs an approved GitHub App installation, repository permissions, and `APP_ID` / `APP_PRIVATE_KEY` provisioning. These and booth feature access remain unverified. Destination Actions are disabled during migration; copying workflows does not activate ChatOps or scheduled cleanup. Do not reuse source App credentials or enable workflows as part of machine setup.
 
 If `GH_TOKEN` or `GITHUB_TOKEN` is set, `gh` uses that token instead of this login, and `gh auth refresh` won't run. Unset them on booth machines.
 
@@ -383,13 +388,13 @@ source setup.sh && install_booth_instructions
 
 ## Using a release
 
-`main` of this repo and of [`octobooth-demos/repo-setup-scripts`](https://github.com/octobooth-demos/repo-setup-scripts) change often, and booth machines would otherwise pick up whatever is on `main` the night before an event. Booth machines use a tested release instead. **Booth machines use `v1`** (first released as `v1.0.0`). See the release notes for [machine-setup](https://github.com/octobooth-demos/machine-setup/releases) and [repo-setup-scripts](https://github.com/octobooth-demos/repo-setup-scripts/releases).
+`main` of this repo and of [`octobooth/repo-setup-scripts`](https://github.com/octobooth/repo-setup-scripts) is for development. Booth machines require the same tested release in both repositories. **The copied destination `v1` points to the historical `v1.2.0`, not a migration-ready release.** The `v1` examples below apply only after maintainers approve a new destination release and move the major tag. Until then, keep existing machines on their approved source installation. Check the release notes for [machine-setup](https://github.com/octobooth/machine-setup/releases) and [repo-setup-scripts](https://github.com/octobooth/repo-setup-scripts/releases); a copied Git tag alone is not release approval.
 
 - Each tested release is tagged `vX.Y.Z` (for example `v1.0.0`, `v1.1.0`), with the same version on both repos. A release is tagged only after the setup has been tested on a booth Mac and a Windows machine.
-- The major tag (`v1`) moves to the latest tested `v1.x.y`, like GitHub Actions' major tags. Use it on booth machines. Use a full tag (`v1.1.0`) to pin an exact version.
+- The major tag (`v1`) moves to the latest approved, tested `v1.x.y`, like GitHub Actions' major tags. Use it on booth machines only after destination release approval. Use the approved full tag to pin an exact version; never move or replace a published `vX.Y.Z`.
 - The major version (`v2`) changes only for breaking changes, such as new manual setup steps, changed paths, or new required `gh` scopes.
 
-Pin both repos to the same release: check out the tag in `machine-setup` (a detached HEAD), then pass it to setup or the launcher install with `--ref` (`-Ref` on Windows) or the `BOOTH_RELEASE` environment variable. The scripts then fetch tags in `repo-setup-scripts` with `--force` (so a moved `v1` follows the remote) and check out the tag there too. They stop with an error, without changing the checkout, if the tag doesn't exist on GitHub (a tag that was withdrawn there is also removed locally) or the checkout has local changes (stash or discard them, then re-run).
+Pin both repos to the same release: check out the tag in `machine-setup` (a detached HEAD), then pass it to setup or the launcher install with `--ref` (`-Ref` on Windows) or the `BOOTH_RELEASE` environment variable. The flag only selects the launcher release; it does not change `machine-setup`'s checkout. The scripts then fetch tags in `repo-setup-scripts` with `--force` (so a moved `v1` follows the remote) and check out the tag there too. They stop with an error if the tag doesn't exist on GitHub (a tag that was withdrawn there is also removed locally) or the checkout has tracked local changes. Preserve tracked and untracked work before rerunning; see [Upgrading an existing machine](#upgrade-an-existing-machine-to-octobooth).
 
 Always move to a new release with `install-demo-launcher` (or setup) and the release, not with `git checkout` in `repo-setup-scripts` alone: the scripts also rewrite the installed loader. Then restart the GitHub Copilot app (on Windows, fully quit it from the system tray) so it loads the launcher from that release.
 
@@ -432,19 +437,68 @@ cd "$HOME\repos\machine-setup"
 
 `setup.sh` and `setup.ps1` also switch a pinned checkout back to `main` when run without a release. If you set `BOOTH_RELEASE`, clear it first, or the scripts keep using that release: `unset BOOTH_RELEASE` on macOS, or `Remove-Item Env:BOOTH_RELEASE` on Windows (and, if you saved it as a user variable, `[Environment]::SetEnvironmentVariable("BOOTH_RELEASE", $null, "User")`).
 
-To cut a release, after testing on a booth Mac and a Windows machine, tag the same commit you tested in **both** repos and move the major tag:
+Release maintainers must follow the shared [release process](https://github.com/octobooth/repo-setup-scripts/blob/main/docs/releasing.md): test both repositories on a booth Mac and a Windows machine, verify the destination Playwright release assets, then obtain approval to publish a new matching version and move the major tag. Do not reuse the copied immutable versions.
+
+## Upgrade an existing machine to octobooth
+
+This is a deliberate maintainer-assisted cutover, not an automatic setup step. Configuration changes do not switch Git origins: setup skips existing basename folders, and the launcher refuses a clone whose origin is not `octobooth/repo-setup-scripts`. The [source organization](https://github.com/octobooth-demos) remains available for existing installations.
+
+1. **Wait for release approval.** Obtain the exact new `vX.Y.Z` approved in both destination repositories and confirm its Playwright archive and checksum are published. Do not substitute the copied `v1` / `v1.2.0`. Check destination template access and required features as the booth account using [GitHub CLI login](#github-cli-login).
+2. **Inspect all four clones before changing anything.** Fully quit the Copilot app and editors and stop sessions using these repositories. Run the following for `machine-setup`, then repeat with `repo-setup-scripts`, `tailspin-toys`, and `security-octo-supply`. Inspect every linked worktree listed, not only the main folder.
 
 ```bash
-git tag v1.1.0 && git push origin v1.1.0
-git tag -f v1 v1.1.0 && git push -f origin v1
+repo="$HOME/repos/machine-setup"
+git -C "$repo" remote -v
+git -C "$repo" status --short --untracked-files=all
+git -C "$repo" branch -vv
+git -C "$repo" worktree list
 ```
+
+```powershell
+$repo = "$HOME\repos\machine-setup"
+git -C "$repo" remote -v
+git -C "$repo" status --short --untracked-files=all
+git -C "$repo" branch -vv
+git -C "$repo" worktree list
+```
+
+3. **Preserve local work.** Back up each repository's full folder, Git common directory, and every linked worktree to a separate location, including tracked, untracked, and ignored files. Keep those paths intact; moving or deleting a linked worktree can break it. In each checkout, create an unused recovery branch at its current HEAD (for example `git -C "$repo" branch before-octobooth-migration HEAD`; use a different name for each linked worktree). This preserves local and detached commits; it does not save uncommitted files. Save those separately before proceeding and require a clean status in every worktree. If there are local commits or divergent history, have the maintainer review them; do not reset, rebase, discard, or force-pull them as part of this procedure.
+4. **Change only a verified origin.** Its fetch and push URLs must identify the same named repository in `octobooth-demos` or `octobooth`. Record the original URLs for rollback. Stop for arbitrary forks, custom push URLs, or unknown folders; do not redirect them. After review, the following commands work in Bash and PowerShell (`$repo` was set above). Substitute the matching repository name when repeating for the other three clones. Changing a remote affects every linked worktree.
+
+```bash
+git -C "$repo" remote set-url origin https://github.com/octobooth/machine-setup.git
+git -C "$repo" fetch --no-tags origin main
+git -C "$repo" log --oneline --left-right HEAD...origin/main
+```
+
+5. **Select the reviewed destination code without replacing local branches.** Existing destination clones can have unrelated history. After reviewing the log, put each clean template clone (`tailspin-toys` and `security-octo-supply`) on the reviewed destination tip with `git -C "$repo" checkout --detach origin/main`. Leave its recovery branches and other worktrees intact. For `machine-setup`, fetch and check out the approved exact release below. Replace `APPROVED_TAG` with that new version; it is not a literal tag. If Git reports a tag conflict or local changes, stop for maintainer review, not a forced checkout.
+
+```bash
+git -C "$HOME/repos/machine-setup" fetch --no-tags origin tag APPROVED_TAG
+git -C "$HOME/repos/machine-setup" checkout --detach APPROVED_TAG
+```
+
+6. **Refresh the launcher with the same approved release.** Run from the upgraded `machine-setup` folder, replacing `APPROVED_TAG` again. The installer checks the launcher's origin, selects that release in `repo-setup-scripts`, rewrites the installed loader, and refreshes MCP and booth instructions. Do not just check out the launcher tag by hand. Keep `BOOTH_RELEASE`, if set, aligned with the approved version.
+
+```bash
+cd ~/repos/machine-setup
+bash install-demo-launcher.sh --ref APPROVED_TAG
+```
+
+```powershell
+cd "$HOME\repos\machine-setup"
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+.\install-demo-launcher.ps1 -Ref APPROVED_TAG
+```
+
+7. **Verify before booth use.** Check `remote -v` on all four clones and `git describe --tags --exact-match` in both script repositories against the approved release. Resolve installer warnings, including missing Playwright assets, rather than treating an exit code as proof of readiness. Fully quit and reopen the Copilot app (on Windows, quit from the system tray); use the existing `repo-setup-scripts` folder with **Current checkout**, not an old worktree session. Preserve any work in old sessions before archiving them. Update the organization bookmark to [octobooth](https://github.com/octobooth), then complete [Check that the machine is ready](#check-that-the-machine-is-ready).
 
 ## Demo Launcher
 
-[`octobooth-demos/repo-setup-scripts`](https://github.com/octobooth-demos/repo-setup-scripts) (cloned to `~/repos/repo-setup-scripts`) ships a **Demo Launcher** canvas for the GitHub Copilot app. It creates booth demos in the background with `create-repo.sh`/`create-repo.ps1`, opens sessions for them in the Copilot app, and cleans up old demo repos (see [From the Demo Launcher](docs/booth-playbook.md#from-the-demo-launcher)). For using it on booth day, see [During the event](docs/booth-playbook.md#part-2-during-the-event-run-demos) in the booth playbook.
+[`octobooth/repo-setup-scripts`](https://github.com/octobooth/repo-setup-scripts) (cloned to `~/repos/repo-setup-scripts`) ships a **Demo Launcher** canvas for the GitHub Copilot app. It creates booth demos in the background with `create-repo.sh`/`create-repo.ps1`, opens sessions for them in the Copilot app, and cleans up old demo repos (see [From the Demo Launcher](docs/booth-playbook.md#from-the-demo-launcher)). For using it on booth day, see [During the event](docs/booth-playbook.md#part-2-during-the-event-run-demos) in the booth playbook.
 
 > [!IMPORTANT]
-> On booth machines, install the launcher only with this repo's scripts: `setup.sh` or `install-demo-launcher.sh` on macOS/Linux, `setup.ps1` or `install-demo-launcher.ps1` on Windows. Don't also install the canvas from a URL in the Copilot app. The launcher reads its demos and `create-repo` scripts from a local clone of repo-setup-scripts, so a clone is needed either way. The scripts clone or update `~/repos/repo-setup-scripts` and write the loader in the same automatic step during machine setup, with no manual per-machine step. Re-running `install-demo-launcher.sh` or `install-demo-launcher.ps1` repairs or updates both (`setup.sh` keeps an existing loader unless `FORCE_REINSTALL=true`). A URL install is named `demo-launcher-loader` even if you ask for `demo-launcher`, so alongside the script's loader you get two "Demo Launcher" canvases labeled Personal (see [Two Demo Launchers show up](#two-demo-launchers-show-up)). The URL install is for running the demos outside the booth; see [Run in your own org](https://github.com/octobooth-demos/repo-setup-scripts/blob/main/docs/run-in-your-own-org.md).
+> On booth machines, install the launcher only with this repo's scripts: `setup.sh` or `install-demo-launcher.sh` on macOS/Linux, `setup.ps1` or `install-demo-launcher.ps1` on Windows. Don't also install the canvas from a URL in the Copilot app. The launcher reads its demos and `create-repo` scripts from a local clone of repo-setup-scripts, so a clone is needed either way. The scripts clone or update `~/repos/repo-setup-scripts` and write the loader in the same automatic step during machine setup, with no manual per-machine step. Re-running `install-demo-launcher.sh` or `install-demo-launcher.ps1` repairs or updates both (`setup.sh` keeps an existing loader unless `FORCE_REINSTALL=true`). A URL install is named `demo-launcher-loader` even if you ask for `demo-launcher`, so alongside the script's loader you get two "Demo Launcher" canvases labeled Personal (see [Two Demo Launchers show up](#two-demo-launchers-show-up)). The URL install is for running the demos outside the booth; see [Run in your own org](https://github.com/octobooth/repo-setup-scripts/blob/main/docs/run-in-your-own-org.md).
 
 > [!IMPORTANT]
 > Pin a **Current checkout** session, not a **New worktree** one. A worktree session works from its own copy under `copilot-worktrees`, so pulls and `install-demo-launcher` never update it and it keeps loading the old launcher. If the pinned session is a worktree, archive it and start a new **Current checkout** session.
@@ -484,21 +538,21 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 .\install-demo-launcher.ps1 -Ref v1
 ```
 
-Re-running is safe. It checks for `git` and `gh`, clones `octobooth-demos/repo-setup-scripts` to `$HOME\repos\repo-setup-scripts` if it's missing (this needs a logged-in GitHub CLI; see [GitHub CLI login](#github-cli-login)), or, after checking that its `origin` is that repo, fast-forwards it with `git pull --ff-only`. With `-Ref` (or `$env:BOOTH_RELEASE`) it checks out that release instead, and without one it first switches a checkout that's on a release back to its default branch (see [Using a release](#using-a-release)). It then (re)writes the loader, installs the pinned [Playwright MCP server](#playwright-mcp-server) if it's new or changed, and refreshes the MCP servers in `$HOME\.copilot\mcp-config.json` (a failed Playwright download only warns). It exits with an error and lists what failed if the clone, pull, or loader doesn't work. If a folder with that name exists but isn't a git checkout, the script stops; move the folder aside and re-run.
+Re-running is safe. It checks for `git` and `gh`, clones `octobooth/repo-setup-scripts` to `$HOME\repos\repo-setup-scripts` if it's missing (this needs a logged-in GitHub CLI; see [GitHub CLI login](#github-cli-login)), or, after checking that its `origin` is that repo, fast-forwards it with `git pull --ff-only`. With `-Ref` (or `$env:BOOTH_RELEASE`) it checks out that release instead, and without one it first switches a checkout that's on a release back to its default branch (see [Using a release](#using-a-release)). It then (re)writes the loader, installs the pinned [Playwright MCP server](#playwright-mcp-server) if it's new or changed, and refreshes the MCP servers in `$HOME\.copilot\mcp-config.json` (a failed Playwright download only warns). It exits with an error and lists what failed if the clone, pull, or loader doesn't work. If a folder with that name exists but isn't a git checkout, the script stops; move the folder aside and re-run.
 
 To remove the loader (the checkout and run history are kept), run `.\install-demo-launcher.ps1 -Uninstall`.
 
 If you track `main` (for example, to test changes), you can update by hand instead:
 
 ```powershell
-git -C "$HOME\repos\repo-setup-scripts" remote get-url origin   # should be octobooth-demos/repo-setup-scripts
+git -C "$HOME\repos\repo-setup-scripts" remote get-url origin   # should be octobooth/repo-setup-scripts
 git -C "$HOME\repos\repo-setup-scripts" pull --ff-only
 ```
 
 Then fully quit and reopen the GitHub Copilot app. A pull alone doesn't install the loader the first time; run `install-demo-launcher.ps1` for that.
 
 > [!WARNING]
-> The loader runs the launcher's code in every Copilot chat, and Copilot reads the files in a project, so only use the `octobooth-demos/repo-setup-scripts` checkout, and don't add other or unknown repos as projects on booth machines. `setup.ps1` and `install-demo-launcher.ps1` only use that repo, even if `config.json` lists a different one. They, and `setup.sh` and `install-demo-launcher.sh` on macOS/Linux, also refuse to update a checkout (fetch, pull, or check out a release), or install the loader for one, whose `origin` points anywhere else. Without a release, updates come straight from that repo's default branch, so use a [release](#using-a-release) on booth machines, or review changes there (for example with `git -C "$HOME\repos\repo-setup-scripts" log --oneline -5`) before a booth day.
+> The loader runs the launcher's code in every Copilot chat, and Copilot reads the files in a project, so only use the `octobooth/repo-setup-scripts` checkout, and don't add other or unknown repos as projects on booth machines. `setup.ps1` and `install-demo-launcher.ps1` only use that repo, even if `config.json` lists a different one. They, and `setup.sh` and `install-demo-launcher.sh` on macOS/Linux, also refuse to update a checkout (fetch, pull, or check out a release), or install the loader for one, whose `origin` points anywhere else. Without a release, updates come straight from that repo's default branch, so use a [release](#using-a-release) on booth machines, or review changes there (for example with `git -C "$HOME\repos\repo-setup-scripts" log --oneline -5`) before a booth day.
 
 ### Install or update on a macOS or Linux machine that's already set up
 
@@ -514,7 +568,7 @@ bash install-demo-launcher.sh --ref v1
 To track `main` instead, see [Using a release](#using-a-release). It's safe to re-run. It:
 
 1. Checks for `gh`, `git`, and `jq` (`brew install gh jq`) and that the GitHub CLI is logged in. Logging in is interactive, so if it isn't, the script prints the `gh auth login` command to run and stops. It also warns if the login is missing the `codespace`/`delete_repo`/`project`/`workflow` scopes (`gh auth refresh -h github.com -s codespace,delete_repo,project,workflow`).
-2. Clones `octobooth-demos/repo-setup-scripts` to `~/repos/repo-setup-scripts`, or pulls it if it's already there. With `--ref` (or `BOOTH_RELEASE`) it checks out that release instead; without one, it first switches a checkout that's on a release back to its default branch.
+2. Clones `octobooth/repo-setup-scripts` to `~/repos/repo-setup-scripts`, or pulls it if it's already there. With `--ref` (or `BOOTH_RELEASE`) it checks out that release instead; without one, it first switches a checkout that's on a release back to its default branch.
 3. Runs `install.sh` to (re)write the loader.
 4. Installs the pinned [Playwright MCP server](#playwright-mcp-server) if it's new or changed, and refreshes the MCP servers in `~/.copilot/mcp-config.json`. If the download fails, it warns and carries on.
 
@@ -528,7 +582,7 @@ If two "Demo Launcher" canvases are both labeled Personal, one was installed fro
 
 A "Demo Launcher" labeled "repository: security-octo-supply-v4-…" comes from a demo repo made from the old v4 template, which included a HydraFusion launcher (since removed). Remove that demo project from the Copilot app.
 
-For more on the Demo Launcher itself, see the [repo-setup-scripts quick start](https://github.com/octobooth-demos/repo-setup-scripts#quick-start-booth-machine).
+For more on the Demo Launcher itself, see the [repo-setup-scripts quick start](https://github.com/octobooth/repo-setup-scripts#quick-start-booth-machine).
 
 ### Copilot sessions stuck at "busy"
 
@@ -554,7 +608,7 @@ Booth machines can't reach the npm registry, so `npx @playwright/mcp` doesn't wo
 
 - The server and its dependencies are in `~/.copilot/mcp-servers/playwright` (`$HOME\.copilot\mcp-servers\playwright` on Windows). `.bundle-version` there shows the version.
 - It's registered as `playwright` in `~/.copilot/mcp-config.json`, so every Copilot CLI and GitHub Copilot app session gets its browser tools. It runs with the absolute path to `node` and drives the browser that setup installs: Google Chrome on macOS (`--browser=chrome`), Microsoft Edge on Windows (`--browser=msedge`). No browser download is needed.
-- The version is pinned in [`mcp-bundle/package.json`](mcp-bundle/package.json) and its lockfile. Setup downloads `playwright-mcp-<version>.tgz` from the [`playwright-mcp-v<version>` release](https://github.com/octobooth-demos/machine-setup/releases?q=playwright-mcp&expanded=true), checks it against the `.sha256` file, and unpacks it. Later runs skip it until the pinned version changes (or `FORCE_REINSTALL=true`).
+- The version is pinned in [`mcp-bundle/package.json`](mcp-bundle/package.json) and its lockfile. Setup downloads `playwright-mcp-<version>.tgz` from the [`playwright-mcp-v<version>` release](https://github.com/octobooth/machine-setup/releases?q=playwright-mcp&expanded=true), checks it against the `.sha256` file, and unpacks it. Later runs skip it until the pinned version changes (or `FORCE_REINSTALL=true`).
 - If the download fails, setup warns and skips the Playwright server; nothing else fails. If you already have your own `playwright` entry in `mcp-config.json`, setup leaves it alone.
 
 ### Use it in your own demo

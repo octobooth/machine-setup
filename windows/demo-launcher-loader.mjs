@@ -1,8 +1,8 @@
 // Demo Launcher loader (repo-setup-scripts, .github/extensions/demo-launcher-loader/).
 // A user-level extension that loads the Demo Launcher from a local repo-setup-scripts
 // checkout, so every Copilot session can open it. Install it from its GitHub folder URL
-// with the name "demo-launcher", or run .github/extensions/demo-launcher/install.sh,
-// which writes this same file.
+// (it installs as "demo-launcher-loader"), or run .github/extensions/demo-launcher/install.sh,
+// which writes this same file as "demo-launcher". Use one, not both, or you get two canvases.
 //
 // Checkout: $DEMO_LAUNCHER_REPO, else the path install.sh baked in below, else
 // ~/repos/repo-setup-scripts (%USERPROFILE%\repos\repo-setup-scripts on Windows).
@@ -23,6 +23,8 @@ const launcherFile = join(repoRoot, LAUNCHER);
 // Loaded from a checkout (as a project extension) rather than installed: that checkout's
 // own demo-launcher folder already provides the canvas.
 function loadedFromCheckout() {
+    const [ext, extensions, github] = LOADER_DIR.split(/[\\/]/).slice(-3).reverse();
+    if (ext !== "demo-launcher-loader" || extensions !== "extensions" || github !== ".github") return false;
     return existsSync(join(LOADER_DIR, "..", "..", "..", LAUNCHER));
 }
 
@@ -40,14 +42,14 @@ const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt
 async function showSetupError(problem) {
     const { joinSession, createCanvas } = await import("@github/copilot-sdk/extension");
     const message =
-        `${problem} Clone octobooth-demos/repo-setup-scripts to ${repoRoot} ` +
+        `${problem} Clone octobooth/repo-setup-scripts to ${repoRoot} ` +
         "(or set DEMO_LAUNCHER_REPO to your checkout), then restart the Copilot app.";
     const html = `<!doctype html><meta charset="utf-8"><title>Demo Launcher</title>
 <body style="font-family: system-ui, sans-serif; margin: 2rem; line-height: 1.5">
 <h2>Demo Launcher isn't set up yet</h2>
 <p>${escapeHtml(problem)}</p>
 <p>Clone the launcher's repo to the path this loader expects, then restart the Copilot app:</p>
-<pre style="white-space: pre-wrap">gh repo clone octobooth-demos/repo-setup-scripts "${escapeHtml(repoRoot)}"</pre>
+<pre style="white-space: pre-wrap">gh repo clone octobooth/repo-setup-scripts "${escapeHtml(repoRoot)}"</pre>
 <p>Or set the <code>DEMO_LAUNCHER_REPO</code> environment variable to an existing checkout.</p>
 </body>`;
     let urlPromise;

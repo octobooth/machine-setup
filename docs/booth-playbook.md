@@ -6,10 +6,15 @@ A step-by-step walkthrough for running a booth: set up each booth machine before
 
 [Machine setup reference (README)](../README.md) · [Demo Launcher](../README.md#demo-launcher) · [Troubleshooting](#troubleshooting)
 
+> [!WARNING]
+> **Do not cut over booth machines yet.** The copied destination `v1` / `v1.2.0` tags are not migration-ready, and the required Playwright archive and checksum are not published in [destination releases](https://github.com/octobooth/machine-setup/releases). The setup and update commands below require an approved, tested destination release. Keep existing installations on their approved source release until then; use [Upgrade an existing machine to octobooth](../README.md#upgrade-an-existing-machine-to-octobooth) when cutover is approved.
+>
+> Destination repository content is copied, but Actions remain disabled and ChatOps App provisioning and booth feature access are unverified. Security demos still require validated destination workflows and features; open-secret-alert examples remain unresolved. Do not bypass repository protection or enable automation as part of setup.
+
 ## At a glance
 
 1. **[Before the event](#part-1-before-the-event-set-up-each-booth-machine)**: on each machine, sign in as its booth account, run setup, check the Demo Launcher opens, add browser bookmarks, sign in to VS Code and VS Code Insiders, and [check the machine is ready](#check-that-the-machine-is-ready).
-2. **[Each booth day](#before-each-booth-day-update-the-machine)**: update the scripts to the tested release (currently `v1`) and update the Demo Launcher, then [create the security demos ahead of time](#create-the-security-demos-ahead-of-time) once on one machine, and bookmark their repos on every machine.
+2. **[Each booth day](#before-each-booth-day-update-the-machine)**: after destination release approval, update both script repositories to that tested release and refresh the Demo Launcher, then [create the security demos ahead of time](#create-the-security-demos-ahead-of-time) once on one machine, and bookmark their repos on every machine.
 3. **[During the event](#part-2-during-the-event-run-demos)**: open the pinned apps and the Demo Launcher, and create demos.
 4. **[After the event](#part-3-after-the-event-clean-up-and-reset)**: delete the demo repos in the booth accounts and the org, clear the booth machines' demo folders, and have an org admin reset the booth accounts.
 
@@ -26,11 +31,12 @@ Any time, [Clean up demo repos](#clean-up-demo-repos) covers the everyday cleanu
 
 | What | Where | Who can see it |
 | --- | --- | --- |
-| Machine setup scripts and this playbook | [`octobooth-demos/machine-setup`](https://github.com/octobooth-demos/machine-setup) | Anyone (public) |
-| Demo scripts, templates, and the Demo Launcher | [`octobooth-demos/repo-setup-scripts`](https://github.com/octobooth-demos/repo-setup-scripts) | Members of the `octobooth-demos` org (internal) |
-| Admin scripts (wiping accounts, installing the weekly cleanup) | [`octobooth-demos/admin-tasks`](https://github.com/octobooth-demos/admin-tasks) | `octobooth-demos` org members (private) |
+| Machine setup scripts and this playbook | [`octobooth/machine-setup`](https://github.com/octobooth/machine-setup) | Anyone (public) |
+| Demo scripts and the Demo Launcher | [`octobooth/repo-setup-scripts`](https://github.com/octobooth/repo-setup-scripts) | Anyone (public) |
+| Templates cloned by setup | [`octobooth/tailspin-toys`](https://github.com/octobooth/tailspin-toys), [`octobooth/security-octo-supply`](https://github.com/octobooth/security-octo-supply) | Authorized enterprise accounts (internal); verify booth-account access |
+| Admin scripts (wiping accounts, installing the weekly cleanup) | [`octobooth/admin-tasks`](https://github.com/octobooth/admin-tasks) | Explicitly authorized accounts (private) |
 | Booth accounts | `octobooth-1` … `octobooth-10`, one per booth machine | |
-| Org demo repos (ChatOps and the security demos) | the `octobooth-demos` org | |
+| Org demo repos (ChatOps and the security demos) | the [octobooth organization](https://github.com/octobooth) | Depends on repository visibility and account permissions |
 
 ## Part 1: Before the event: set up each booth machine
 
@@ -38,7 +44,7 @@ Do this once on every booth machine. The steps below are the same as the [Setup 
 
 ### What you need
 
-- **One booth account per machine.** Pick the account for this machine (for example `octobooth-1`) and have its password ready. Use it everywhere below, never your personal account. It must be a member of the `octobooth-demos` org and allowed to create repositories there, and it needs a Copilot seat.
+- **One booth account per machine.** Pick the account for this machine (for example `octobooth-1`) and have its password ready. Use it everywhere below, never your personal account. Verify its access to the internal templates, permission to create repositories in [octobooth](https://github.com/octobooth), Copilot features, Codespaces and billing, and required security features. These permissions are not established by copying the repositories; see [GitHub CLI login and access prerequisites](../README.md#github-cli-login).
 - **An administrator account on the machine.** Setup installs apps and asks for the password.
 - **An internet connection.** Setup downloads a lot, so allow time.
 
@@ -57,10 +63,10 @@ Then follow the steps for [macOS](#set-up-a-mac) or [Windows](#set-up-a-windows-
 2. Clone the repo:
 
    ```bash
-   git clone https://github.com/octobooth-demos/machine-setup.git ~/repos/machine-setup
+   git clone https://github.com/octobooth/machine-setup.git ~/repos/machine-setup
    ```
 
-3. Put the scripts on the tested [`v1` release](https://github.com/octobooth-demos/machine-setup/releases) the booth uses (see [Using a release](../README.md#using-a-release)). Do this again before each booth day, and before re-running `setup.sh` or `install-demo-launcher.sh`:
+3. Put the scripts on the tested [`v1` release](https://github.com/octobooth/machine-setup/releases) the booth uses (see [Using a release](../README.md#using-a-release)). Do this again before each booth day, and before re-running `setup.sh` or `install-demo-launcher.sh`:
 
    ```bash
    git -C ~/repos/machine-setup fetch --tags --force
@@ -112,7 +118,7 @@ More detail: [Demo Launcher](../README.md#demo-launcher).
 In Chrome, still signed in to GitHub.com as the booth account, open each page below and press **Cmd+D** to bookmark it:
 
 - `https://github.com/octobooth-N`: the booth account's profile, using this machine's number (for example `https://github.com/octobooth-1`).
-- `https://github.com/octobooth-demos`: the `octobooth-demos` org.
+- `https://github.com/octobooth`: the `octobooth` org.
 
 On booth day, you'll also bookmark the security demo repos (AI Security and Security Supply Chain (v4)). You can't add them during setup: they're created within 72 hours of use. Create each demo once, on one machine, then open that same repo in Chrome on every booth machine and press **Cmd+D**. See [Create the security demos ahead of time](#create-the-security-demos-ahead-of-time).
 
@@ -157,11 +163,11 @@ winget install --id Git.Git -e --source winget --accept-source-agreements --acce
 Close the window and open a new administrator PowerShell so `git` is on your `PATH`, then clone:
 
 ```powershell
-git clone https://github.com/octobooth-demos/machine-setup.git "$HOME\repos\machine-setup"
+git clone https://github.com/octobooth/machine-setup.git "$HOME\repos\machine-setup"
 cd "$HOME\repos\machine-setup"
 ```
 
-Put the scripts on the tested [`v1` release](https://github.com/octobooth-demos/machine-setup/releases) the booth uses (see [Using a release](../README.md#using-a-release)). Do this again before each booth day, and before re-running `setup.ps1` or `install-demo-launcher.ps1`:
+Put the scripts on the tested [`v1` release](https://github.com/octobooth/machine-setup/releases) the booth uses (see [Using a release](../README.md#using-a-release)). Do this again before each booth day, and before re-running `setup.ps1` or `install-demo-launcher.ps1`:
 
 ```powershell
 git -C "$HOME\repos\machine-setup" fetch --tags --force
@@ -213,7 +219,7 @@ More detail: [Windows: installed loader and project](../README.md#windows-instal
 Setup signed in to GitHub.com in Microsoft Edge, and Chrome isn't installed on Windows, so use Edge. Edge calls bookmarks favorites. In Edge, still signed in to GitHub.com as the booth account, open each page below and press **Ctrl+D** to bookmark it:
 
 - `https://github.com/octobooth-N`: the booth account's profile, using this machine's number (for example `https://github.com/octobooth-1`).
-- `https://github.com/octobooth-demos`: the `octobooth-demos` org.
+- `https://github.com/octobooth`: the `octobooth` org.
 
 On booth day, you'll also bookmark the security demo repos (AI Security and Security Supply Chain (v4)). You can't add them during setup: they're created within 72 hours of use. Create each demo once, on one machine, then open that same repo in Edge on every booth machine and press **Ctrl+D**. See [Create the security demos ahead of time](#create-the-security-demos-ahead-of-time).
 
@@ -237,13 +243,15 @@ Check each item on every booth machine. `N` is this machine's booth account numb
 2. **Demo repos.** `~/repos` (`$HOME\repos` on Windows) contains `repo-setup-scripts`, `tailspin-toys`, and `security-octo-supply` (the `repos_to_clone` list in [`config.json`](../config.json)).
 3. **Copilot app.** It's signed in as `octobooth-N`, and "open the demo launcher" opens the launcher from a new chat. If you added the optional repo-setup-scripts project, it's from the local `~/repos/repo-setup-scripts` folder (`$HOME\repos\repo-setup-scripts` on Windows) and its pinned session is a **Current checkout** one.
 4. **VS Code and VS Code Insiders.** In each, **Accounts** shows `octobooth-N`, and GitHub Copilot is signed in and active.
-5. **Bookmarks.** The browser (Chrome on macOS, Edge on Windows) has bookmarks for `https://github.com/octobooth-N` and `https://github.com/octobooth-demos`.
+5. **Bookmarks.** The browser (Chrome on macOS, Edge on Windows) has bookmarks for `https://github.com/octobooth-N` and `https://github.com/octobooth`.
 6. **Dock or taskbar.** On macOS, the Dock has Google Chrome, the GitHub Copilot app, VS Code, VS Code Insiders, iTerm2, and VLC. On Windows, the taskbar has VS Code, VS Code Insiders, the GitHub Copilot app, Windows Terminal, and VLC. Machines set up with an older version of the setup scripts may still have a `load-demos.sh` or `load-demos.ps1` script on the Desktop. Setup no longer creates it, and nothing uses it, so you can delete it.
 7. **Weekly cleanup.** In a browser signed in as the booth account, open `https://github.com/octobooth-N/demo-cleanup/actions`. It should have a **Weekly demo cleanup** workflow with green runs. If the repo is missing or runs fail, ask an org admin to [set up the weekly cleanup](#set-up-or-repair-the-weekly-cleanup) for that account.
 
 ### Before each booth day: update the machine
 
-Update the setup scripts and the Demo Launcher to the tested release the booth uses, currently `v1`, then fully restart the GitHub Copilot app so it loads the new launcher: on macOS, quit it with **Cmd+Q**; on Windows, right-click its system tray icon and choose **Quit**. Then reopen it.
+For an existing source-connected or pre-replacement destination clone, first follow [Upgrade an existing machine to octobooth](../README.md#upgrade-an-existing-machine-to-octobooth). That procedure preserves local work and worktrees and deliberately changes origins; neither `git pull` nor setup does that for you. The commands in this section apply only after the new destination release is approved.
+
+After destination release approval, update the setup scripts and the Demo Launcher to the same approved release, then fully restart the GitHub Copilot app so it loads the new launcher: on macOS, quit it with **Cmd+Q**; on Windows, right-click its system tray icon and choose **Quit**. Then reopen it.
 
 On macOS:
 
@@ -264,7 +272,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 .\install-demo-launcher.ps1 -Ref v1
 ```
 
-`v1` always points at the latest tested `v1.x.y` release of both repos, so this picks up fixes without taking untested changes from `main`. It also installs the [Playwright MCP server](../README.md#playwright-mcp-server) version that release pins, if it changed. If the script says the tag doesn't exist or the checkout has local changes, fix that before the booth opens; see [Using a release](../README.md#using-a-release). Developers testing changes before a release can track `main` instead: run `git -C ~/repos/machine-setup checkout main`, pull, and run the install without `--ref` / `-Ref`.
+After release approval, maintainers move `v1` to the tested destination `v1.x.y` in both repos. The copied `v1` is not that release. The installer also installs the [Playwright MCP server](../README.md#playwright-mcp-server) version that release pins, if it changed. Missing assets are a readiness failure even when the script only warns. If the script says the tag doesn't exist or the checkout has local changes, preserve the work and resolve that before booth use; see [Using a release](../README.md#using-a-release). Developers can test reviewed destination `main` on a non-booth machine without `--ref` / `-Ref`.
 
 The install script also refreshes the booth's Copilot instructions (see [Copilot booth instructions](../README.md#copilot-booth-instructions)).
 
@@ -272,22 +280,25 @@ Both are safe to re-run. To also pick up changes in `config.json` (new apps, ext
 
 #### Create the security demos ahead of time
 
+> [!WARNING]
+> Before using [Security Supply Chain (v4)](https://github.com/octobooth/security-octo-supply-v4), maintainers must validate its destination local build workflow and security features. Open-secret-alert examples remain unresolved; do not assume the copied repository contains demonstration alerts. AI Security also requires verified destination security-feature access. The steps below describe use after those prerequisites are met; do not silently substitute a different template.
+
 Two demos take too long to create while a visitor waits: **AI Security** (about 20 minutes until it's fully ready) and **Security Supply Chain (v4)** (about 10 minutes). Create each one once, on one machine, before the booth opens. Every booth machine can share it:
 
 1. On one machine, signed in to the Copilot app as its booth account, ask Copilot to "open the demo launcher", and create **AI Security** and **Security Supply Chain (v4)**.
 2. When each is ready, open its demo repo in the browser (Chrome on macOS, Edge on Windows) and bookmark it (**Cmd+D** in Chrome, **Ctrl+D** in Edge).
 3. On each of the other booth machines, open the same repo URLs and bookmark them there. Don't create the demos again on every machine.
 
-Both demos create repos in the `octobooth-demos` org, where the [nightly cleanup](#org-nightly-cleanup) deletes them once they're more than 72 hours old. Create them within 72 hours of when you'll use them; one of each can serve every machine for the whole day. Before-the-demo checks: [AI Security](https://github.com/octobooth-demos/repo-setup-scripts#ai-security-ai-scan--agentic-autofix) and [Security Supply Chain (v4)](https://github.com/octobooth-demos/repo-setup-scripts#security-supply-chain-v4) in the `repo-setup-scripts` README.
+Both demos create repos in the [octobooth organization](https://github.com/octobooth). Once separately approved and activated, [nightly cleanup](#org-nightly-cleanup) deletes them when they're more than 72 hours old; it is currently disabled. Create them within 72 hours of use so they also work with the intended cleanup schedule. One of each can serve every machine for the whole day. Before-the-demo checks: [AI Security](https://github.com/octobooth/repo-setup-scripts#ai-security-ai-scan--agentic-autofix) and [Security Supply Chain (v4)](https://github.com/octobooth/repo-setup-scripts#security-supply-chain-v4) in the public `repo-setup-scripts` README.
 
 ## Part 2: During the event: run demos
 
-1. **Open the demo apps.** Open the GitHub Copilot app, VS Code, VS Code Insiders, and VLC from the Dock (macOS) or taskbar (Windows). Open your booth videos in VLC from `~/Videos` (`C:\Users\<YourUsername>\Videos` on Windows). In the browser (Chrome on macOS, Edge on Windows), use the bookmarks for the booth account, `octobooth-demos`, and the [security demo repos you created ahead of time](#create-the-security-demos-ahead-of-time).
+1. **Open the demo apps.** Open the GitHub Copilot app, VS Code, VS Code Insiders, and VLC from the Dock (macOS) or taskbar (Windows). Open your booth videos in VLC from `~/Videos` (`C:\Users\<YourUsername>\Videos` on Windows). In the browser (Chrome on macOS, Edge on Windows), use the bookmarks for the booth account, `octobooth`, and the [security demo repos you created ahead of time](#create-the-security-demos-ahead-of-time).
 2. **Open the Demo Launcher.** Ask Copilot to "open the demo launcher" in any chat.
-3. **Create demos from the launcher.** It creates each demo repo in the background and opens a session for it. The launcher, the demo list, and per-demo notes are documented in the `repo-setup-scripts` README (org members only).
+3. **Create demos from the launcher.** It creates each demo repo in the background and opens a session for it. The launcher, the demo list, and per-demo notes are documented in the public [repo-setup-scripts README](https://github.com/octobooth/repo-setup-scripts). Individual templates and features can require additional access.
 4. **Send framework requests to a Cloud session.** See [Framework apps need a Cloud session](#framework-apps-need-a-cloud-session).
 
-Each demo repo gets the `demo-generated` topic, which is how every cleanup finds it. Old demo repos are deleted automatically, but you can clear them out sooner (for example, at the end of a booth day): see [Clean up demo repos](#clean-up-demo-repos).
+Each generated demo repo gets the `demo-generated` topic, which is how cleanup finds it. Never add that topic to canonical templates or tooling repositories. Automatic cleanup requires separately provisioned and enabled workflows; destination org cleanup is currently disabled. For reviewed manual cleanup (for example, at the end of a booth day), see [Clean up demo repos](#clean-up-demo-repos).
 
 ### Framework apps need a Cloud session
 
@@ -307,7 +318,7 @@ Do these in order.
 Booth staff can do this; see [Clean up demo repos](#clean-up-demo-repos) for each option.
 
 1. **Each booth account.** On each booth machine, use the Demo Launcher's [Clean up](#from-the-demo-launcher) section with **Any age**, and tick **Also delete local clones**. Or, from a browser signed in as that account, [run the weekly cleanup](#run-it-sooner-just-a-browser) with `older_than_days` set to `0`.
-2. **The `octobooth-demos` org.** Open an issue in `repo-setup-scripts` and comment `/cleanup --all --confirm`. See [Org nightly cleanup](#org-nightly-cleanup).
+2. **The `octobooth` org.** Destination ChatOps is not ready. After its separate activation, authorized staff can comment `/cleanup --all --confirm` on an issue in [repo-setup-scripts](https://github.com/octobooth/repo-setup-scripts). Until then, review the launcher's owner-scoped cleanup list with an authorized account. See [Org nightly cleanup](#org-nightly-cleanup).
 
 ### Step 2: Clear the booth machines' demo folders
 
@@ -324,7 +335,7 @@ Every demo repo has the `demo-generated` topic. These cleanups only delete repos
 | Where the demo repos are | Automatic cleanup | To clean up sooner |
 | --- | --- | --- |
 | Each booth account (`octobooth-1` … `octobooth-10`), the default | [Weekly cleanup](#weekly-cleanup-in-each-booth-account): Mondays 08:00 UTC, repos more than 7 days old | The [Demo Launcher](#from-the-demo-launcher) on that machine, or [run the weekly cleanup](#run-it-sooner-just-a-browser) from a browser signed in as that account |
-| The `octobooth-demos` org (ChatOps and the security demos) | [Org nightly cleanup](#org-nightly-cleanup): nightly 08:00 UTC, repos more than 72 hours old | A `/cleanup` comment or the **Clean up demos** workflow in `repo-setup-scripts` (org members with write access) |
+| The `octobooth` org (ChatOps and the security demos) | Currently disabled; after separate activation, [org nightly cleanup](#org-nightly-cleanup) runs at 08:00 UTC for repos more than 72 hours old | After App/workflow provisioning and activation: `/cleanup` or the **Clean up demos** workflow; meanwhile, authorized staff can review the launcher's owner-scoped cleanup list |
 
 08:00 UTC is midnight Pacific (1 AM during daylight saving time).
 
@@ -347,9 +358,9 @@ bash ./create-repo.sh --cleanup          # demo repos more than 72 hours old
 bash ./create-repo.sh --cleanup --all    # every demo repo, however new
 ```
 
-On Windows, use `.\create-repo.ps1 -Cleanup` (add `-All` for every demo repo). Add `--dry-run` (`-DryRun`) to only list what it would delete. The `repo-setup-scripts` README (org members only) has every option.
+On Windows, use `.\create-repo.ps1 -Cleanup` (add `-All` for every demo repo). Add `--dry-run` (`-DryRun`) to only list what it would delete. The public [repo-setup-scripts README](https://github.com/octobooth/repo-setup-scripts) has every option.
 
-For org demos, use the [org cleanup](#org-nightly-cleanup) instead. If you type `octobooth-demos` as the launcher's owner, the list includes demos from every booth and ChatOps.
+For org demos, use the [org cleanup](#org-nightly-cleanup) instead. If you type `octobooth` as the launcher's owner, the list includes demos from every booth and ChatOps.
 
 ### Weekly cleanup in each booth account
 
@@ -377,7 +388,10 @@ Open the account's `demo-cleanup` **Actions** tab. Each Monday should have a gre
 
 ### Org nightly cleanup
 
-Demo repos created in the `octobooth-demos` org (ChatOps and the security demos) are deleted by the **Clean up demos** workflow in `repo-setup-scripts` once they're more than 72 hours old. To run it sooner, org members with write access to `repo-setup-scripts` can either:
+> [!IMPORTANT]
+> Destination Actions are disabled and the destination ChatOps App is not provisioned. Neither scheduled cleanup nor `/cleanup` is ready. Activation requires separate approval, correct App permissions and credentials, and a dry-run review that excludes canonical repositories. Do not reuse source App credentials.
+
+After activation, demo repos created in the [octobooth organization](https://github.com/octobooth) (ChatOps and the security demos) are deleted by the **Clean up demos** workflow in [repo-setup-scripts](https://github.com/octobooth/repo-setup-scripts) once they're more than 72 hours old. To run it sooner, authorized org members with write access can either:
 
 - open an issue in `repo-setup-scripts` and comment `/cleanup 24 --confirm` (any number of hours), or `/cleanup --all --confirm` after an event; or
 - run **Clean up demos** from that repo's **Actions** tab.
@@ -386,18 +400,21 @@ Comments without `--confirm` are dry runs. These cleanups can't see repos in the
 
 ## How to clean all Octobooth repos
 
-This section should be run by someone with admin access to the `octobooth-demos` org, such as [@geektrainer](https://github.com/geektrainer), [@jdooley-clt](https://github.com/jdooley-clt), or someone else on the GitHub DevRel team. For everyday cleanup of demo repos, use [Clean up demo repos](#clean-up-demo-repos) instead.
+> [!WARNING]
+> The destination [admin-tasks repository](https://github.com/octobooth/admin-tasks) is copied, but copying does not authorize account deletion or activate weekly cleanup. Verify account permissions and review dry-run output before any approved cleanup. Do not reuse source App credentials or switch a working source admin checkout without a deliberate review.
 
-The scripts are in the private [`octobooth-demos/admin-tasks`](https://github.com/octobooth-demos/admin-tasks) repo, and its README has every option. You need a Mac or Linux machine, the GitHub CLI, and access to `admin-tasks`.
+This section should be run by someone with admin access to the `octobooth` org, such as [@geektrainer](https://github.com/geektrainer), [@jdooley-clt](https://github.com/jdooley-clt), or someone else on the GitHub DevRel team. For everyday cleanup of demo repos, use [Clean up demo repos](#clean-up-demo-repos) instead.
+
+The scripts are in the private [`octobooth/admin-tasks`](https://github.com/octobooth/admin-tasks) repo, and its README has every option. You need a Mac or Linux machine, the GitHub CLI, and access to `admin-tasks`.
 
 ### Get the admin scripts
 
 1. On a fresh Mac, install [Homebrew](https://brew.sh), then the GitHub CLI: `brew install gh`.
-2. Log in as yourself (an `octobooth-demos` org member) so you can download the admin scripts:
+2. Log in as yourself (an `octobooth` org member) so you can download the admin scripts:
 
    ```bash
    gh auth login -h github.com
-   gh repo clone octobooth-demos/admin-tasks && cd admin-tasks
+   gh repo clone octobooth/admin-tasks && cd admin-tasks
    ```
 
    If `admin-tasks` is already on the machine, run `cd admin-tasks && git pull` instead.
@@ -427,7 +444,7 @@ bash scripts/wipe-accounts.sh --from 5     # resume at octobooth-5
 Needed for a new booth account, or when an account's cleanup reports a token problem. You need a Mac (or Linux), the GitHub CLI logged in to your own GitHub account, access to `admin-tasks`, and a browser where you can sign in as the booth account(s).
 
 ```bash
-gh repo clone octobooth-demos/admin-tasks && cd admin-tasks   # or: cd admin-tasks && git pull
+gh repo clone octobooth/admin-tasks && cd admin-tasks   # or: cd admin-tasks && git pull
 bash scripts/setup-weekly-cleanup.sh --accounts 3             # one account
 bash scripts/setup-weekly-cleanup.sh                          # all of octobooth-1..10
 bash scripts/setup-weekly-cleanup.sh --from 6                 # resume at octobooth-6
@@ -459,5 +476,5 @@ Rerunning is safe; it replaces the token. The token belongs to the booth account
 | A booth account's weekly cleanup run failed | Open the failed run. If it mentions `CLEANUP_TOKEN`, ask an org admin to [set up that account again](#set-up-or-repair-the-weekly-cleanup). |
 | Demo repos in a booth account aren't being deleted | Check they're more than 7 days old and have the `demo-generated` topic (shown under **About** on the repo page). To delete them now, use the launcher's [Clean up](#from-the-demo-launcher) with **Any age**, or [run the weekly cleanup](#run-it-sooner-just-a-browser) with `older_than_days` set to `0`. |
 | (Admins) The weekly cleanup setup script says a token belongs to the wrong account | The browser was signed in as another account. Delete that stray token in the other account's token settings, switch the browser to the right account, and make a new one. |
-| (Admins) `gh repo clone octobooth-demos/admin-tasks` says "Could not resolve" | Log in to the GitHub CLI as your own org-member account: `gh auth login -h github.com`. |
+| (Admins) `gh repo clone octobooth/admin-tasks` says "Could not resolve" | Log in to the GitHub CLI as your own org-member account: `gh auth login -h github.com`. |
 | (Admins) The wipe script asks for `delete_repo` | Approve it in the browser while signed in as that booth account. |
