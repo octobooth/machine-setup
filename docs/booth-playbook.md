@@ -48,7 +48,17 @@ Do this once on every booth machine. The steps below are the same as the [Setup 
 - **An administrator account on the machine.** Setup installs apps and asks for the password.
 - **An internet connection.** Setup downloads a lot, so allow time.
 
-Then follow the steps for [macOS](#set-up-a-mac) or [Windows](#set-up-a-windows-machine).
+Then choose [setup without cloning](#set-up-without-cloning) or the clone-based steps for [macOS](#set-up-a-mac) or [Windows](#set-up-a-windows-machine).
+
+### Set up without cloning
+
+Use the [copy/paste bootstrap commands](../README.md#run-setup-without-cloning) to download a fresh copy and run setup in one step. No Git installation or manual clone is needed first. The selected published revision must include the bootstrap files; for booths, use an approved destination release, not the development `main` example. The cutover warning above still applies.
+
+On macOS, quit iTerm2 and paste the Bash block in Terminal. On Windows, open **Terminal (Admin)**, select a PowerShell tab, [check winget](#2-make-sure-winget-works), and paste the PowerShell block. Use `curl.exe`, not `curl`, on Windows. Do not pipe the download into Bash or PowerShell: sign-in prompts need the terminal. If `gh` is already installed, check `gh auth status` and log out of any account other than this machine's booth account before starting.
+
+Answer the normal installation and booth-account sign-in prompts. Download failures stop without running setup; connectivity and winget source problems still need to be fixed separately. Temporary setup files are removed afterward, so rerun the same bootstrap block to retry rather than looking for a local machine-setup checkout.
+
+When setup finishes, continue at [Set up the Demo Launcher on macOS](#3-set-up-the-demo-launcher) or [After setup on Windows](#6-after-setup), then complete bookmarks, editor sign-in, and readiness checks. For later commands that use local scripts, download a fresh archive or use the clone-based instructions below.
 
 ### Set up a Mac
 

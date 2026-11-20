@@ -204,7 +204,11 @@ function Test-Prerequisites {
 
     # Verify winget is available
     try {
-        $wingetVersion = winget --version
+        $wingetVersion = Get-NativeCommandOutput winget --version
+        if ($LASTEXITCODE -ne 0) {
+            Write-Err "winget --version failed (exit $LASTEXITCODE). Repair App Installer from Microsoft Store, then rerun setup."
+            return $false
+        }
         Write-Success "winget is available (version: $wingetVersion)"
     }
     catch {
@@ -1353,7 +1357,7 @@ function Invoke-Main {
     Write-Host "========================================" -ForegroundColor Cyan
 
     # Bootstrap
-    if (-not (Test-Prerequisites)) { return }
+    if (-not (Test-Prerequisites)) { exit 1 }
     Import-Config
 
     # Install packages

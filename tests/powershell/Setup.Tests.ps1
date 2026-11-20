@@ -573,6 +573,19 @@ Describe 'setup.ps1' {
             Should -Invoke Read-Host -Times 0 -Exactly
         }
 
+        It 'rejects a failing winget version command' {
+            Mock Test-IsAdmin { $true }
+            Mock winget {
+                'winget failed'
+                $global:LASTEXITCODE = 23
+            }
+
+            Test-Prerequisites | Should -BeFalse
+
+            Should -Invoke Write-Err -Times 1 -Exactly -ParameterFilter { $Message -like 'winget --version failed (exit 23)*' }
+            Should -Invoke Write-Success -Times 0 -Exactly -ParameterFilter { $Message -like 'winget is available*' }
+        }
+
         It 'Write-Summary lists admin-skipped steps with rerun instructions' {
             $script:adminSkippedItems = @('taskbar pins')
 
@@ -627,6 +640,20 @@ Describe 'setup.ps1' {
             Test-Path (Get-DemoLauncherLoaderPath) | Should -BeFalse
             $script:failedItems | Should -HaveCount 1
         }
+    }
+
+    It 'exits with failure when prerequisites are missing' {
+        $setupPath = (Join-Path (Get-Location) 'setup.ps1').Replace("'", "''")
+        $probe = Join-Path $TestDrive 'missing-prerequisites.ps1'
+        Set-Content -LiteralPath $probe -Value @"
+. '$setupPath'
+function Test-Prerequisites { return `$false }
+function Import-Config { throw 'Setup must stop before loading config' }
+Invoke-Main
+exit 0
+"@
+        & (Get-Process -Id $PID).Path -NoProfile -File $probe
+        $LASTEXITCODE | Should -Be 1
     }
 
     Context 'Invoke-Main authentication modes' {

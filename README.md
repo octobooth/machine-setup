@@ -66,7 +66,52 @@ Fonts: the `font-monaspace` cask installs Monaspace, and `font-mona-sans` instal
 
 These are the same steps as [Part 1 of the booth playbook](docs/booth-playbook.md#part-1-before-the-event-set-up-each-booth-machine), which also covers booth day and cleanup. This section adds extra detail on re-running setup and on individual steps.
 
-Clone this repo so you can update the scripts before each run. A ZIP download never updates, so an old copy keeps running old scripts. Both platforms then share the [GitHub CLI login](#github-cli-login) checks and [Check that the machine is ready](#check-that-the-machine-is-ready) below.
+Use [setup without cloning](#run-setup-without-cloning) to download a fresh copy for each run, or follow the clone-based walkthroughs below if you maintain a local checkout. Both paths use the same setup scripts, [GitHub CLI login](#github-cli-login) checks, and [Check that the machine is ready](#check-that-the-machine-is-ready).
+
+### Run setup without cloning
+
+The [Bash bootstrap](bootstrap.sh) and [PowerShell bootstrap](bootstrap.ps1) download the complete repository archive, including configuration, themes, the Windows loader, and Copilot instructions, then run the normal setup script. You don't need Git, GitHub CLI, or a local clone to start. Setup still installs Git and clones the demo repositories.
+
+> [!WARNING]
+> These commands require the bootstrap files to be published at the selected ref; they are not available from older releases. The examples select `main` for development, not an approved booth release. Do not provision booth machines until the [destination release and cutover prerequisites](#using-a-release) are satisfied. After approval, replace `main` with the approved `vX.Y.Z` that contains the bootstrap files. This selects the same release for machine-setup and repo-setup-scripts.
+
+**macOS:** quit iTerm2, open Terminal (not a root shell), and paste the whole block:
+
+```bash
+(
+  ref=main
+  installer=$(mktemp "${TMPDIR:-/tmp}/machine-setup.XXXXXXXX") || exit 1
+  trap 'rm -f "$installer"' EXIT
+  curl -fsSL "https://raw.githubusercontent.com/octobooth/machine-setup/$ref/bootstrap.sh" -o "$installer" &&
+    bash "$installer" --ref "$ref"
+)
+```
+
+**Windows 10/11:** open **Terminal (Admin)** or **Windows PowerShell (Admin)**, approve the UAC prompt, and use a PowerShell tab. Check [winget is available](#2-make-sure-winget-works), then paste the whole block. This works with Windows PowerShell 5.1; use `curl.exe`, not PowerShell's `curl` alias:
+
+```powershell
+& {
+    $ErrorActionPreference = 'Stop'
+    $ref = 'main'
+    $installer = Join-Path ([IO.Path]::GetTempPath()) ("machine-setup-" + [guid]::NewGuid().ToString() + '.ps1')
+    try {
+        curl.exe -fsSL "https://raw.githubusercontent.com/octobooth/machine-setup/$ref/bootstrap.ps1" -o $installer
+        if ($LASTEXITCODE -ne 0) { throw "Bootstrap download failed (exit $LASTEXITCODE)." }
+        powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer -Ref $ref
+        if ($LASTEXITCODE -ne 0) { throw "Setup failed (exit $LASTEXITCODE). Review the errors above." }
+    } finally {
+        if (Test-Path -LiteralPath $installer) { Remove-Item -LiteralPath $installer -Force }
+    }
+}
+```
+
+`-ExecutionPolicy Bypass` applies only to the child PowerShell processes, not the machine's policy; organization policy still takes precedence. The download finishes successfully before any script runs. Don't pipe either script into a shell: setup needs the terminal's stdin for browser sign-in, `gh auth login`, and other prompts. This is one-shot startup, not unattended installation; authentication, consent, and administrator prompts remain. If `gh` is already installed, check `gh auth status` first and log out of any non-booth account.
+
+Each bootstrap downloads the selected ref into a unique temporary folder and removes it when setup finishes, including on failure. Existing machine-setup clones are not changed. Download or extraction errors stop before setup; setup's nonzero exit status is passed back. Read its final summary for skipped steps as well. If a step fails, fix the cause and paste the same block again; setup skips completed work. The bootstrap needs access to `raw.githubusercontent.com`, `github.com`, and GitHub's archive host `codeload.github.com`. It does not repair connectivity or broken winget sources.
+
+When running a downloaded bootstrap directly, `--ref` (Bash) or `-Ref` (PowerShell) overrides `BOOTH_RELEASE`; without either, it uses `main`. Explicit `main` clears an inherited release for setup. Release tags must be `vN` or `vX.Y.Z`. Keep a full version for reproducible booth runs; `main` and major tags can move. Full macOS setup is not supported on Linux.
+
+After setup, continue with [the macOS Demo Launcher steps](#3-set-up-the-demo-launcher) or [Windows after setup](#6-after-setup), then check accounts, bookmarks, and machine readiness. Commands elsewhere in this guide that run local scripts require a clone or a freshly downloaded archive; for a full setup rerun without a checkout, use the blocks above.
 
 ### macOS setup
 
@@ -651,8 +696,8 @@ The GitHub Actions workflow validates syntax, linting, configuration shape, and 
 #### Bash
 
 ```bash
-shellcheck -x setup.sh install-demo-launcher.sh
-bash -n setup.sh && bash -n install-demo-launcher.sh
+shellcheck -x setup.sh install-demo-launcher.sh bootstrap.sh
+bash -n setup.sh && bash -n install-demo-launcher.sh && bash -n bootstrap.sh
 bats tests/bash
 ```
 
@@ -663,10 +708,11 @@ Run the PowerShell unit tests on Windows.
 ```powershell
 Invoke-ScriptAnalyzer -Path .\setup.ps1 -Settings .\PSScriptAnalyzerSettings.psd1
 Invoke-ScriptAnalyzer -Path .\install-demo-launcher.ps1 -Settings .\PSScriptAnalyzerSettings.psd1
+Invoke-ScriptAnalyzer -Path .\bootstrap.ps1 -Settings .\PSScriptAnalyzerSettings.psd1
 Invoke-Pester -Path .\tests\powershell
 ```
 
-The setup and Demo Launcher scripts guard their main entry point so they can be sourced or dot-sourced safely from tests without triggering installs.
+The setup, Demo Launcher, and bootstrap scripts guard their main entry point so they can be sourced or dot-sourced safely from tests without triggering installs. Bootstrap tests use fake archives and setup commands; they do not provision the test machine.
 
 ## License
 
