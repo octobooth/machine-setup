@@ -63,11 +63,22 @@ SCRIPT
 }
 
 @test "invalid or missing refs fail before download" {
-    for ref in "" "../main" "refs/heads/main" "v1.2"; do
+    for ref in "" "../main" "refs/heads/main" "v1.2" "1234567"; do
         run bootstrap_main --ref "$ref"
         [ "$status" -eq 2 ]
         [[ ! -e "$DOWNLOAD_LOG" && ! -e "$BOOTSTRAP_LOG" ]]
     done
+}
+
+@test "commit selection pins the setup archive without treating it as a demo release" {
+    export BOOTH_RELEASE=v1
+    local ref=1234567890abcdef1234567890abcdef12345678
+    run bootstrap_main --ref "$ref" <<< "approved"
+    [ "$status" -eq 0 ]
+    [[ "$(cat "$DOWNLOAD_LOG")" == *"/archive/$ref.tar.gz"* ]]
+    [ "$(cat "$BOOTSTRAP_LOG")" = "$(printf 'release= args=\nanswer=approved')" ]
+    [ "$BOOTH_RELEASE" = v1 ]
+    [ -z "$(ls -A "$TMPDIR")" ]
 }
 
 @test "download failure never starts setup and removes temporary files" {

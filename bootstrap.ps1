@@ -2,8 +2,10 @@
 .SYNOPSIS
     Downloads the complete machine-setup archive and runs setup on Windows.
 .PARAMETER Ref
-    main for development, or a release tag such as v1 or v1.2.0 for both
-    machine-setup and repo-setup-scripts. Defaults to BOOTH_RELEASE, then main.
+    main or a full commit SHA for development, or a release tag such as v1
+    or v1.2.0 for both machine-setup and repo-setup-scripts. A commit SHA pins
+    only machine-setup; repo-setup-scripts uses its normal development behavior.
+    Defaults to BOOTH_RELEASE, then main.
 #>
 param([string]$Ref)
 
@@ -14,12 +16,16 @@ function Invoke-SetupBootstrap {
     if (-not $Ref) {
         $Ref = if ($env:BOOTH_RELEASE) { $env:BOOTH_RELEASE } else { 'main' }
     }
+    $release = $null
     if ($Ref -ceq 'main') {
-        $archiveRef = 'heads/main'
+        $archiveRef = 'refs/heads/main'
     } elseif ($Ref -cmatch '^v[0-9]+(\.[0-9]+\.[0-9]+)?$') {
-        $archiveRef = "tags/$Ref"
+        $archiveRef = "refs/tags/$Ref"
+        $release = $Ref
+    } elseif ($Ref -cmatch '^[0-9a-fA-F]{40}$') {
+        $archiveRef = $Ref
     } else {
-        throw "Invalid ref '$Ref': use main or a release tag such as v1 or v1.2.0."
+        throw "Invalid ref '$Ref': use main, a release tag such as v1 or v1.2.0, or a full 40-character commit SHA."
     }
 
     $workDir = Join-Path ([System.IO.Path]::GetTempPath()) ("machine-setup-" + [guid]::NewGuid().ToString())
@@ -31,7 +37,7 @@ function Invoke-SetupBootstrap {
         $archive = Join-Path $workDir 'setup.zip'
         $source = Join-Path $workDir 'source'
         Write-Host "Downloading machine-setup at $Ref..."
-        Invoke-WebRequest -UseBasicParsing -Uri "https://github.com/octobooth/machine-setup/archive/refs/$archiveRef.zip" -OutFile $archive
+        Invoke-WebRequest -UseBasicParsing -Uri "https://github.com/octobooth/machine-setup/archive/$archiveRef.zip" -OutFile $archive
         Expand-Archive -LiteralPath $archive -DestinationPath $source
         $roots = @(Get-ChildItem -LiteralPath $source -Directory)
         if ($roots.Count -ne 1 -or
@@ -43,9 +49,9 @@ function Invoke-SetupBootstrap {
         $setup = Join-Path $roots[0].FullName 'setup.ps1'
         $setupArgs = @()
         $env:BOOTH_RELEASE = $null
-        if ($Ref -cne 'main') {
-            $env:BOOTH_RELEASE = $Ref
-            $setupArgs = @('-Ref', $Ref)
+        if ($release) {
+            $env:BOOTH_RELEASE = $release
+            $setupArgs = @('-Ref', $release)
         }
         Write-Host "Running machine-setup at $Ref. Answer the setup and sign-in prompts in this terminal."
         # A child process preserves interactive stdin and isolates setup's exit statements.

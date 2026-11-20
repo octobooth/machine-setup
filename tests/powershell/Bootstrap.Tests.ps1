@@ -84,6 +84,19 @@ Describe 'bootstrap.ps1' {
         Should -Invoke powershell.exe -Times 0
     }
 
+    It 'pins the setup archive to a commit without treating it as a demo release' {
+        $env:BOOTH_RELEASE = 'v1'
+        $script:savedReleaseForCheck = 'v1'
+        Invoke-SetupBootstrap -Ref '1234567890abcdef1234567890abcdef12345678'
+
+        Should -Invoke Invoke-WebRequest -Times 1 -Exactly -ParameterFilter {
+            $Uri -eq 'https://github.com/octobooth/machine-setup/archive/1234567890abcdef1234567890abcdef12345678.zip'
+        }
+        $script:setupRelease | Should -BeNullOrEmpty
+        $script:setupArgs | Should -Not -Contain '-Ref'
+        $LASTEXITCODE | Should -Be 0
+    }
+
     It 'does not start setup when the download fails' {
         Mock Invoke-WebRequest {
             $script:workDir = Split-Path $OutFile

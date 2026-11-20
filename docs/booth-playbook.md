@@ -54,6 +54,8 @@ Then choose [setup without cloning](#set-up-without-cloning) or the clone-based 
 
 Use the [copy/paste bootstrap commands](../README.md#run-setup-without-cloning) to download a fresh copy and run setup in one step. No Git installation or manual clone is needed first. The selected published revision must include the bootstrap files; for booths, use an approved destination release, not the development `main` example. The cutover warning above still applies.
 
+For a Windows test machine, use a full commit SHA from a published test branch in the same commands to run that exact machine-setup revision. This does not pin the separate demo repository to that SHA; see [testing a revision](../README.md#run-setup-without-cloning).
+
 On macOS, quit iTerm2 and paste the Bash block in Terminal. On Windows, open **Terminal (Admin)**, select a PowerShell tab, [check winget](#2-make-sure-winget-works), and paste the PowerShell block. Use `curl.exe`, not `curl`, on Windows. Do not pipe the download into Bash or PowerShell: sign-in prompts need the terminal. If `gh` is already installed, check `gh auth status` and log out of any account other than this machine's booth account before starting.
 
 Answer the normal installation and booth-account sign-in prompts. Download failures stop without running setup; connectivity and winget source problems still need to be fixed separately. Temporary setup files are removed afterward, so rerun the same bootstrap block to retry rather than looking for a local machine-setup checkout.

@@ -111,6 +111,8 @@ Each bootstrap downloads the selected ref into a unique temporary folder and rem
 
 When running a downloaded bootstrap directly, `--ref` (Bash) or `-Ref` (PowerShell) overrides `BOOTH_RELEASE`; without either, it uses `main`. Explicit `main` clears an inherited release for setup. Release tags must be `vN` or `vX.Y.Z`. Keep a full version for reproducible booth runs; `main` and major tags can move. Full macOS setup is not supported on Linux.
 
+**Testing a branch revision:** after pushing a test branch, set `ref` in either block to its full 40-character commit SHA. Both the bootstrap download and the machine-setup archive then use that exact published commit, not `main` or `v1`. A commit SHA selects only machine-setup: the bootstrap clears an inherited `BOOTH_RELEASE` and runs repo-setup-scripts in its normal development mode, without passing the machine-setup SHA as a demo release. This is for testing, not approved booth deployment.
+
 After setup, continue with [the macOS Demo Launcher steps](#3-set-up-the-demo-launcher) or [Windows after setup](#6-after-setup), then check accounts, bookmarks, and machine readiness. Commands elsewhere in this guide that run local scripts require a clone or a freshly downloaded archive; for a full setup rerun without a checkout, use the blocks above.
 
 ### macOS setup
