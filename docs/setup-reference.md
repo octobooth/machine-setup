@@ -129,6 +129,20 @@ winget install --id Microsoft.VisualStudioCode -e --source winget --accept-sourc
 
 Without administrator privileges, full Windows setup skips taskbar pins and some installs may fail. Rerun from **Terminal (Admin)** and check the final summary.
 
+### Editor extension installation failures
+
+The final summary names failed extensions; the earlier `Failed: ... extension: ... (exit code: ...)` block includes the editor CLI's output. Keep that whole block when reporting a failure. A summary alone does not distinguish Marketplace connectivity, editor compatibility, permissions, or other CLI errors.
+
+For a VS Code Insiders failure, these read-only commands show which CLI is selected, its version/architecture, and whether the extension is already installed:
+
+```powershell
+Get-Command code-insiders -All | Select-Object CommandType, Source
+code-insiders --version
+code-insiders --list-extensions --show-versions | Select-String '^GitHub\.remotehub@'
+```
+
+An empty match only means the extension is not listed; it does not identify why installation failed. If the run used a revision that suppressed the CLI output, inspect VS Code Insiders' **Developer: Open Logs Folder** for entries around the setup time and extension ID. Share the relevant error lines, with credentials and sensitive paths redacted. See the [VS Code CLI reference](https://code.visualstudio.com/docs/configure/command-line) and [GitHub Repositories Marketplace listing](https://marketplace.visualstudio.com/items?itemName=GitHub.remotehub).
+
 ### Existing VS Code settings
 
 **Known issue:** Windows PowerShell 5.1's `ConvertFrom-Json` rejects comments in VS Code's JSONC settings. The current theme-writing step can continue and overwrite the file. Before testing on an existing Windows machine, back up `%APPDATA%\Code\User\settings.json` and `%APPDATA%\Code - Insiders\User\settings.json`. Prefer a clean test VM. This issue is not fixed by the bootstrap or authentication changes.

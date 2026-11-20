@@ -454,12 +454,15 @@ function Install-EditorExtensions {
         # (e.g., Copilot is now bundled in VS Code/Insiders)
         try {
             $output = Invoke-NativeCommand $Command --install-extension $ext
-            if ($LASTEXITCODE -ne 0) {
+            $exitCode = $LASTEXITCODE
+            if ($exitCode -ne 0) {
                 if ($output -match "built-in extension") {
                     Write-Success "Built-in: $ext ($Name), skipping..."
                 } else {
                     $script:failedItems += "$Name extension: $ext"
-                    Write-Err "Failed: $Name extension: $ext"
+                    Write-Err "Failed: $Name extension: $ext (exit code: $exitCode)"
+                    $text = ($output | Out-String)
+                    if ($text.Trim()) { Write-Host $text.TrimEnd() }
                 }
             }
         }

@@ -944,14 +944,16 @@ install_vscode_extensions() {
 
         # Attempt install; handle built-in conflicts gracefully
         # (e.g., Copilot is now bundled in VS Code/Insiders)
-        local output
+        local output exit_code
         output=$("$binary" --install-extension "$ext" 2>&1)
-        if [[ $? -ne 0 ]]; then
+        exit_code=$?
+        if [[ $exit_code -ne 0 ]]; then
             if echo "$output" | grep -q "built-in extension"; then
                 log_success "Built-in: $ext ($name), skipping..."
             else
                 failed_items+=("$name extension: $ext")
-                log_error "Failed: $name extension: $ext"
+                log_error "Failed: $name extension: $ext (exit code: $exit_code)"
+                [[ -z "$output" ]] || printf '%s\n' "$output"
             fi
         fi
     done

@@ -18,6 +18,69 @@ load_script() {
     [[ ! -f "$COPILOT_HOME/mcp-config.json" ]]
 }
 
+@test "editor extension failures retain stdout stderr and native exit code" {
+    load_script
+    vs_code_extensions=("GitHub.remotehub")
+    fake_editor() {
+        case "$1" in
+            --version|--list-extensions) return 0 ;;
+            --install-extension)
+                echo "Installing extension GitHub.remotehub..."
+                echo "Request failed: example Marketplace error" >&2
+                return 23 ;;
+        esac
+    }
+    install_and_report() {
+        install_vscode_extensions "VS Code Insiders" fake_editor
+        printf 'failures=%s\n' "${failed_items[*]}"
+    }
+
+    run install_and_report
+
+    [[ "$output" == *"Failed: VS Code Insiders extension: GitHub.remotehub (exit code: 23)"* ]]
+    [[ "$output" == *"Installing extension GitHub.remotehub..."* ]]
+    [[ "$output" == *"Request failed: example Marketplace error"* ]]
+    [[ "$output" == *"failures=VS Code Insiders extension: GitHub.remotehub"* ]]
+}
+
+@test "editor extension failures without output still report the exit code" {
+    load_script
+    vs_code_extensions=("GitHub.remotehub")
+    fake_editor() {
+        case "$1" in
+            --version|--list-extensions) return 0 ;;
+            --install-extension) return 9 ;;
+        esac
+    }
+
+    run install_vscode_extensions "VS Code Insiders" fake_editor
+
+    [[ "$output" == *"Failed: VS Code Insiders extension: GitHub.remotehub (exit code: 9)"* ]]
+}
+
+@test "editor built-in conflicts remain successful without failure diagnostics" {
+    load_script
+    vs_code_extensions=("GitHub.remotehub")
+    fake_editor() {
+        case "$1" in
+            --version|--list-extensions) return 0 ;;
+            --install-extension)
+                echo "Cannot install built-in extension" >&2
+                return 1 ;;
+        esac
+    }
+    install_and_report() {
+        install_vscode_extensions "VS Code Insiders" fake_editor
+        printf 'failure_count=%s\n' "${#failed_items[@]}"
+    }
+
+    run install_and_report
+
+    [[ "$output" == *"Built-in: GitHub.remotehub (VS Code Insiders), skipping..."* ]]
+    [[ "$output" == *"failure_count=0"* ]]
+    [[ "$output" != *"Cannot install"* && "$output" != *"Failed:"* ]]
+}
+
 @test "configure_vscode_theme merges theme into existing settings" {
     load_script
     load_config

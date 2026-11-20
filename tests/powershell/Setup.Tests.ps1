@@ -26,6 +26,61 @@ Describe 'setup.ps1' {
         Remove-Item Function:\winget -ErrorAction SilentlyContinue
     }
 
+    Context 'editor extension diagnostics' {
+        BeforeEach {
+            $script:savedExtensions = $script:config.shared.vs_code_extensions
+            $script:config.shared.vs_code_extensions = @('GitHub.remotehub')
+            Mock Get-Command { $true } -ParameterFilter { $Name -eq 'code-insiders' }
+            Mock Get-NativeCommandOutput { $global:LASTEXITCODE = 0 }
+        }
+
+        AfterEach {
+            $script:config.shared.vs_code_extensions = $script:savedExtensions
+        }
+
+        It 'prints captured CLI diagnostics and the native exit code on failure' {
+            Mock Invoke-NativeCommand {
+                'Installing extension GitHub.remotehub...'
+                'Request failed: example Marketplace error'
+                $global:LASTEXITCODE = 23
+            }
+
+            Install-EditorExtensions -Name 'VS Code Insiders' -Command 'code-insiders'
+
+            $script:failedItems | Should -Contain 'VS Code Insiders extension: GitHub.remotehub'
+            Should -Invoke Write-Err -Times 1 -Exactly -ParameterFilter {
+                $Message -eq 'Failed: VS Code Insiders extension: GitHub.remotehub (exit code: 23)'
+            }
+            Should -Invoke Write-Host -Times 1 -Exactly -ParameterFilter {
+                $Object -like '*Installing extension GitHub.remotehub...*Request failed: example Marketplace error*'
+            }
+        }
+
+        It 'reports the exit code even when the failed CLI produces no output' {
+            Mock Invoke-NativeCommand { $global:LASTEXITCODE = 9 }
+
+            Install-EditorExtensions -Name 'VS Code Insiders' -Command 'code-insiders'
+
+            $script:failedItems | Should -Contain 'VS Code Insiders extension: GitHub.remotehub'
+            Should -Invoke Write-Err -Times 1 -Exactly -ParameterFilter { $Message -like '*(exit code: 9)' }
+            Should -Invoke Write-Host -Times 0
+        }
+
+        It 'keeps built-in conflicts as success without printing failure diagnostics' {
+            Mock Invoke-NativeCommand {
+                'Cannot install built-in extension'
+                $global:LASTEXITCODE = 1
+            }
+
+            Install-EditorExtensions -Name 'VS Code Insiders' -Command 'code-insiders'
+
+            $script:failedItems | Should -BeNullOrEmpty
+            Should -Invoke Write-Success -Times 1 -Exactly -ParameterFilter { $Message -like 'Built-in: GitHub.remotehub*' }
+            Should -Invoke Write-Err -Times 0
+            Should -Invoke Write-Host -Times 0
+        }
+    }
+
     It 'Set-EditorTheme merges the configured theme into settings.json' {
         $env:APPDATA = Join-Path $TestDrive 'AppData\Roaming'
         $settingsDir = Join-Path $env:APPDATA 'Code\User'
