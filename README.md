@@ -11,7 +11,7 @@ You need an internet connection, administrator credentials, and this machine's b
 Paste the block for your platform. It downloads all setup files, runs setup with terminal input available for prompts, and removes the temporary download afterward. No manual Git installation or clone is needed.
 
 > [!NOTE]
-> These commands test the published [cross-platform setup branch](https://github.com/octobooth/machine-setup/tree/geektrainer/clone-free-booth-installation), pinned to [`54d3e3b`](https://github.com/octobooth/machine-setup/commit/54d3e3b769141771647773a0d0473a70a04e6891). The bootstrap files are not on `main` or `v1.3.0`. To use the released scripts instead, follow [release installation](docs/setup-reference.md#using-a-release).
+> These commands test the published [cross-platform setup branch](https://github.com/octobooth/machine-setup/tree/geektrainer/clone-free-booth-installation), pinned to [`d8d2910`](https://github.com/octobooth/machine-setup/commit/d8d291093ecb999c95c73728aabcacc3950fd2c5). The bootstrap files are not on `main` or `v1.3.0`. To use the released scripts instead, follow [release installation](docs/setup-reference.md#using-a-release).
 
 ### macOS setup
 
@@ -19,7 +19,7 @@ Quit iTerm2, open **Terminal** as your normal user, and paste:
 
 ```bash
 (
-  ref=54d3e3b769141771647773a0d0473a70a04e6891
+  ref=d8d291093ecb999c95c73728aabcacc3950fd2c5
   installer=$(mktemp "${TMPDIR:-/tmp}/machine-setup.XXXXXXXX") || exit 1
   trap 'rm -f "$installer"' EXIT
   curl -fsSL "https://raw.githubusercontent.com/octobooth/machine-setup/$ref/bootstrap.sh" -o "$installer" &&
@@ -49,7 +49,7 @@ Paste the whole block; use `curl.exe`, not PowerShell's `curl` alias:
 ```powershell
 & {
     $ErrorActionPreference = 'Stop'
-    $ref = '54d3e3b769141771647773a0d0473a70a04e6891'
+    $ref = 'd8d291093ecb999c95c73728aabcacc3950fd2c5'
     $installer = Join-Path ([IO.Path]::GetTempPath()) ("machine-setup-" + [guid]::NewGuid().ToString() + '.ps1')
     try {
         curl.exe -fsSL "https://raw.githubusercontent.com/octobooth/machine-setup/$ref/bootstrap.ps1" -o $installer
