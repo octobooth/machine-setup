@@ -105,7 +105,7 @@ The [Bash bootstrap](bootstrap.sh) and [PowerShell bootstrap](bootstrap.ps1) dow
 }
 ```
 
-`-ExecutionPolicy Bypass` applies only to the child PowerShell processes, not the machine's policy; organization policy still takes precedence. The download finishes successfully before any script runs. Don't pipe either script into a shell: setup needs the terminal's stdin for browser sign-in, `gh auth login`, and other prompts. This is one-shot startup, not unattended installation; authentication, consent, and administrator prompts remain. If `gh` is already installed, check `gh auth status` first and log out of any non-booth account.
+`-ExecutionPolicy Bypass` applies only to the child PowerShell processes, not the machine's policy; organization policy still takes precedence. The download finishes successfully before any script runs. Don't pipe either script into a shell: setup needs the terminal's stdin for `gh auth login` and other prompts. This is one-shot startup, not unattended installation; authentication, consent, and administrator prompts remain. If `gh` is already installed, check `gh auth status` first and log out of any non-booth account.
 
 Each bootstrap downloads the selected ref into a unique temporary folder and removes it when setup finishes, including on failure. Existing machine-setup clones are not changed. Download or extraction errors stop before setup; setup's nonzero exit status is passed back. Read its final summary for skipped steps as well. If a step fails, fix the cause and paste the same block again; setup skips completed work. The bootstrap needs access to `raw.githubusercontent.com`, `github.com`, and GitHub's archive host `codeload.github.com`. It does not repair connectivity or broken winget sources.
 
@@ -209,7 +209,6 @@ You can run `bash setup.sh --ref v1` again on a configured Mac without resetting
 - iTerm2 is skipped when its light and dark color presets, font, theme, ligatures, and thin strokes already match `config.json`.
 - Dock apps that are already in the Dock are skipped, and Chrome is skipped when it's already the default browser.
 - The GitHub CLI login only asks for missing scopes, and repos already in `~/repos` aren't cloned again.
-- The GitHub.com sign-in pause in Chrome still runs. Press Enter if you're already signed in.
 
 To redo everything, run `FORCE_REINSTALL=true bash setup.sh --ref v1`. To redo just one step, clear its marker and rerun `bash setup.sh --ref v1`:
 
@@ -290,7 +289,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 4. Setup then installs GitHub CLI extensions, clones the demo repos into `$HOME\repos`, installs the Demo Launcher for every Copilot chat, adds the [Copilot booth instructions](#copilot-booth-instructions), installs VS Code extensions and the theme, and registers MCP servers for Copilot CLI.
 5. At the end, setup prints a summary of anything that failed. Fix the cause and run `.\setup.ps1 -Ref v1` again; finished steps and `winget` packages that are already installed are skipped. For `winget` errors, see [Troubleshooting Windows package installs](#troubleshooting-windows-package-installs).
 
-Set `$env:NONINTERACTIVE = "true"` before running `setup.ps1` to skip GitHub browser login, CLI login, scope refresh, and the pause when setup isn't running as an administrator. Existing CLI credentials (including `GH_TOKEN` or `GITHUB_TOKEN`) are used to install extensions and clone repositories. Without usable credentials, those steps are deferred with warnings; authenticate with `gh auth login` and rerun setup to complete them. Set `$env:FORCE_REINSTALL = "true"` to redo steps that are normally skipped on reruns, including `winget` installs of packages that are already installed. See [Re-running on a Windows machine that's already set up](#re-running-on-a-windows-machine-thats-already-set-up).
+Set `$env:NONINTERACTIVE = "true"` before running `setup.ps1` to skip CLI login, scope refresh, and the pause when setup isn't running as an administrator. Existing CLI credentials (including `GH_TOKEN` or `GITHUB_TOKEN`) are used to install extensions and clone repositories. Without usable credentials, those steps are deferred with warnings; authenticate with `gh auth login` and rerun setup to complete them. Set `$env:FORCE_REINSTALL = "true"` to redo steps that are normally skipped on reruns, including `winget` installs of packages that are already installed. See [Re-running on a Windows machine that's already set up](#re-running-on-a-windows-machine-thats-already-set-up).
 
 #### 6. After setup
 
