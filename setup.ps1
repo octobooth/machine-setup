@@ -596,7 +596,7 @@ function Invoke-GHStoredAuth {
 
 # Returns each configured gh_auth_scopes entry the stored login doesn't have
 function Get-GHMissingScope {
-    $status = (Invoke-GHStoredAuth auth status -h github.com 2>&1) | Out-String
+    $status = (Invoke-GHStoredAuth auth status --active -h github.com 2>&1) | Out-String
     $granted = ($status -split "`n" | Where-Object { $_ -match 'Token scopes:' }) -join ''
     return @($config.shared.gh_auth_scopes | Where-Object { $_ -and $granted -notmatch [regex]::Escape("'$_'") })
 }
@@ -624,78 +624,40 @@ function Confirm-GHScope {
 function Connect-GH {
     $ghExists = Get-Command gh -ErrorAction SilentlyContinue
     if ($null -eq $ghExists) {
+        $script:failedItems += "GitHub CLI authentication"
         Write-Warn "GitHub CLI not found, skipping authentication."
         return
     }
 
-    Invoke-GHStoredAuth auth status -h github.com 2>&1 | Out-Null
+    Invoke-GHStoredAuth auth status --active -h github.com 2>&1 | Out-Null
     if ($LASTEXITCODE -ne 0) {
         Write-Info "Please authenticate with GitHub..."
         $scopeArgs = @()
         if (@($config.shared.gh_auth_scopes).Count -gt 0) {
             $scopeArgs = @('-s', ($config.shared.gh_auth_scopes -join ','))
         }
-        Invoke-GHStoredAuth auth login --web -h github.com @scopeArgs
+        Invoke-GHStoredAuth auth login --web --git-protocol https -h github.com @scopeArgs
+        if ($LASTEXITCODE -ne 0) {
+            $script:failedItems += "GitHub CLI authentication"
+            Write-Warn "GitHub CLI login did not complete. Run 'gh auth login' manually, then rerun setup."
+            return
+        }
     }
 
-    Invoke-GHStoredAuth auth status -h github.com 2>&1 | Out-Null
+    Invoke-GHStoredAuth auth status --active -h github.com 2>&1 | Out-Null
     if ($LASTEXITCODE -eq 0) {
         Confirm-GHScope
         Install-GHExtensions
         Write-Success "GitHub CLI extensions installed"
     } else {
+        $script:failedItems += "GitHub CLI authentication"
         Write-Warn "GitHub CLI login required for extensions. Please run 'gh auth login' manually."
     }
 }
 
-function Get-EdgePath {
-    $candidatePaths = @(
-        @(
-            (Join-Path ${env:ProgramFiles(x86)} "Microsoft\Edge\Application\msedge.exe"),
-            (Join-Path $env:ProgramFiles "Microsoft\Edge\Application\msedge.exe")
-        ) | Where-Object { $_ -and (Test-Path $_) }
-    )
-
-    if ($candidatePaths.Count -gt 0) {
-        return $candidatePaths[0]
-    }
-
-    $edgeCommand = Get-Command msedge -ErrorAction SilentlyContinue
-    if ($null -ne $edgeCommand) {
-        return $edgeCommand.Source
-    }
-
-    return $null
-}
-
-function Connect-GitHubWeb {
-    Write-Info "Opening GitHub.com in Microsoft Edge..."
-    $edgePath = Get-EdgePath
-
-    $opened = $false
-    if ($null -ne $edgePath) {
-        try {
-            Start-Process -FilePath $edgePath -ArgumentList "https://github.com"
-            $opened = $true
-        }
-        catch {
-            Write-Warn "Could not launch Microsoft Edge ($edgePath): $_"
-        }
-    }
-
-    if (-not $opened) {
-        Write-Warn "Falling back to the default browser."
-        try {
-            Start-Process "https://github.com"
-        }
-        catch {
-            Write-Warn "Could not open a browser automatically. Please open https://github.com manually."
-        }
-    }
-
-    Write-Info "Please log in to GitHub.com in your browser with the demo account"
-    [void](Read-Host "Press Enter once you have logged in")
-    Write-Success "GitHub web authentication confirmed"
+function Show-GitHubAccountReminder {
+    Write-Info "Setup reuses the active GitHub CLI account. Use 'gh auth status --active -h github.com' to check it; use 'gh auth switch' or 'gh auth logout' if it isn't this machine's booth account."
+    Write-Info "Your browser, VS Code, VS Code Insiders, and the Copilot app have separate sign-ins. Use this machine's booth account in each, and check the browser account before approving GitHub CLI login or scope changes."
 }
 
 function Copy-Repos {
@@ -1385,8 +1347,7 @@ function Invoke-Main {
         }
     }
     else {
-        # Web authentication (Edge is preinstalled on Windows)
-        Connect-GitHubWeb
+        Show-GitHubAccountReminder
 
         # Setup environments
         Connect-GH

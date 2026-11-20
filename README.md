@@ -58,7 +58,7 @@ Fonts: the `font-monaspace` cask installs Monaspace, and `font-mona-sans` instal
 
 `windows.taskbar_pins` lists apps that `setup.ps1` pins to the Windows taskbar, in left-to-right order. Each `app_id` is the **AppID** shown by `Get-StartApps`. IDs that contain `!` are packaged apps (such as Windows Terminal), and the rest are desktop apps. A desktop app that doesn't set its own AppID, such as VLC, is listed by its path, with a known-folder GUID in place of the folder: `{6D809377-6AF0-444B-8957-A3773F02200E}` is Program Files. To check an ID on a set-up machine, run `Get-StartApps | Where-Object Name -like '*VLC*'`. Windows has no API to pin apps directly, so setup uses Microsoft's [taskbar layout policy](https://learn.microsoft.com/windows/configuration/taskbar/pinned-apps). It writes a layout XML to `%LOCALAPPDATA%\machine-setup\TaskbarLayout.xml`, points the current user's `StartLayoutFile` policy (`HKCU\Software\Policies\Microsoft\Windows\Explorer`) at it, and restarts Explorer so the pins show up. This needs an elevated (Administrator) prompt. Without one, setup skips the pins with a warning and lists them in the final summary instead of failing. Policy pins appear after the default and manually pinned apps, and Windows may pin them again if they're unpinned. On Windows 10, the policy also locks the Start tiles. Later runs skip this step unless the list changes or `FORCE_REINSTALL` is `"true"`.
 
-`shared.gh_auth_scopes` lists the extra scopes the GitHub CLI login needs: `codespace` (the Tailspin Toys demo creates a Codespace), `delete_repo` (the Demo Launcher's cleanup deletes demo repos), `project` (the Copilot Airways demo creates a GitHub Project, and cleanup deletes it), and `workflow` (demo repos include GitHub Actions workflows, and GitHub rejects pushes that add or change `.github/workflows` files without it). A new login requests them, and an existing login missing any of them is upgraded with `gh auth refresh`, which opens a browser to approve. Both scripts ignore `GH_TOKEN`/`GITHUB_TOKEN` for these steps so the stored login is the one updated. To do it by hand, see [GitHub CLI login](#github-cli-login).
+`shared.gh_auth_scopes` lists the extra scopes the GitHub CLI login needs: `codespace` (the Tailspin Toys demo creates a Codespace), `delete_repo` (the Demo Launcher's cleanup deletes demo repos), `project` (the Copilot Airways demo creates a GitHub Project, and cleanup deletes it), and `workflow` (demo repos include GitHub Actions workflows, and GitHub rejects pushes that add or change `.github/workflows` files without it). Setup checks only the active stored account. A new web login uses HTTPS and requests all configured scopes; an existing login requests only missing scopes with `gh auth refresh`. A valid login with all scopes needs no further consent. Both scripts ignore `GH_TOKEN`/`GITHUB_TOKEN` for these steps so the stored login is the one updated. To do it by hand, see [GitHub CLI login](#github-cli-login).
 
 `pwa_sites` currently remains in the schema for future use, but PWA setup is intentionally disabled in both scripts until the booth workflow needs it again.
 
@@ -146,7 +146,7 @@ After setup, continue with [the macOS Demo Launcher steps](#3-set-up-the-demo-la
 2. If the GitHub CLI is already installed (for example, you're re-running setup), check which account it's logged in to:
 
    ```bash
-   gh auth status
+   gh auth status --active -h github.com
    ```
 
    If it shows an account other than this machine's booth account, log it out with `gh auth logout -h github.com`. Setup only logs in when the GitHub CLI isn't logged in, so it would otherwise keep the wrong account. On a new Mac, `gh` isn't installed yet; skip this.
@@ -162,9 +162,8 @@ After setup, continue with [the macOS Demo Launcher steps](#3-set-up-the-demo-la
 4. Answer the prompts as they come up:
    1. **Xcode Command Line Tools.** `git` and Homebrew need them. If they're missing, the installer opens: click **Install**, and the script waits until it finishes (up to 30 minutes; set `XCODE_CLT_TIMEOUT` in seconds to change this). If the install fails or times out, run `xcode-select --install`, finish the installer, and run `bash setup.sh --ref v1` again.
    2. **Your Mac password.** The Homebrew installer and the SF Mono font ask for it. Type it and press Enter (nothing shows while you type). If the Homebrew installer asks you to press RETURN to continue, press Enter.
-   3. **GitHub.com in Chrome.** The script opens Chrome and pauses. Sign in to GitHub.com as **the booth account**, then press Enter.
-   4. **Default browser.** If Chrome isn't the default browser yet, macOS asks whether to change it. Click **Use “Google Chrome”**, then press Enter. This also works if Chrome was installed before setup ran. If Chrome is already the default, the script skips this step.
-   5. **GitHub CLI login.** The GitHub CLI shows a one-time code. Press Enter to open the browser, enter the code, and approve the login (or scope upgrade) while signed in as the booth account. See [GitHub CLI login](#github-cli-login).
+   3. **Default browser.** If Chrome isn't the default browser yet, setup opens Chrome and macOS asks whether to change it. Select **Use “Google Chrome”**, then press Enter. This also works if Chrome was installed before setup ran. If Chrome is already the default, the script skips this step.
+   4. **GitHub CLI login, if needed.** Setup reuses the active login and requests only missing scopes. For a new login or scope upgrade, follow the one-time-code prompt and approve access in the browser as **the booth account**. OAuth, SSO, and two-factor authentication still require you. The browser, editors, and Copilot app have separate sign-ins; check each uses the same booth account. See [GitHub CLI login](#github-cli-login).
 5. At the end, setup prints a summary of anything that failed. Fix the cause and run `bash setup.sh --ref v1` again; finished steps are skipped.
 6. Setup adds Google Chrome, the GitHub Copilot app, VS Code, VS Code Insiders, iTerm2, and VLC to the Dock. It also adds the [Copilot booth instructions](#copilot-booth-instructions).
 7. Store booth videos in `$HOME/Videos` and open them from VLC in the Dock.
@@ -182,7 +181,7 @@ More detail: [Demo Launcher](#demo-launcher).
 
 #### 4. Add Chrome bookmarks
 
-In Chrome, still signed in to GitHub.com as the booth account, open each page below and press **Cmd+D** to bookmark it:
+In Chrome, sign in to GitHub.com as the booth account if needed, then open each page below and press **Cmd+D** to bookmark it:
 
 - `https://github.com/octobooth-N`: the booth account's profile, using this machine's number (for example `https://github.com/octobooth-1`).
 - `https://github.com/octobooth`: the `octobooth` org.
@@ -276,7 +275,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 
 #### 5. Run setup
 
-1. If the GitHub CLI is already installed (for example, you're re-running setup), check which account it's logged in to with `gh auth status`. If it shows an account other than this machine's booth account, log it out with `gh auth logout -h github.com`. Setup only logs in when the GitHub CLI isn't logged in, so it would otherwise keep the wrong account. On a new machine, `gh` isn't installed yet; skip this.
+1. If the GitHub CLI is already installed (for example, you're re-running setup), check which account it's logged in to with `gh auth status --active -h github.com`. If it shows an account other than this machine's booth account, switch accounts with `gh auth switch -h github.com -u octobooth-N` or log it out with `gh auth logout -h github.com`. Setup reuses the active login, so it would otherwise keep the wrong account. On a new machine, `gh` isn't installed yet; skip this.
 2. Run the setup script:
 
    ```powershell
@@ -287,8 +286,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 
 3. Answer the prompts as they come up:
    1. **Installs.** `winget` installs everything in `windows.packages` in [`config.json`](config.json). PowerShell 7 (`Microsoft.PowerShell`) is installed first, followed by VS Code, VS Code Insiders, Windows Terminal, Git, GitHub CLI, Node.js LTS, Python, VLC, Copilot CLI, the GitHub Copilot app, and GitHub Desktop. This takes a while, and some installers briefly show their own windows. Setup then configures VLC and pins VS Code, VS Code Insiders, the GitHub Copilot app, Windows Terminal, and VLC to the taskbar. The taskbar briefly disappears while Explorer restarts.
-   2. **GitHub.com in Edge.** The script opens Microsoft Edge and pauses. Sign in to GitHub.com as **the booth account**, then press Enter.
-   3. **GitHub CLI login.** The GitHub CLI shows a one-time code. Press Enter to open the browser, enter the code, and approve the login (or scope upgrade) while signed in as the booth account. See [GitHub CLI login](#github-cli-login).
+   2. **GitHub CLI login, if needed.** Setup reuses the active login and requests only missing scopes. For a new login or scope upgrade, follow the one-time-code prompt and approve access in the browser as **the booth account**. OAuth, SSO, and two-factor authentication still require you. The browser, editors, and Copilot app have separate sign-ins; check each uses the same booth account. See [GitHub CLI login](#github-cli-login).
 4. Setup then installs GitHub CLI extensions, clones the demo repos into `$HOME\repos`, installs the Demo Launcher for every Copilot chat, adds the [Copilot booth instructions](#copilot-booth-instructions), installs VS Code extensions and the theme, and registers MCP servers for Copilot CLI.
 5. At the end, setup prints a summary of anything that failed. Fix the cause and run `.\setup.ps1 -Ref v1` again; finished steps and `winget` packages that are already installed are skipped. For `winget` errors, see [Troubleshooting Windows package installs](#troubleshooting-windows-package-installs).
 
@@ -319,7 +317,7 @@ More detail: [Windows: installed loader and project](#windows-installed-loader-a
 
 #### 8. Add Edge favorites
 
-Setup signed in to GitHub.com in Microsoft Edge, and Chrome isn't installed on Windows, so use Edge. Edge calls bookmarks favorites. In Edge, still signed in to GitHub.com as the booth account, open each page below and press **Ctrl+D** to bookmark it:
+Use Microsoft Edge on Windows; Chrome isn't installed by setup. Edge calls bookmarks favorites. In Edge, sign in to GitHub.com as the booth account if needed, then open each page below and press **Ctrl+D** to bookmark it:
 
 - `https://github.com/octobooth-N`: the booth account's profile, using this machine's number (for example `https://github.com/octobooth-1`).
 - `https://github.com/octobooth`: the `octobooth` org.
@@ -345,7 +343,7 @@ Run `.\setup.ps1 -Ref v1` again from **Terminal (Admin)**. You don't need to res
 - Before installing each package in `windows.packages`, setup runs `winget list --id <id> -e --source winget`. If the package is found, setup logs `Already installed: <id>` and moves on without running `winget install`. Like Homebrew on macOS, reruns don't upgrade installed packages. To update one, run `winget upgrade --id <id> -e --source winget`. If `winget list` returns an unexpected error, setup runs `winget install` as before.
 - VLC settings are skipped once `%APPDATA%\vlc\vlcrc` has setup's marker. Taskbar pins are skipped when the layout and policy already match `config.json`.
 - VS Code and VS Code Insiders extensions, and GitHub CLI extensions, that are already installed are skipped. Repos already in `$HOME\repos` aren't cloned again.
-- The GitHub CLI login only asks for missing scopes. The GitHub.com sign-in pause in Edge still runs, so press Enter if you're already signed in.
+- The active GitHub CLI login is reused and only missing scopes need approval. Browser, editor, and Copilot app sign-ins are checked separately by you.
 
 If you run setup from a window that isn't elevated, it warns and pauses at the start. Press Enter to continue anyway. Setup then skips the taskbar pins instead of failing with `Requested registry access is not allowed`, and its final summary lists them under **Skipped because setup wasn't run as Administrator**. Rerun from **Terminal (Admin)** to finish them.
 
@@ -359,7 +357,7 @@ $env:FORCE_REINSTALL = "true"; .\setup.ps1 -Ref v1; Remove-Item Env:\FORCE_REINS
 
 Check each item on every booth machine. `N` is this machine's booth account number.
 
-1. **GitHub CLI.** Run `gh auth status`. It should show `octobooth-N` as the active account, with `codespace`, `delete_repo`, `project`, and `workflow` in its token scopes. If not, follow [GitHub CLI login](#github-cli-login). If `GH_TOKEN` or `GITHUB_TOKEN` is set, unset it.
+1. **GitHub CLI.** Run `gh auth status --active -h github.com`. It should show `octobooth-N` as the active account, with `codespace`, `delete_repo`, `project`, and `workflow` in its token scopes. If not, follow [GitHub CLI login](#github-cli-login). If `GH_TOKEN` or `GITHUB_TOKEN` is set, unset it.
 2. **Demo repos.** `~/repos` (`$HOME\repos` on Windows) contains `repo-setup-scripts`, `tailspin-toys`, and `security-octo-supply` (the `repos_to_clone` list in [`config.json`](config.json)).
 3. **Copilot app.** It's signed in as `octobooth-N`, and "open the demo launcher" opens the launcher from a new chat. If you added the optional repo-setup-scripts project, it's from the local `~/repos/repo-setup-scripts` folder (`$HOME\repos\repo-setup-scripts` on Windows) and its pinned session is a **Current checkout** one.
 4. **VS Code and VS Code Insiders.** In each, **Accounts** shows `octobooth-N`, and GitHub Copilot is signed in and active.
@@ -371,10 +369,10 @@ Check each item on every booth machine. `N` is this machine's booth account numb
 
 The setup scripts handle this for you, but check it on every booth machine (and do it by hand if a script warned about it):
 
-1. Log in as the **booth account** (for example `octobooth-1`), not your personal account. Choose GitHub.com, HTTPS, and log in with a web browser:
+1. Check the active account with `gh auth status --active -h github.com`. If it is the wrong account, use `gh auth switch -h github.com -u octobooth-N` to select this machine's saved booth account, or `gh auth logout -h github.com` followed by a new login. Log in as the **booth account** (for example `octobooth-1`), not your personal account:
 
    ```bash
-   gh auth login -h github.com
+   gh auth login --web --git-protocol https -h github.com
    ```
 
 2. Add the extra scopes the demos need:
@@ -389,7 +387,7 @@ The setup scripts handle this for you, but check it on every booth machine (and 
    - `workflow`: demo repos include GitHub Actions workflows, and GitHub rejects pushes that add or change files in `.github/workflows` without this scope.
 
    `gh`'s default scopes (`repo`, `read:org`, `gist`) cover everything else.
-3. Check it with `gh auth status`. It should show the booth account as active, with `codespace`, `delete_repo`, `project`, and `workflow` in its token scopes.
+3. Check it with `gh auth status --active -h github.com`. It should show the booth account as active, with `codespace`, `delete_repo`, `project`, and `workflow` in its token scopes.
 
 The booth account must have access to the [octobooth organization](https://github.com/octobooth), permission to create demo repositories there, and read access to the internal [Tailspin Toys](https://github.com/octobooth/tailspin-toys) and [Octo Supply](https://github.com/octobooth/security-octo-supply) templates. [Machine setup](https://github.com/octobooth/machine-setup) and [repo-setup-scripts](https://github.com/octobooth/repo-setup-scripts) are public; that does not make every template public. Verify Copilot licensing and policy for code review and coding agent, Codespaces access and billing, and the security features each demo needs with the booth account. A maintainer's access or a successful `gh auth status` does not establish those permissions.
 

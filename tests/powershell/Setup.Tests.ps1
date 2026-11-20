@@ -373,18 +373,15 @@ Describe 'setup.ps1' {
         Remove-Item Function:\gh -ErrorAction SilentlyContinue
     }
 
-    It 'Get-EdgePath falls back to command lookup when Edge is not in Program Files' {
-        Mock Test-Path { $false } -ParameterFilter { $Path -like '*msedge.exe' }
-        Mock Get-Command { [PSCustomObject]@{ Source = 'C:\Tools\msedge.exe' } } -ParameterFilter { $Name -eq 'msedge' }
+    It 'Show-GitHubAccountReminder does not open a browser or wait for input' {
+        Mock Start-Process { throw 'Unexpected browser launch' }
+        Mock Read-Host { throw 'Unexpected prompt' }
 
-        Get-EdgePath | Should -Be 'C:\Tools\msedge.exe'
-    }
+        Show-GitHubAccountReminder
 
-    It 'Get-EdgePath returns the full path when a single Program Files match exists' {
-        $expected = Join-Path ${env:ProgramFiles(x86)} 'Microsoft\Edge\Application\msedge.exe'
-        Mock Test-Path { $Path -eq $expected } -ParameterFilter { $Path -like '*msedge.exe' }
-
-        Get-EdgePath | Should -Be $expected
+        Should -Invoke Start-Process -Times 0 -Exactly
+        Should -Invoke Read-Host -Times 0 -Exactly
+        Should -Invoke Write-Info -Times 1 -Exactly -ParameterFilter { $Message -like '*separate sign-ins*' }
     }
 
     It 'Copy-Repos skips repositories that already exist' {
@@ -665,7 +662,7 @@ exit 0
             Mock Set-VLCConfiguration { }
             Mock Set-TaskbarPins { }
             Mock Start-PostInstallApps { }
-            Mock Connect-GitHubWeb { }
+            Mock Show-GitHubAccountReminder { }
             Mock Connect-GH { }
             Mock Install-GHExtensions { }
             Mock Copy-Repos { }
@@ -696,7 +693,7 @@ exit 0
             Should -Invoke Install-GHExtensions -Times 1 -Exactly
             Should -Invoke Copy-Repos -Times 1 -Exactly -ParameterFilter { -not $SkipClone }
             Should -Invoke Connect-GH -Times 0 -Exactly
-            Should -Invoke Connect-GitHubWeb -Times 0 -Exactly
+            Should -Invoke Show-GitHubAccountReminder -Times 0 -Exactly
         }
 
         It 'defers extensions and clones when credentials are unavailable' {
@@ -708,7 +705,7 @@ exit 0
             Should -Invoke Install-GHExtensions -Times 0 -Exactly
             Should -Invoke Copy-Repos -Times 1 -Exactly -ParameterFilter { $SkipClone }
             Should -Invoke Connect-GH -Times 0 -Exactly
-            Should -Invoke Connect-GitHubWeb -Times 0 -Exactly
+            Should -Invoke Show-GitHubAccountReminder -Times 0 -Exactly
             Should -Invoke Write-Warn -Times 1 -Exactly -ParameterFilter {
                 $Message -like 'GitHub CLI credentials unavailable:*'
             }
@@ -733,7 +730,7 @@ exit 0
 
             Invoke-Main
 
-            Should -Invoke Connect-GitHubWeb -Times 1 -Exactly
+            Should -Invoke Show-GitHubAccountReminder -Times 1 -Exactly
             Should -Invoke Connect-GH -Times 1 -Exactly
             Should -Invoke Copy-Repos -Times 1 -Exactly -ParameterFilter { -not $SkipClone }
             Should -Invoke gh -Times 0 -Exactly
@@ -747,6 +744,9 @@ exit 0
             Add-Content -Path $ghLog -Value "$($args -join ' ') [GH_TOKEN=$env:GH_TOKEN]"
             if ($args[0] -eq 'auth' -and $args[1] -eq 'status') {
                 Write-Output "  - Token scopes: 'codespace', 'gist', 'repo'"
+                if ($args -notcontains '--active') {
+                    Write-Output "  - Token scopes: 'delete_repo', 'project', 'workflow'"
+                }
             }
             $global:LASTEXITCODE = 0
         }
@@ -774,5 +774,71 @@ exit 0
         Confirm-GHScope
 
         Get-Content -Path $ghLog -Raw | Should -Not -Match 'auth refresh'
+    }
+
+    Context 'Connect-GH active account authentication' {
+        BeforeEach {
+            $script:ghLoggedIn = $true
+            $script:ghLoginFails = $false
+            $script:ghScopes = "'codespace', 'delete_repo', 'project', 'workflow'"
+            $script:ghRefreshExit = 0
+            $script:ghAuthLog = Join-Path $TestDrive 'connect-gh.log'
+            Remove-Item $script:ghAuthLog -ErrorAction SilentlyContinue
+            Mock Get-Command { $true } -ParameterFilter { $Name -eq 'gh' }
+            Mock Install-GHExtensions { }
+            function global:gh {
+                Add-Content -Path $script:ghAuthLog -Value ($args -join ' ')
+                $global:LASTEXITCODE = 0
+                if ($args[1] -eq 'status') {
+                    Write-Output "  - Token scopes: $script:ghScopes"
+                    if (-not $script:ghLoggedIn -or $args -notcontains '--active') {
+                        $global:LASTEXITCODE = 1
+                    }
+                } elseif ($args[1] -eq 'login') {
+                    $script:ghLoggedIn = -not $script:ghLoginFails
+                    if ($script:ghLoginFails) { $global:LASTEXITCODE = 1 }
+                } elseif ($args[1] -eq 'refresh') {
+                    $global:LASTEXITCODE = $script:ghRefreshExit
+                }
+            }
+        }
+
+        It 'reuses the active login despite an expired inactive account' {
+            Connect-GH
+
+            Get-Content $script:ghAuthLog -Raw | Should -Not -Match 'auth (login|refresh)'
+            Should -Invoke Install-GHExtensions -Times 1 -Exactly
+            $script:failedItems | Should -BeNullOrEmpty
+        }
+
+        It 'requests web HTTPS login with configured scopes only when needed' {
+            $script:ghLoggedIn = $false
+
+            Connect-GH
+
+            Get-Content $script:ghAuthLog | Should -Contain 'auth login --web --git-protocol https -h github.com -s codespace,delete_repo,project,workflow'
+            Get-Content $script:ghAuthLog -Raw | Should -Not -Match 'auth refresh'
+            Should -Invoke Install-GHExtensions -Times 1 -Exactly
+        }
+
+        It 'records cancelled login without installing extensions' {
+            $script:ghLoggedIn = $false
+            $script:ghLoginFails = $true
+
+            Connect-GH
+
+            $script:failedItems | Should -Contain 'GitHub CLI authentication'
+            Get-Content $script:ghAuthLog -Raw | Should -Not -Match 'auth refresh'
+            Should -Invoke Install-GHExtensions -Times 0 -Exactly
+        }
+
+        It 'records a rejected scope upgrade' {
+            $script:ghScopes = "'codespace', 'repo'"
+            $script:ghRefreshExit = 1
+
+            Connect-GH
+
+            $script:failedItems | Should -Contain 'gh auth scopes: delete_repo,project,workflow'
+        }
     }
 }

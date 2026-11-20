@@ -664,7 +664,7 @@ check_demo_launcher_prereqs() {
 
     local scopes
     scopes=$(IFS=,; echo "${gh_auth_scopes[*]}")
-    if ! gh_stored_auth auth status -h github.com &> /dev/null; then
+    if ! gh_stored_auth auth status --active -h github.com &> /dev/null; then
         log_error "GitHub CLI is not logged in. Run: gh auth login -h github.com${scopes:+ -s $scopes}"
         return 1
     fi
@@ -966,7 +966,7 @@ gh_stored_auth() {
 # Prints each configured gh_auth_scopes entry the stored login doesn't have
 gh_missing_scopes() {
     local granted scope
-    granted=$(gh_stored_auth auth status -h github.com 2>/dev/null | grep 'Token scopes:' || true)
+    granted=$(gh_stored_auth auth status --active -h github.com 2>/dev/null | grep 'Token scopes:' || true)
     for scope in "${gh_auth_scopes[@]}"; do
         if [[ "$granted" != *"'$scope'"* ]]; then
             echo "$scope"
@@ -1000,35 +1000,36 @@ ensure_gh_scopes() {
 # Ensures user is authenticated with GitHub CLI and installs extensions if authenticated
 authenticate_gh() {
     if command -v gh &> /dev/null; then
-        if ! gh_stored_auth auth status -h github.com &> /dev/null; then
+        if ! gh_stored_auth auth status --active -h github.com &> /dev/null; then
             log_info "Please login to GitHub CLI first..."
             local scope_args=()
             if [[ ${#gh_auth_scopes[@]} -gt 0 ]]; then
                 scope_args=(-s "$(IFS=,; echo "${gh_auth_scopes[*]}")")
             fi
-            gh_stored_auth auth login --web -h github.com "${scope_args[@]}"
+            if ! gh_stored_auth auth login --web --git-protocol https -h github.com "${scope_args[@]}"; then
+                failed_items+=("GitHub CLI authentication")
+                log_warn "GitHub CLI login did not complete. Run 'gh auth login' manually, then rerun setup."
+                return
+            fi
         fi
 
-        if gh_stored_auth auth status -h github.com &> /dev/null; then
+        if gh_stored_auth auth status --active -h github.com &> /dev/null; then
             try_install "gh auth scopes: ${gh_auth_scopes[*]}" ensure_gh_scopes
             install_gh_extensions
             log_success "GitHub CLI extensions installed"
         else
+            failed_items+=("GitHub CLI authentication")
             log_warn "GitHub CLI login required for installing extensions. Please run 'gh auth login' manually."
         fi
+    else
+        failed_items+=("GitHub CLI authentication")
+        log_warn "GitHub CLI not found, skipping authentication."
     fi
 }
 
-# Guides user through GitHub web authentication process using Chrome
-authenticate_github_web() {
-    log_info "Opening GitHub.com in Chrome..."
-    open -a "Google Chrome" https://github.com
-
-    log_info "Please log in to GitHub.com in Chrome with the demo account"
-    log_info "Press Enter once you have logged in..."
-    read -r
-
-    log_success "GitHub web authentication confirmed"
+show_github_account_reminder() {
+    log_info "Setup reuses the active GitHub CLI account. Use 'gh auth status --active -h github.com' to check it; use 'gh auth switch' or 'gh auth logout' if it isn't this machine's booth account."
+    log_info "Your browser, VS Code, VS Code Insiders, and the Copilot app have separate sign-ins. Use this machine's booth account in each, and check the browser account before approving GitHub CLI login or scope changes."
 }
 
 # Returns 0 if Chrome is the default browser (defaultbrowser marks it with "*")
@@ -1036,9 +1037,7 @@ chrome_is_default_browser() {
     defaultbrowser 2>/dev/null | grep -Eq '^\* chrome$'
 }
 
-# Makes Google Chrome the default browser. Works whether Chrome was installed by
-# this script or beforehand, as long as it has been launched once (which
-# authenticate_github_web does) so it is registered with macOS.
+# Launch Chrome before changing the default so it is registered with macOS.
 set_default_browser_chrome() {
     if ! command -v defaultbrowser &> /dev/null; then
         log_warn "defaultbrowser is not installed - set Chrome as the default browser in System Settings > Desktop & Dock"
@@ -1050,13 +1049,18 @@ set_default_browser_chrome() {
         return 0
     fi
 
+    if ! open -a "Google Chrome"; then
+        log_error "Could not launch Chrome to register it with macOS"
+        return 1
+    fi
+
     log_info "Setting Chrome as the default browser..."
     if ! defaultbrowser chrome; then
         log_error "Could not set Chrome as the default browser"
         return 1
     fi
 
-    log_info "Click \"Use Google Chrome\" in the macOS dialog, then press Enter..."
+    log_info "Select \"Use Google Chrome\" in the macOS dialog, then press Enter..."
     read -r
 
     if ! chrome_is_default_browser; then
@@ -1367,8 +1371,7 @@ main() {
     # Launch post-install apps (e.g., Docker)
     launch_post_install_apps
 
-    # Web authentication (after packages so Chrome is available)
-    authenticate_github_web
+    show_github_account_reminder
     try_install "Chrome as default browser" set_default_browser_chrome
 
     # Setup environments

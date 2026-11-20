@@ -688,8 +688,19 @@ stub_gh_auth() {
 #!/bin/bash
 echo "$* [GH_TOKEN=${GH_TOKEN-unset} GITHUB_TOKEN=${GITHUB_TOKEN-unset}]" >> "$GH_LOG"
 if [[ "$1 $2" == "auth status" ]]; then
+    [[ "${GH_NEEDS_LOGIN:-false}" == "true" && ! -f "$GH_LOG.logged-in" ]] && exit 1
     echo "  - Token scopes: $GH_SCOPES"
+    if [[ " $* " != *" --active "* ]]; then
+        echo "  - Token scopes: 'codespace', 'delete_repo', 'project', 'workflow'"
+        exit 1 # An inactive account is expired.
+    fi
+elif [[ "$1 $2" == "auth login" ]]; then
+    [[ "${GH_LOGIN_FAIL:-false}" == "true" ]] && exit 1
+    touch "$GH_LOG.logged-in"
+elif [[ "$1 $2" == "auth refresh" ]]; then
+    exit "${GH_REFRESH_EXIT:-0}"
 fi
+exit 0
 STUB
     chmod +x "$BATS_TEST_TMPDIR/bin/gh"
 }
@@ -720,6 +731,72 @@ STUB
 
     run grep -F 'auth refresh' "$GH_LOG"
     [ "$status" -ne 0 ]
+}
+
+@test "authenticate_gh reuses the active login despite an expired inactive account" {
+    stub_gh_auth
+    export GH_SCOPES="'codespace', 'delete_repo', 'project', 'repo', 'workflow'"
+    load_script
+    load_config
+    install_gh_extensions() { echo extensions >> "$GH_LOG"; }
+
+    authenticate_gh < /dev/null
+
+    ! grep -E 'auth (login|refresh)' "$GH_LOG"
+    grep -Fx 'extensions' "$GH_LOG"
+    [ "${#failed_items[@]}" -eq 0 ]
+}
+
+@test "authenticate_gh requests web HTTPS login with all configured scopes when needed" {
+    stub_gh_auth
+    export GH_NEEDS_LOGIN=true GH_SCOPES="'codespace', 'delete_repo', 'project', 'workflow'"
+    load_script
+    load_config
+    install_gh_extensions() { echo extensions >> "$GH_LOG"; }
+
+    authenticate_gh
+
+    grep -F 'auth login --web --git-protocol https -h github.com -s codespace,delete_repo,project,workflow' "$GH_LOG"
+    ! grep -F 'auth refresh' "$GH_LOG"
+    grep -Fx 'extensions' "$GH_LOG"
+}
+
+@test "authenticate_gh records cancelled login without installing extensions" {
+    stub_gh_auth
+    export GH_NEEDS_LOGIN=true GH_LOGIN_FAIL=true
+    load_script
+    load_config
+    install_gh_extensions() { echo extensions >> "$GH_LOG"; }
+
+    authenticate_gh
+
+    [ "${failed_items[0]}" = "GitHub CLI authentication" ]
+    ! grep -E 'auth refresh|^extensions$' "$GH_LOG"
+}
+
+@test "authenticate_gh records a rejected scope upgrade" {
+    stub_gh_auth
+    export GH_SCOPES="'codespace', 'repo'" GH_REFRESH_EXIT=1
+    load_script
+    load_config
+    install_gh_extensions() { :; }
+
+    authenticate_gh
+
+    [ "${#failed_items[@]}" -eq 1 ]
+    [[ "${failed_items[0]}" == "gh auth scopes:"* ]]
+}
+
+@test "account reminder does not open a browser or wait for input" {
+    load_script
+    open() { echo unexpected-browser; return 1; }
+    read() { echo unexpected-prompt; return 1; }
+
+    run show_github_account_reminder < /dev/null
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"separate sign-ins"* ]]
+    [[ "$output" != *"unexpected-"* ]]
 }
 
 @test "install_demo_launcher skips when repo-setup-scripts has no Demo Launcher" {
@@ -1199,10 +1276,12 @@ STUB
 @test "set_default_browser_chrome skips when Chrome is already the default" {
     stub_defaultbrowser chrome
     load_script
+    open() { echo unexpected-browser; return 1; }
 
     run set_default_browser_chrome < /dev/null
     [ "$status" -eq 0 ]
     [[ "$output" == *"already the default browser"* ]] || false
+    [[ "$output" != *"unexpected-browser"* ]]
 
     run grep -Fx "chrome" "$DEFAULTBROWSER_LOG"
     [ "$status" -ne 0 ]
@@ -1211,21 +1290,36 @@ STUB
 @test "set_default_browser_chrome switches the default to Chrome" {
     stub_defaultbrowser safari
     load_script
+    open() { echo "$*" >> "$DEFAULTBROWSER_LOG"; }
 
     run set_default_browser_chrome <<< ""
     [ "$status" -eq 0 ]
     [[ "$output" == *"Chrome is now the default browser"* ]] || false
     [ "$(cat "$DEFAULT_BROWSER_FILE")" = "chrome" ]
+    grep -Fx -- "-a Google Chrome" "$DEFAULTBROWSER_LOG"
 }
 
 @test "set_default_browser_chrome reports failure when the dialog is declined" {
     stub_defaultbrowser safari
     export ACCEPT_DIALOG=false
     load_script
+    open() { :; }
 
     run set_default_browser_chrome <<< ""
     [ "$status" -eq 1 ]
     [[ "$output" == *"System Settings"* ]] || false
+}
+
+@test "set_default_browser_chrome stops if Chrome cannot launch" {
+    stub_defaultbrowser safari
+    load_script
+    open() { return 1; }
+
+    run set_default_browser_chrome < /dev/null
+
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"Could not launch Chrome"* ]]
+    ! grep -Fx "chrome" "$DEFAULTBROWSER_LOG"
 }
 
 # Stubs dockutil, defaults, and killall with a Dock backed by files, and
