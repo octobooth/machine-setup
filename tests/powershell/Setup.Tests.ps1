@@ -29,7 +29,7 @@ Describe 'setup.ps1' {
     Context 'editor extension diagnostics' {
         BeforeEach {
             $script:savedExtensions = $script:config.shared.vs_code_extensions
-            $script:config.shared.vs_code_extensions = @('GitHub.remotehub')
+            $script:config.shared.vs_code_extensions = @('example.test-extension')
             Mock Get-Command { $true } -ParameterFilter { $Name -eq 'code-insiders' }
             Mock Get-NativeCommandOutput { $global:LASTEXITCODE = 0 }
         }
@@ -40,19 +40,19 @@ Describe 'setup.ps1' {
 
         It 'prints captured CLI diagnostics and the native exit code on failure' {
             Mock Invoke-NativeCommand {
-                'Installing extension GitHub.remotehub...'
+                'Installing extension example.test-extension...'
                 'Request failed: example Marketplace error'
                 $global:LASTEXITCODE = 23
             }
 
             Install-EditorExtensions -Name 'VS Code Insiders' -Command 'code-insiders'
 
-            $script:failedItems | Should -Contain 'VS Code Insiders extension: GitHub.remotehub'
+            $script:failedItems | Should -Contain 'VS Code Insiders extension: example.test-extension'
             Should -Invoke Write-Err -Times 1 -Exactly -ParameterFilter {
-                $Message -eq 'Failed: VS Code Insiders extension: GitHub.remotehub (exit code: 23)'
+                $Message -eq 'Failed: VS Code Insiders extension: example.test-extension (exit code: 23)'
             }
             Should -Invoke Write-Host -Times 1 -Exactly -ParameterFilter {
-                $Object -like '*Installing extension GitHub.remotehub...*Request failed: example Marketplace error*'
+                $Object -like '*Installing extension example.test-extension...*Request failed: example Marketplace error*'
             }
         }
 
@@ -61,7 +61,7 @@ Describe 'setup.ps1' {
 
             Install-EditorExtensions -Name 'VS Code Insiders' -Command 'code-insiders'
 
-            $script:failedItems | Should -Contain 'VS Code Insiders extension: GitHub.remotehub'
+            $script:failedItems | Should -Contain 'VS Code Insiders extension: example.test-extension'
             Should -Invoke Write-Err -Times 1 -Exactly -ParameterFilter { $Message -like '*(exit code: 9)' }
             Should -Invoke Write-Host -Times 0
         }
@@ -75,7 +75,7 @@ Describe 'setup.ps1' {
             Install-EditorExtensions -Name 'VS Code Insiders' -Command 'code-insiders'
 
             $script:failedItems | Should -BeNullOrEmpty
-            Should -Invoke Write-Success -Times 1 -Exactly -ParameterFilter { $Message -like 'Built-in: GitHub.remotehub*' }
+            Should -Invoke Write-Success -Times 1 -Exactly -ParameterFilter { $Message -like 'Built-in: example.test-extension*' }
             Should -Invoke Write-Err -Times 0
             Should -Invoke Write-Host -Times 0
         }

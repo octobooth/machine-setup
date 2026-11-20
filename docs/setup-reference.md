@@ -138,10 +138,10 @@ For a VS Code Insiders failure, these read-only commands show which CLI is selec
 ```powershell
 Get-Command code-insiders -All | Select-Object CommandType, Source
 code-insiders --version
-code-insiders --list-extensions --show-versions | Select-String '^GitHub\.remotehub@'
+code-insiders --list-extensions --show-versions
 ```
 
-An empty match only means the extension is not listed; it does not identify why installation failed. If the run used a revision that suppressed the CLI output, inspect VS Code Insiders' **Developer: Open Logs Folder** for entries around the setup time and extension ID. Share the relevant error lines, with credentials and sensitive paths redacted. See the [VS Code CLI reference](https://code.visualstudio.com/docs/configure/command-line) and [GitHub Repositories Marketplace listing](https://marketplace.visualstudio.com/items?itemName=GitHub.remotehub).
+Check for the failed extension's ID in the list. Its absence does not identify why installation failed. If the run used a revision that suppressed the CLI output, inspect VS Code Insiders' **Developer: Open Logs Folder** for entries around the setup time and extension ID. Share the relevant error lines, with credentials and sensitive paths redacted. See the [VS Code CLI reference](https://code.visualstudio.com/docs/configure/command-line).
 
 ### Existing VS Code settings
 

@@ -20,12 +20,12 @@ load_script() {
 
 @test "editor extension failures retain stdout stderr and native exit code" {
     load_script
-    vs_code_extensions=("GitHub.remotehub")
+    vs_code_extensions=("example.test-extension")
     fake_editor() {
         case "$1" in
             --version|--list-extensions) return 0 ;;
             --install-extension)
-                echo "Installing extension GitHub.remotehub..."
+                echo "Installing extension example.test-extension..."
                 echo "Request failed: example Marketplace error" >&2
                 return 23 ;;
         esac
@@ -37,15 +37,15 @@ load_script() {
 
     run install_and_report
 
-    [[ "$output" == *"Failed: VS Code Insiders extension: GitHub.remotehub (exit code: 23)"* ]]
-    [[ "$output" == *"Installing extension GitHub.remotehub..."* ]]
+    [[ "$output" == *"Failed: VS Code Insiders extension: example.test-extension (exit code: 23)"* ]]
+    [[ "$output" == *"Installing extension example.test-extension..."* ]]
     [[ "$output" == *"Request failed: example Marketplace error"* ]]
-    [[ "$output" == *"failures=VS Code Insiders extension: GitHub.remotehub"* ]]
+    [[ "$output" == *"failures=VS Code Insiders extension: example.test-extension"* ]]
 }
 
 @test "editor extension failures without output still report the exit code" {
     load_script
-    vs_code_extensions=("GitHub.remotehub")
+    vs_code_extensions=("example.test-extension")
     fake_editor() {
         case "$1" in
             --version|--list-extensions) return 0 ;;
@@ -55,12 +55,12 @@ load_script() {
 
     run install_vscode_extensions "VS Code Insiders" fake_editor
 
-    [[ "$output" == *"Failed: VS Code Insiders extension: GitHub.remotehub (exit code: 9)"* ]]
+    [[ "$output" == *"Failed: VS Code Insiders extension: example.test-extension (exit code: 9)"* ]]
 }
 
 @test "editor built-in conflicts remain successful without failure diagnostics" {
     load_script
-    vs_code_extensions=("GitHub.remotehub")
+    vs_code_extensions=("example.test-extension")
     fake_editor() {
         case "$1" in
             --version|--list-extensions) return 0 ;;
@@ -76,7 +76,7 @@ load_script() {
 
     run install_and_report
 
-    [[ "$output" == *"Built-in: GitHub.remotehub (VS Code Insiders), skipping..."* ]]
+    [[ "$output" == *"Built-in: example.test-extension (VS Code Insiders), skipping..."* ]]
     [[ "$output" == *"failure_count=0"* ]]
     [[ "$output" != *"Cannot install"* && "$output" != *"Failed:"* ]]
 }
