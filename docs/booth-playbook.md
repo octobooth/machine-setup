@@ -1,20 +1,13 @@
 # Booth playbook
 
-_Last updated by [@filmgirl](https://github.com/filmgirl) on November 8, 2026_
-
 A step-by-step walkthrough for running a booth: set up each booth machine before the event, run demos on booth day, then clean up and reset the booth accounts afterwards. You can read this without logging in to anything. Each step lists the access and tools it needs.
 
 [Machine setup reference (README)](../README.md) · [Demo Launcher](../README.md#demo-launcher) · [Troubleshooting](#troubleshooting)
 
-> [!WARNING]
-> **Do not cut over booth machines yet.** The copied destination `v1` / `v1.2.0` tags are not migration-ready, and the required Playwright archive and checksum are not published in [destination releases](https://github.com/octobooth/machine-setup/releases). The setup and update commands below require an approved, tested destination release. Keep existing installations on their approved source release until then; use [Upgrade an existing machine to octobooth](../README.md#upgrade-an-existing-machine-to-octobooth) when cutover is approved.
->
-> Destination repository content is copied, but Actions remain disabled and ChatOps App provisioning and booth feature access are unverified. Security demos still require validated destination workflows and features; open-secret-alert examples remain unresolved. Do not bypass repository protection or enable automation as part of setup.
-
 ## At a glance
 
 1. **[Before the event](#part-1-before-the-event-set-up-each-booth-machine)**: on each machine, sign in as its booth account, run setup, check the Demo Launcher opens, add browser bookmarks, sign in to VS Code and VS Code Insiders, and [check the machine is ready](#check-that-the-machine-is-ready).
-2. **[Each booth day](#before-each-booth-day-update-the-machine)**: after destination release approval, update both script repositories to that tested release and refresh the Demo Launcher, then [create the security demos ahead of time](#create-the-security-demos-ahead-of-time) once on one machine, and bookmark their repos on every machine.
+2. **[Each booth day](#before-each-booth-day-update-the-machine)**: use matching releases of both script repositories and refresh the Demo Launcher, then [create the security demos ahead of time](#create-the-security-demos-ahead-of-time) once on one machine and bookmark their repos on every machine.
 3. **[During the event](#part-2-during-the-event-run-demos)**: open the pinned apps and the Demo Launcher, and create demos.
 4. **[After the event](#part-3-after-the-event-clean-up-and-reset)**: delete the demo repos in the booth accounts and the org, clear the booth machines' demo folders, and have an org admin reset the booth accounts.
 
@@ -40,7 +33,7 @@ Any time, [Clean up demo repos](#clean-up-demo-repos) covers the everyday cleanu
 
 ## Part 1: Before the event: set up each booth machine
 
-Do this once on every booth machine. The steps below are the same as the [Setup Instructions](../README.md#setup-instructions) in the README, which also has extra detail on re-running setup and on each setting.
+Start with the [short installation guide](../README.md#setup-instructions), then complete the [readiness checklist](#check-that-the-machine-is-ready). The walkthroughs below are an alternative for staff maintaining a local machine-setup clone.
 
 ### What you need
 
@@ -52,7 +45,7 @@ Then choose [setup without cloning](#set-up-without-cloning) or the clone-based 
 
 ### Set up without cloning
 
-Use the [copy/paste bootstrap commands](../README.md#run-setup-without-cloning) to download a fresh copy and run setup in one step. No Git installation or manual clone is needed first. The selected published revision must include the bootstrap files; for booths, use an approved destination release, not the development `main` example. The cutover warning above still applies.
+Use the [copy/paste bootstrap commands](../README.md#run-setup-without-cloning) to download a fresh copy and run setup in one step. They currently target the published test revision. No manual Git installation or clone is needed first. For the released scripts, see [release installation](setup-reference.md#using-a-release).
 
 For a Windows test machine, use a full commit SHA from a published test branch in the same commands to run that exact machine-setup revision. This does not pin the separate demo repository to that SHA; see [testing a revision](../README.md#run-setup-without-cloning).
 
@@ -85,7 +78,7 @@ When setup finishes, continue at [Set up the Demo Launcher on macOS](#3-set-up-t
    git -C ~/repos/machine-setup checkout --detach v1
    ```
 
-If `git` still doesn't work, the README has a [ZIP fallback](../README.md#1-get-the-setup-scripts).
+If `git` still doesn't work, use the [release ZIP](setup-reference.md#using-a-release) instead.
 
 #### 2. Run setup
 
@@ -148,6 +141,8 @@ Go through [Check that the machine is ready](#check-that-the-machine-is-ready).
 ### Set up a Windows machine
 
 These steps assume a brand-new Windows 10 or 11 machine with nothing installed beyond what ships with Windows. Sign in to Windows and connect to the internet first. Until setup finishes, you only have the built-in **Windows PowerShell 5.1**. `setup.ps1` is written to run there, and it installs PowerShell 7 for later use.
+
+On an existing machine, back up editor settings before running setup; see the [known Windows JSONC preservation issue](setup-reference.md#existing-vs-code-settings).
 
 #### 1. Open an administrator PowerShell
 
@@ -222,7 +217,7 @@ Setup already cloned `$HOME\repos\repo-setup-scripts` and installed the Demo Lau
 2. Ask Copilot to "open the demo launcher" in any chat.
 3. Optional, for quick access on booth day: add the existing local folder `$HOME\repos\repo-setup-scripts` as a project (use the local folder, not the repo's URL, which clones a second copy), start a session in it with **Current checkout** (not **New worktree**), then right-click that session and choose **Pin**.
 
-More detail: [Windows: installed loader and project](../README.md#windows-installed-loader-and-project).
+More detail: [installed loader and project](setup-reference.md#demo-launcher).
 
 #### 8. Add Edge favorites
 
@@ -259,9 +254,9 @@ Check each item on every booth machine. `N` is this machine's booth account numb
 
 ### Before each booth day: update the machine
 
-For an existing source-connected or pre-replacement destination clone, first follow [Upgrade an existing machine to octobooth](../README.md#upgrade-an-existing-machine-to-octobooth). That procedure preserves local work and worktrees and deliberately changes origins; neither `git pull` nor setup does that for you. The commands in this section apply only after the new destination release is approved.
+For an existing checkout, [inspect its origin and local work](setup-reference.md#existing-clones) before updating. Setup does not rewrite remotes or discard work.
 
-After destination release approval, update the setup scripts and the Demo Launcher to the same approved release, then fully restart the GitHub Copilot app so it loads the new launcher: on macOS, quit it with **Cmd+Q**; on Windows, right-click its system tray icon and choose **Quit**. Then reopen it.
+Update the setup scripts and Demo Launcher to the same release, then fully restart Copilot: **Cmd+Q** on macOS, or **Quit** from the Windows system tray. If you installed without a clone, use [launcher-only updates from a fresh archive](setup-reference.md#launcher-only-updates) instead of the Git commands below.
 
 On macOS:
 
@@ -282,7 +277,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 .\install-demo-launcher.ps1 -Ref v1
 ```
 
-After release approval, maintainers move `v1` to the tested destination `v1.x.y` in both repos. The copied `v1` is not that release. The installer also installs the [Playwright MCP server](../README.md#playwright-mcp-server) version that release pins, if it changed. Missing assets are a readiness failure even when the script only warns. If the script says the tag doesn't exist or the checkout has local changes, preserve the work and resolve that before booth use; see [Using a release](../README.md#using-a-release). Developers can test reviewed destination `main` on a non-booth machine without `--ref` / `-Ref`.
+`v1` is a moving major tag; use a full version such as `v1.3.0` for an exact pin. The installer also refreshes the [Playwright MCP server](../README.md#playwright-mcp-server). Resolve download warnings, missing tags, or local-change errors before booth use; see [release behavior](setup-reference.md#using-a-release). Verify the launcher and a real demo on each machine rather than relying on release publication or exit status alone.
 
 The install script also refreshes the booth's Copilot instructions (see [Copilot booth instructions](../README.md#copilot-booth-instructions)).
 
@@ -480,9 +475,9 @@ Rerunning is safe; it replaces the token. The token belongs to the booth account
 | The pinned session still shows the old launcher after an update | It's probably a **New worktree** session, which keeps its own copy. Archive it and start a new **Current checkout** session in the repo-setup-scripts project. |
 | Two "Demo Launcher" canvases, both labeled Personal | One was installed from a URL (it's named `demo-launcher-loader`). Remove `demo-launcher-loader` from the Copilot app's **Extensions** screen, or delete `~/.copilot/extensions/demo-launcher-loader` (`$HOME\.copilot\extensions\demo-launcher-loader` on Windows). Then re-run `install-demo-launcher.sh` or `install-demo-launcher.ps1` and restart the app. |
 | A "Demo Launcher" labeled "repository: security-octo-supply-v4-…" | It comes from a demo repo made from the old v4 template, which included a HydraFusion launcher (since removed). Remove that demo project from the Copilot app. |
-| Setup warns "Couldn't download Playwright MCP" | The machine couldn't reach github.com, or that bundle release isn't published yet. Everything else still works. Run the [update](#before-each-booth-day-update-the-machine) again later. See [Playwright MCP server](../README.md#playwright-mcp-server). |
+| Setup warns "Couldn't download Playwright MCP" | Check network access and the configured bundle's release assets, then rerun the [update](#before-each-booth-day-update-the-machine). Verify browser tools work before booth use; see [Playwright MCP server](setup-reference.md#playwright-mcp-server). |
 | The launcher's **Clean up** says your `gh` login can't delete repos | Run `gh auth refresh -h github.com -s delete_repo` in a terminal as the booth account, then click **Delete** again. |
-| Copilot sessions stay "busy" and never answer | An old Playwright MCP server (`npx @playwright/mcp`) is hanging because npm is blocked. Run the [update](#before-each-booth-day-update-the-machine), which replaces it with the prebuilt one, or remove it by hand with the command in [Copilot sessions stuck at "busy"](../README.md#copilot-sessions-stuck-at-busy). Then fully quit and reopen the GitHub Copilot app. |
+| Copilot sessions stay "busy" and never answer | An `npx` Playwright MCP entry can hang because npm is blocked. See [Copilot sessions stuck at "busy"](setup-reference.md#copilot-sessions-stuck-at-busy), refresh the managed entry, then fully quit and reopen Copilot. |
 | A booth account's weekly cleanup run failed | Open the failed run. If it mentions `CLEANUP_TOKEN`, ask an org admin to [set up that account again](#set-up-or-repair-the-weekly-cleanup). |
 | Demo repos in a booth account aren't being deleted | Check they're more than 7 days old and have the `demo-generated` topic (shown under **About** on the repo page). To delete them now, use the launcher's [Clean up](#from-the-demo-launcher) with **Any age**, or [run the weekly cleanup](#run-it-sooner-just-a-browser) with `older_than_days` set to `0`. |
 | (Admins) The weekly cleanup setup script says a token belongs to the wrong account | The browser was signed in as another account. Delete that stray token in the other account's token settings, switch the browser to the right account, and make a new one. |
