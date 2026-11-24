@@ -2,6 +2,31 @@
 
 [Installation guide](../README.md) · [Setup reference](setup-reference.md) · [Contributor rules](../AGENTS.md)
 
+## Script structure
+
+[`bootstrap.sh`](../bootstrap.sh) and [`bootstrap.ps1`](../bootstrap.ps1) download and extract the complete machine-setup archive at the requested revision, then run its setup script with terminal input available for prompts. Temporary downloads are removed when the bootstrap finishes. The bootstrap does not install individual packages.
+
+[`setup.sh`](../setup.sh) and [`setup.ps1`](../setup.ps1) contain the provisioning functions and their orchestration entry points, `main` and `Invoke-Main`. Their entry-point guards let tests source or dot-source the files without provisioning the host.
+
+| Phase | macOS | Windows |
+| --- | --- | --- |
+| Prerequisites and configuration | Install Xcode Command Line Tools, Homebrew, and jq; `load_config` reads `config.json` | `Test-Prerequisites` checks elevation and winget; `Import-Config` reads `config.json` |
+| Packages and desktop settings | `install_packages`, VLC, fonts, iTerm2, Dock, and default-browser configuration | `Install-Packages`, `Set-VLCConfiguration`, and `Set-TaskbarPins` |
+| GitHub and repositories | `authenticate_gh`, `clone_repos` | `Connect-GH`, `Copy-Repos` |
+| Demo Launcher and instructions | `install_demo_launcher`, `install_booth_instructions` | `Sync-DemoLauncherRelease`, `Install-DemoLauncher`, `Install-BoothInstruction` |
+| Editors and MCP tools | `configure_editors`, `install_playwright_mcp_bundle`, `register_mcp_servers` | `Initialize-Editors`, `Install-PlaywrightMcpBundle`, `Register-MCPServers` |
+| Readiness and summary | `check_setup_readiness`, `print_summary` | `Test-SetupReadiness`, `Write-Summary` |
+
+`try_install` and `Invoke-SafeInstall` collect failures so setup can continue with independent steps and report problems together. Functions that handle their own failures also update `failed_items` or `$script:failedItems`. Readiness checks run before the final summary and add failures to the same collection; a nonempty collection makes setup exit with status 1. Windows separately reports steps skipped for lack of administrator privileges.
+
+Readiness checks query installed packages, resolve Node.js, retrieve the stored GitHub CLI account, inspect its configured scopes, query each configured repository's metadata, and check local checkout and launcher files. Package-source checks use existing npm/pip configuration; NuGet source inspection is read-only. They do not change package settings, sign in apps, restart Copilot, prove repository write permissions or Copilot/Codespaces licensing, or run a demo. Staff confirm the displayed account and complete those manual checks.
+
+Device enrollment is queried by `check_device_enrollment` / `Test-DeviceEnrollment`. macOS requires an explicit MDM result from `profiles status -type enrollment`; automated enrollment alone is not enough. Windows queries the MDM registration API without requesting the user's UPN; it does not infer MDM enrollment from domain join or `dsregcmd` URLs. Query failures are informational unknowns, not unmanaged devices or setup failures. Enrollment never selects a feed or authorizes a credential change.
+
+`check_package_sources` / `Test-PackageSources` preserve all sources and credentials, including when a check fails. Config inspection errors, missing clients, and configurations that cannot be checked populate `readiness_notes` / `$script:readinessNotes`, separately from failed metadata checks in the failure collection. Neither source URLs nor native diagnostics are printed. Feed provisioning and NuGet restore verification are not implemented.
+
+[`install-demo-launcher.sh`](../install-demo-launcher.sh) and [`install-demo-launcher.ps1`](../install-demo-launcher.ps1) reuse setup helpers for launcher-only updates without installing the full environment. On Windows, noninteractive GitHub commands use the native-command helper so normal stderr does not become a terminating error in PowerShell 5.1; interactive login and scope-consent commands remain direct.
+
 ## Configuration
 
 [`config.json`](../config.json) drives both platforms. Keep shared behavior in parity and add new keys to the shape check in [CI](../.github/workflows/ci.yml).
@@ -79,4 +104,6 @@ The `playwright-mcp-v<version>` release is separate from the paired booth releas
 
 Follow the shared [release process](https://github.com/octobooth/repo-setup-scripts/blob/main/docs/releasing.md). Both repositories use matching `vX.Y.Z` versions; only the major alias (`v1`) moves. Never move or delete an immutable version tag. Release/tag changes require explicit authorization.
 
-For testing changes before release, push a branch and use its full commit SHA in the [bootstrap commands](../README.md#run-setup-without-cloning). The SHA pins machine-setup, not the separate demo repository. Verify the ref's bootstrap files and required archive assets are downloadable before sharing a command.
+The [README commands](../README.md#setup-instructions) always download and run `main` so the installation guide and setup scripts stay aligned. Bootstrap tests execute those commands with stubbed downloads and check their requested source and revision.
+
+For testing changes before release, push a branch and pass its full commit SHA to a local bootstrap using `--ref` on macOS or `-Ref` on Windows. The SHA pins machine-setup, not the separate demo repository. Verify the ref's bootstrap files and required archive assets are downloadable before sharing a test command; do not pin the README commands to it.

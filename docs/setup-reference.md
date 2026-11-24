@@ -32,11 +32,23 @@ Unset `GH_TOKEN` and `GITHUB_TOKEN` on booth machines: they override stored cred
 
 The booth account needs access to [octobooth](https://github.com/octobooth), permission to create demo repositories, and access to the internal [Tailspin Toys](https://github.com/octobooth/tailspin-toys) and [Octo Supply](https://github.com/octobooth/security-octo-supply) templates. Verify Copilot licensing, Codespaces/billing, and security-demo features as that account. A successful CLI login does not prove those permissions.
 
+## Managed devices and package feeds
+
+Setup reports MDM enrollment as **enrolled**, **not enrolled**, or **unknown** for information only. Unknown enrollment does not fail setup or prevent package checks. On macOS, setup reads `profiles status -type enrollment`; on Windows, it calls [IsDeviceRegisteredWithManagement](https://learn.microsoft.com/windows/win32/api/mdmregistration/nf-mdmregistration-isdeviceregisteredwithmanagement). Domain membership or an advertised MDM URL alone is not proof of enrollment.
+
+Setup checks existing npm and pip sources first, using their current credentials, proxy, and certificate settings. Working settings are retained. The npm check reads `create-vite` metadata with a fresh temporary cache; the pip check reads package-index metadata without a cache or interactive login. Neither installs a package. Network requests use a 15-second timeout and no retries. Source URLs and native diagnostics are withheld because they can contain credentials.
+
+Failed metadata checks add an error to the final summary without changing package settings. Check the existing source's network access and effective configuration, including environment, project, or command-specific overrides. Missing clients and configurations that cannot be inspected or checked are listed separately as **unverified**. Resolve access with device support; setup does not provision feeds, replace a registry or index, or change VPN, identity, or security controls.
+
+NuGet checks list enabled sources through `dotnet nuget list source --format short`, without changing configuration or credentials. Authenticated restore remains unverified. Use the existing [Azure Artifacts Credential Provider](https://github.com/microsoft/artifacts-credprovider) and a trusted project to validate restore separately; setup does not install a provider or introduce a corporate login.
+
+Metadata success is not proof of policy approval, archive downloads, or a successful demo. Public-style configuration can route through managed controls; its URL alone is not evidence of a bypass. npm configuration also controls `npx` and `npm create vite`, but project settings, pinned artifact URLs, and tools' separate binary downloads need their own checks. Keep machine-specific sources and credentials out of public repository configuration and lockfiles. Do not sign in with a staff account, copy tokens between machines, or switch to public registries after a feed failure. If an approved package route is unavailable, use the [cloud-session workflow](booth-playbook.md#framework-apps-need-a-cloud-session).
+
 ## Using a release
 
 The paired [machine-setup v1.3.0](https://github.com/octobooth/machine-setup/releases/tag/v1.3.0) and [repo-setup-scripts v1.3.0](https://github.com/octobooth/repo-setup-scripts/releases/tag/v1.3.0) releases are published. Use a matching full version for both repositories. `v1` is a moving major tag, not a separate installation mode.
 
-These release files do not contain the new bootstrap entry points. To use the released scripts, download and extract the [v1.3.0 ZIP](https://github.com/octobooth/machine-setup/archive/refs/tags/v1.3.0.zip), keeping all files together. Open a terminal in the extracted folder and run:
+To use the released scripts, download and extract the [v1.3.0 ZIP](https://github.com/octobooth/machine-setup/archive/refs/tags/v1.3.0.zip), keeping all files together. Open a terminal in the extracted folder and run:
 
 macOS:
 
@@ -50,7 +62,7 @@ Windows, from **Terminal (Admin)**:
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1 -Ref v1.3.0
 ```
 
-Use the [README prerequisites and readiness checks](../README.md#setup-instructions) with either installation path. The release's sign-in prompts differ from those on the test branch. Verify the setup and demos on the intended machines before an event.
+Use the [README prerequisites and readiness checks](../README.md#setup-instructions) with either installation path. Verify the setup and demos on the intended machines before an event.
 
 ### Ref behavior
 
@@ -61,7 +73,7 @@ Use the [README prerequisites and readiness checks](../README.md#setup-instructi
 | Bootstrap with `main` | Downloads machine-setup `main` and runs demo setup in development mode. Requires bootstrap files on `main`. |
 | Local `setup` or `install-demo-launcher` script | Selects the repo-setup-scripts release only; does not change the machine-setup folder you are running. |
 
-For the bootstrap, an explicit ref wins over `BOOTH_RELEASE`; with neither, the default is `main`. Only `main`, `vN`, `vX.Y.Z`, and full commit SHAs are accepted, not arbitrary branch names. Use the same ref in the raw bootstrap URL and its argument, as the [README commands](../README.md#run-setup-without-cloning) do.
+For the bootstrap, an explicit ref wins over `BOOTH_RELEASE`; with neither, the default is `main`. Only `main`, `vN`, `vX.Y.Z`, and full commit SHAs are accepted, not arbitrary branch names. Use the same ref in the raw bootstrap URL and its argument, as the [README commands](../README.md#setup-instructions) do.
 
 Without a release, a demo checkout pinned to a tag returns to its default branch. Existing branch checkouts can be retained; development mode is not a reproducible pin of both repositories. Release selection checks that the tag exists on GitHub and refuses tracked local changes. Keep untracked files safe too.
 
@@ -117,7 +129,7 @@ If `winget` is missing, update **App Installer** in Microsoft Store and reopen T
 winget show --id Git.Git -e --source winget
 ```
 
-If it reports `0x8a15000f` ("Data required by the source is missing"), repair App Installer/source access before rerunning setup. A GitHub connection timeout is a separate network failure. Neither is fixed by removing the manual Git-clone step.
+If it reports `0x8a15000f` ("Data required by the source is missing"), repair App Installer/source access before rerunning setup. A GitHub connection timeout is a separate network failure; check HTTPS connectivity before retrying.
 
 Setup explicitly selects `--source winget` to avoid unrelated Microsoft Store certificate errors such as [`microsoft/winget-cli#3109` (pinned certificate mismatch)](https://github.com/microsoft/winget-cli/issues/3109). Do not disable certificate checks or reset all sources blindly. Check App Installer updates and whether a proxy/security product intercepts HTTPS.
 
@@ -145,7 +157,9 @@ Check for the failed extension's ID in the list. Its absence does not identify w
 
 ### Existing VS Code settings
 
-**Known issue:** Windows PowerShell 5.1's `ConvertFrom-Json` rejects comments in VS Code's JSONC settings. The current theme-writing step can continue and overwrite the file. Before testing on an existing Windows machine, back up `%APPDATA%\Code\User\settings.json` and `%APPDATA%\Code - Insiders\User\settings.json`. Prefer a clean test VM. This issue is not fixed by the bootstrap or authentication changes.
+Theme updates are prepared in a temporary file beside the editor's `settings.json` and replace it only after parsing and serialization succeed. Parsing or writing failures preserve the original file and appear in the final setup failure summary. Back up existing settings before setup.
+
+The macOS JSON parser and Windows PowerShell 5.1 reject JSONC comments. If setup reports a theme parsing failure, keep your settings and use the editor's **Preferences: Color Theme** command to select the theme named in [`config.json`](../config.json). Do not remove unrelated settings or comments just to make setup pass.
 
 ### Two Demo Launchers show up
 
@@ -170,9 +184,9 @@ The first command resets iTerm2's setup marker; the second resets the Frozen fon
 
 ## Copilot booth instructions
 
-Setup manages a block in `~/.copilot/copilot-instructions.md`, or `COPILOT_HOME/copilot-instructions.md`. Its content comes from [`copilot/booth-instructions.md`](../copilot/booth-instructions.md) and steers local demos away from blocked npm/Python package downloads. Content outside the `BEGIN machine-setup booth instructions` / `END machine-setup booth instructions` markers is preserved.
+Setup manages a block in `~/.copilot/copilot-instructions.md`, or `COPILOT_HOME/copilot-instructions.md`. Its content comes from [`copilot/booth-instructions.md`](../copilot/booth-instructions.md) and requires approved package sources for local downloads, with dependency-free demos or Cloud sessions when those sources are unavailable. Content outside the `BEGIN machine-setup booth instructions` / `END machine-setup booth instructions` markers is preserved.
 
-Setup and launcher-only updates refresh the block. On a non-booth machine, remove the marked block if those network restrictions do not apply. For framework demos, use the [Cloud/Codespaces workflow](booth-playbook.md#framework-apps-need-a-cloud-session).
+Setup and launcher-only updates refresh the block. For framework demos without working approved package access, use the [Cloud/Codespaces workflow](booth-playbook.md#framework-apps-need-a-cloud-session).
 
 ## Playwright MCP server
 

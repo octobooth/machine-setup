@@ -41,6 +41,30 @@ SCRIPT
     [ -z "$(ls -A "$TMPDIR")" ]
 }
 
+@test "README command downloads and runs main even with an inherited release" {
+    export BOOTH_RELEASE=v1
+    curl() {
+        printf '%s\n' "$*" >> "$DOWNLOAD_LOG"
+        case "$*" in
+            *"https://raw.githubusercontent.com/octobooth/machine-setup/main/bootstrap.sh"*)
+                cp "$REPO_ROOT/bootstrap.sh" "${@: -1}" ;;
+            *"https://github.com/octobooth/machine-setup/archive/refs/heads/main.tar.gz"*)
+                cp "$FIXTURE" "${@: -1}" ;;
+            *) echo "Unexpected README download: $*" >&2; return 1 ;;
+        esac
+    }
+    export -f curl
+    local command
+    command=$(awk '/```bash/ { getline; print; exit }' "$REPO_ROOT/README.md")
+
+    run bash -c "$command" <<< "approved"
+
+    [ "$status" -eq 0 ]
+    [ "$(cat "$BOOTSTRAP_LOG")" = "$(printf 'release= args=\nanswer=approved')" ]
+    [ "$BOOTH_RELEASE" = v1 ]
+    [ -z "$(ls -A "$TMPDIR")" ]
+}
+
 @test "release selection pins both setup and demo scripts" {
     export BOOTH_RELEASE=v1
     run bootstrap_main --ref v2.3.4 <<< "approved"

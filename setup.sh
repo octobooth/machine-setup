@@ -39,6 +39,7 @@ should_skip_installed() {
 
 # Mutable state
 failed_items=()
+readiness_notes=()
 
 # ----------------------------------------
 # Logging Helpers
@@ -61,15 +62,21 @@ try_install() {
     fi
 }
 
-# Prints a summary of any failed installations
+# Prints a summary of any failed setup steps
 print_summary() {
     if [[ ${#failed_items[@]} -gt 0 ]]; then
         echo ""
-        log_warn "The following items failed to install:"
+        log_warn "The following setup items need attention:"
         for item in "${failed_items[@]}"; do
             log_warn "  - $item"
         done
         echo ""
+    fi
+    if [[ ${#readiness_notes[@]} -gt 0 ]]; then
+        log_warn "Readiness checks still unverified:"
+        for item in "${readiness_notes[@]}"; do
+            log_warn "  - $item"
+        done
     fi
 }
 
@@ -844,8 +851,8 @@ install_demo_launcher() {
     try_install "Demo Launcher" bash "$installer"
 }
 
-# User-level Copilot instructions that keep booth sessions away from npm and pip, which
-# booth networks block. Only the block between these markers is managed; the rest of the
+# User-level Copilot instructions for approved package sources and booth demos.
+# Only the block between these markers is managed; the rest of the
 # user's copilot-instructions.md is left alone. setup.ps1 uses the same markers.
 BOOTH_INSTRUCTIONS_SOURCE="$SCRIPT_DIR/copilot/booth-instructions.md"
 readonly BOOTH_INSTRUCTIONS_BEGIN="<!-- BEGIN machine-setup booth instructions (managed by setup; changes inside this block are replaced) -->"
@@ -1086,16 +1093,32 @@ configure_vscode_theme() {
     local settings_file="$HOME/Library/Application Support/$settings_dir/User/settings.json"
 
     log_info "Setting $name theme..."
-    mkdir -p "$(dirname "$settings_file")"
-
-    if [[ ! -f "$settings_file" ]]; then
-        echo "{\"workbench.colorTheme\": \"$VSCODE_THEME\"}" > "$settings_file"
-    else
-        local tmp_file
-        tmp_file=$(mktemp)
-        jq ". + {\"workbench.colorTheme\": \"$VSCODE_THEME\"}" "$settings_file" > "$tmp_file"
-        mv "$tmp_file" "$settings_file"
+    local tmp_file=""
+    if mkdir -p "$(dirname "$settings_file")" &&
+        tmp_file=$(mktemp "${settings_file}.XXXXXXXX"); then
+        if [[ -e "$settings_file" ]]; then
+            if ! jq -s -e --arg theme "$VSCODE_THEME" \
+                'if length == 1 and (.[0] | type) == "object" then .[0] + {"workbench.colorTheme": $theme} else error("Expected one settings object") end' \
+                "$settings_file" > "$tmp_file"; then
+                rm -f "$tmp_file"
+                failed_items+=("$name theme: settings could not be parsed; original preserved")
+                log_error "Could not parse $name settings as JSON. Existing settings preserved; set the theme in the editor for JSONC files."
+                return 1
+            fi
+        elif ! jq -n --arg theme "$VSCODE_THEME" '{"workbench.colorTheme": $theme}' > "$tmp_file"; then
+            rm -f "$tmp_file"
+            failed_items+=("$name theme: settings could not be written")
+            log_error "Could not prepare $name settings. Check available disk space and permissions."
+            return 1
+        fi
+        if mv -f "$tmp_file" "$settings_file"; then
+            return 0
+        fi
     fi
+    [[ -z "$tmp_file" ]] || rm -f "$tmp_file"
+    failed_items+=("$name theme: settings could not be written; original preserved")
+    log_error "Could not write $name settings. Existing settings preserved; check available disk space and permissions."
+    return 1
 }
 
 # Installs extensions and configures themes for all editors in config.json
@@ -1345,6 +1368,213 @@ register_mcp_servers() {
 # Main Execution
 # ----------------------------------------
 
+check_device_enrollment() {
+    local output status=0
+    output=$(LC_ALL=C profiles status -type enrollment 2>/dev/null) || status=$?
+    if [[ $status -ne 0 ]]; then
+        log_warn "MDM enrollment: unknown (profiles exited $status). Informational only; device support can verify enrollment."
+    elif printf '%s\n' "$output" | grep -Eq '^MDM enrollment: Yes([[:space:]]|$)'; then
+        log_info "MDM enrollment: enrolled; organization and package-feed access are not established by enrollment."
+    elif printf '%s\n' "$output" | grep -Eq '^MDM enrollment: No[[:space:]]*$'; then
+        log_info "MDM enrollment: not enrolled; organization and package-feed access are not established."
+    else
+        log_warn "MDM enrollment: unknown (unrecognized profiles response). Informational only; device support can verify enrollment."
+    fi
+}
+
+package_source_kind() {
+    local authority host
+    case "$1" in
+        https://*)
+            authority="${1#https://}"
+            authority="${authority%%[/?#]*}"
+            host="${authority##*@}"
+            host="${host%%:*}"
+            host=$(printf '%s' "${host%.}" | tr '[:upper:]' '[:lower:]')
+            case "$host" in
+                ""|*[!a-z0-9.-]*) echo unknown ;;
+                registry.npmjs.org|registry.npmjs.com|registry.yarnpkg.com|pypi.org|pypi.python.org|files.pythonhosted.org|api.nuget.org|www.nuget.org|nuget.org) echo public ;;
+                *) echo configured ;;
+            esac ;;
+        *) echo unknown ;;
+    esac
+}
+
+check_npm_metadata() (
+    local cache
+    cache=$(mktemp -d "${TMPDIR:-/tmp}/booth-npm-check.XXXXXXXX") || return 1
+    trap 'rm -rf -- "$cache"' EXIT
+    npm view create-vite version --json --cache "$cache" --fetch-retries=0 --fetch-timeout=15000 --update-notifier=false > /dev/null 2>&1
+)
+
+check_npm_source() {
+    local source status=0 kind
+    if ! command -v npm > /dev/null; then
+        readiness_notes+=("npm/npx: npm is unavailable; verify the Node.js installation and PATH.")
+        return
+    fi
+    source=$(npm config get registry 2>/dev/null) || status=$?
+    if [[ $status -ne 0 ]]; then
+        readiness_notes+=("npm/npx: registry inspection failed (exit $status); review npm configuration locally.")
+        return
+    fi
+    kind=$(package_source_kind "$source")
+    if [[ "$kind" == unknown ]]; then
+        readiness_notes+=("npm/npx: source could not be classified; review npm configuration locally. No settings changed.")
+        return
+    fi
+    # Keep configured credentials, proxy and CA settings; never print native output that could contain them.
+    check_npm_metadata || status=$?
+    if [[ $status -eq 0 ]]; then
+        log_success "npm/npx: create-vite metadata lookup succeeded using existing configuration and a fresh cache. No package installed."
+        return
+    fi
+    failed_items+=("readiness: npm create-vite metadata lookup failed (exit $status); check network/feed access and effective npm configuration, including environment and project overrides. No settings changed.")
+}
+
+check_pip_source() {
+    local client config status=0 key value source="" index_source="" env_source="" overrides=false kind
+    if command -v pip3 > /dev/null; then client=pip3
+    elif command -v pip > /dev/null; then client=pip
+    else
+        readiness_notes+=("pip: CLI is unavailable; verify the Python installation and PATH.")
+        return
+    fi
+    config=$("$client" config list 2>/dev/null) || status=$?
+    if [[ $status -ne 0 ]]; then
+        readiness_notes+=("pip: source inspection failed (exit $status); review pip configuration locally.")
+        return
+    fi
+    while IFS='=' read -r key value; do
+        value="${value#\'}"; value="${value%\'}"
+        case "$key" in
+            global.index-url) source="$value" ;;
+            index.index-url) index_source="$value" ;;
+            :env:.index-url) env_source="$value" ;;
+            *.extra-index-url|*.find-links|*.no-index|install.index-url)
+                [[ -n "$value" ]] && overrides=true ;;
+        esac
+    done <<< "$config"
+    source="${env_source:-${index_source:-${source:-https://pypi.org/simple/}}}"
+    if [[ "$overrides" == true ]]; then
+        readiness_notes+=("pip: additional or command-specific sources are configured; review them locally before testing package access. No settings changed.")
+        return
+    fi
+    kind=$(package_source_kind "$source")
+    if [[ "$kind" == unknown ]]; then
+        readiness_notes+=("pip: source could not be classified; review pip configuration locally. No settings changed.")
+        return
+    fi
+    "$client" --disable-pip-version-check --no-input --no-cache-dir --retries 0 --timeout 15 index versions pip > /dev/null 2>&1 || status=$?
+    if [[ $status -eq 0 ]]; then
+        log_success "pip: package-index metadata lookup succeeded using existing configuration. No package installed."
+        return
+    fi
+    failed_items+=("readiness: pip metadata lookup failed (exit $status); check network/feed access and effective pip configuration, including environment and command-specific overrides. No settings changed.")
+}
+
+check_nuget_sources() {
+    local sources status=0 state source count=0 public=false
+    if ! command -v dotnet > /dev/null; then
+        readiness_notes+=("NuGet/dotnet: dotnet CLI is unavailable; sources and authenticated restore remain unverified.")
+        return
+    fi
+    sources=$(DOTNET_NOLOGO=1 DOTNET_CLI_UI_LANGUAGE=en dotnet nuget list source --format short 2>/dev/null) || status=$?
+    if [[ $status -ne 0 ]]; then
+        readiness_notes+=("NuGet/dotnet: source inspection failed (exit $status); review NuGet.Config locally.")
+        return
+    fi
+    while read -r state source; do
+        [[ "$state" == E ]] || continue
+        count=$((count + 1))
+        [[ "$(package_source_kind "$source")" == public ]] && public=true
+    done <<< "$sources"
+    if [[ $count -eq 0 ]]; then
+        readiness_notes+=("NuGet/dotnet: no enabled source could be identified; review NuGet.Config locally.")
+    elif [[ "$public" == true ]]; then
+        readiness_notes+=("NuGet/dotnet: public-style source configured; managed proxy routing and authenticated restore are unverified. Confirm the approved route with device support.")
+    else
+        readiness_notes+=("NuGet/dotnet: $count enabled source(s) retained; verify authenticated restore with the existing credential provider in a trusted project.")
+    fi
+}
+
+check_package_sources() {
+    log_info "Checking existing package sources (source URLs and credentials are not printed)..."
+    check_npm_source
+    check_pip_source
+    check_nuget_sources
+    log_info "Package checks do not prove policy approval, archive downloads, project-specific sources or separate binary downloads. Existing logins are retained."
+}
+
+check_setup_readiness() {
+    log_info "Checking setup readiness..."
+    check_device_enrollment
+    check_package_sources
+    local item app_path account missing repo target
+    local issues=()
+
+    for item in "${brew_casks[@]}"; do
+        app_path=$(cask_app_path "$item")
+        if ! { [[ -n "$app_path" && -d "$app_path" ]] || brew list --cask "$item" > /dev/null; }; then
+            issues+=("Installed package: $item")
+        fi
+    done
+    for item in "${brew_formulas[@]}"; do
+        if ! brew list --formula "$item" > /dev/null; then
+            issues+=("Installed package: $item")
+        fi
+    done
+    if ! find_node_bin > /dev/null; then
+        issues+=("Node.js executable")
+    fi
+    if [[ ${#issues[@]} -eq 0 ]]; then
+        log_success "Configured packages and Node.js verified"
+    fi
+
+    if command -v gh > /dev/null && account=$(gh_stored_auth api user --jq .login) && [[ -n "$account" ]]; then
+        log_success "GitHub CLI account: $account (confirm this machine's booth account)"
+        missing=$(gh_missing_scopes | paste -sd, -)
+        if [[ -n "$missing" ]]; then
+            issues+=("GitHub CLI scopes: $missing")
+        else
+            log_success "GitHub CLI has the required scopes"
+        fi
+        while IFS= read -r repo; do
+            if gh_stored_auth api "repos/$repo" > /dev/null; then
+                log_success "Repository access: $repo"
+            else
+                issues+=("Repository access: $repo")
+            fi
+        done < <(jq -r '.shared.repos_to_clone[]' "$CONFIG_FILE")
+    else
+        issues+=("GitHub CLI account and repository access (check gh auth status --active -h github.com)")
+    fi
+
+    while IFS= read -r repo; do
+        target="$HOME/repos/${repo##*/}"
+        if [[ -e "$target/.git" ]]; then
+            log_success "Local checkout: $repo"
+        else
+            issues+=("Local checkout: $repo ($target)")
+        fi
+    done < <(jq -r '.shared.repos_to_clone[]' "$CONFIG_FILE")
+
+    for target in "${COPILOT_HOME:-$HOME/.copilot}/extensions/demo-launcher/extension.mjs" \
+        "$(demo_launcher_repo_dir)/.github/extensions/demo-launcher/extension.mjs"; do
+        if [[ -f "$target" && -s "$target" ]]; then
+            log_success "Demo Launcher file: $target"
+        else
+            issues+=("Demo Launcher file: $target")
+        fi
+    done
+
+    for item in "${issues[@]}"; do
+        failed_items+=("readiness: $item")
+        log_error "Readiness check failed: $item"
+    done
+    log_info "Manual checks: confirm the booth account in each app and browser, restart Copilot, and run a real demo."
+}
+
 main() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -1393,13 +1623,19 @@ main() {
     install_playwright_mcp_bundle
     register_mcp_servers
 
+    check_setup_readiness
+
     # Print summary and finish
     print_summary
     if [[ ${#failed_items[@]} -gt 0 ]]; then
         log_warn "Script completed with ${#failed_items[@]} failure(s)"
         exit 1
     fi
-    log_success "Script completed successfully"
+    if [[ ${#readiness_notes[@]} -gt 0 ]]; then
+        log_warn "Setup completed; review the unverified readiness checks above."
+    else
+        log_success "Script completed successfully"
+    fi
 }
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then

@@ -42,6 +42,7 @@ param([string]$Ref)
 
 $script:configPath = Join-Path $PSScriptRoot "config.json"
 $script:failedItems = @()
+$script:readinessNotes = @()
 $script:adminSkippedItems = @()
 $script:IsAdmin = $null # Set by Test-Prerequisites, or on first use by an admin-only step
 $script:ForceReinstall = $env:FORCE_REINSTALL -eq "true"
@@ -147,7 +148,7 @@ function Get-NativeCommandOutput {
 function Write-Summary {
     if ($script:failedItems.Count -gt 0) {
         Write-Host ""
-        Write-Warn "The following items failed to install:"
+        Write-Warn "The following setup items need attention:"
         foreach ($item in $script:failedItems) {
             Write-Warn "  - $item"
         }
@@ -161,6 +162,12 @@ function Write-Summary {
         }
         Write-Warn "To finish them, open Terminal (Admin) and run .\setup.ps1 again."
         Write-Host ""
+    }
+    if ($script:readinessNotes.Count -gt 0) {
+        Write-Warn "Readiness checks still unverified:"
+        foreach ($item in $script:readinessNotes) {
+            Write-Warn "  - $item"
+        }
     }
 }
 
@@ -234,7 +241,7 @@ function Test-WingetPackageInstalled {
     param([string]$PackageId)
 
     try {
-        winget list --id $PackageId -e --source winget --accept-source-agreements 2>&1 | Out-Null
+        Invoke-NativeCommand winget list --id $PackageId -e --source winget --accept-source-agreements | Out-Null
         $exitCode = $LASTEXITCODE
     }
     catch {
@@ -561,15 +568,33 @@ function Set-EditorTheme {
 
     Write-Info "Setting $Name theme..."
     $settingsPath = "$env:APPDATA\$SettingsDir\User\settings.json"
-
-    if (-not (Test-Path $settingsPath)) {
-        New-Item -Path (Split-Path $settingsPath) -ItemType Directory -Force | Out-Null
-        "{}" | Out-File -FilePath $settingsPath -Encoding UTF8
+    $temporaryPath = "$settingsPath.$([guid]::NewGuid().ToString()).tmp"
+    try {
+        New-Item -Path (Split-Path $settingsPath) -ItemType Directory -Force -ErrorAction Stop | Out-Null
+        $exists = Test-Path -LiteralPath $settingsPath
+        $settings = [pscustomobject]@{}
+        if ($exists) {
+            $settings = Get-Content -Raw -LiteralPath $settingsPath -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+            if ($settings -isnot [pscustomobject]) { throw 'Expected a settings object.' }
+        }
+        $settings | Add-Member -NotePropertyName "workbench.colorTheme" -NotePropertyValue $config.shared.vscode_theme -Force -ErrorAction Stop
+        $json = $settings | ConvertTo-Json -Depth 100 -ErrorAction Stop -WarningAction Stop
+        [IO.File]::WriteAllText($temporaryPath, $json, [Text.UTF8Encoding]::new($true))
+        if ($exists) {
+            [IO.File]::Replace($temporaryPath, $settingsPath, $null)
+        } else {
+            [IO.File]::Move($temporaryPath, $settingsPath)
+        }
     }
-
-    $settings = Get-Content -Raw -Path $settingsPath | ConvertFrom-Json
-    $settings | Add-Member -NotePropertyName "workbench.colorTheme" -NotePropertyValue $config.shared.vscode_theme -Force
-    $settings | ConvertTo-Json -Depth 10 | Out-File -FilePath $settingsPath -Force -Encoding UTF8
+    catch {
+        $script:failedItems += "$Name theme: settings could not be updated; original preserved"
+        Write-Err "Could not update $Name settings. Existing settings preserved; check JSON syntax, disk space and permissions, or set the theme in the editor."
+    }
+    finally {
+        if (Test-Path -LiteralPath $temporaryPath) {
+            Remove-Item -LiteralPath $temporaryPath -Force -ErrorAction Stop
+        }
+    }
 }
 
 function Initialize-Editors {
@@ -588,7 +613,11 @@ function Invoke-GHStoredAuth {
     $saved = @{ GH_TOKEN = $env:GH_TOKEN; GITHUB_TOKEN = $env:GITHUB_TOKEN }
     Remove-Item Env:\GH_TOKEN, Env:\GITHUB_TOKEN -ErrorAction SilentlyContinue
     try {
-        gh @args
+        if ($args[0] -eq 'auth' -and $args[1] -in @('login', 'refresh')) {
+            gh @args
+        } else {
+            Invoke-NativeCommand gh @args
+        }
     }
     finally {
         foreach ($name in $saved.Keys) {
@@ -1159,8 +1188,8 @@ function Add-PlaywrightMcpServer {
     Write-Success "Registered MCP server: playwright (prebuilt)"
 }
 
-# User-level Copilot instructions that keep booth sessions away from npm and pip, which
-# booth networks block. Only the block between these markers is managed; the rest of the
+# User-level Copilot instructions for approved package sources and booth demos.
+# Only the block between these markers is managed; the rest of the
 # user's copilot-instructions.md is left alone. setup.sh uses the same markers.
 $script:BoothInstructionsSource = Join-Path (Join-Path $PSScriptRoot "copilot") "booth-instructions.md"
 $script:BoothInstructionsBegin = '<!-- BEGIN machine-setup booth instructions (managed by setup; changes inside this block are replaced) -->'
@@ -1311,6 +1340,263 @@ function Register-MCPServers {
 # Main Execution
 # ----------------------------------------
 
+function Get-MdmEnrollment {
+    if (-not ('Booth.DeviceManagement' -as [type])) {
+        Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+namespace Booth {
+    public static class DeviceManagement {
+        [DllImport("MDMRegistration.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
+        public static extern int IsDeviceRegisteredWithManagement(
+            [MarshalAs(UnmanagedType.Bool)] out bool enrolled, uint length, IntPtr upn);
+    }
+}
+'@ -ErrorAction Stop
+    }
+    $enrolled = $false
+    $result = [Booth.DeviceManagement]::IsDeviceRegisteredWithManagement([ref]$enrolled, 0, [IntPtr]::Zero)
+    if ($result -ne 0) {
+        throw "MDM enrollment query failed (HRESULT $result)."
+    }
+    return $enrolled
+}
+
+function Test-DeviceEnrollment {
+    try {
+        if (Get-MdmEnrollment) {
+            Write-Info "MDM enrollment: enrolled; organization and package-feed access are not established by enrollment."
+        } else {
+            Write-Info "MDM enrollment: not enrolled; organization and package-feed access are not established."
+        }
+    }
+    catch {
+        Write-Warn "MDM enrollment: unknown ($($_.Exception.Message)). Informational only; device support can verify enrollment."
+    }
+}
+
+function Get-PackageSourceKind {
+    param([string]$Source)
+    $uri = $null
+    if (-not [Uri]::TryCreate($Source, [UriKind]::Absolute, [ref]$uri) -or $uri.Scheme -ne 'https') {
+        return 'unknown'
+    }
+    if ($uri.DnsSafeHost.TrimEnd('.') -in @('registry.npmjs.org', 'registry.npmjs.com', 'registry.yarnpkg.com', 'pypi.org', 'pypi.python.org', 'files.pythonhosted.org', 'api.nuget.org', 'www.nuget.org', 'nuget.org')) {
+        return 'public'
+    }
+    return 'configured'
+}
+
+function Invoke-NpmMetadataCheck {
+    $cache = Join-Path ([IO.Path]::GetTempPath()) ("booth-npm-check-" + [guid]::NewGuid().ToString())
+    New-Item -ItemType Directory -Path $cache -ErrorAction Stop | Out-Null
+    try {
+        $arguments = @('npm', 'view', 'create-vite', 'version', '--json', '--cache', $cache, '--fetch-retries=0', '--fetch-timeout=15000', '--update-notifier=false')
+        Invoke-NativeCommand @arguments | Out-Null
+        return $LASTEXITCODE
+    }
+    finally {
+        Remove-Item -LiteralPath $cache -Recurse -Force -ErrorAction Stop
+    }
+}
+
+function Test-NpmSource {
+    $VerbosePreference = 'SilentlyContinue'
+    if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
+        $script:readinessNotes += 'npm/npx: npm is unavailable; verify the Node.js installation and PATH.'
+        return
+    }
+    try {
+        $source = (Get-NativeCommandOutput npm config get registry | Out-String).Trim()
+        $status = $LASTEXITCODE
+        if ($status -ne 0) {
+            $script:readinessNotes += "npm/npx: registry inspection failed (exit $status); review npm configuration locally."
+            return
+        }
+        $kind = Get-PackageSourceKind $source
+        if ($kind -eq 'unknown') {
+            $script:readinessNotes += 'npm/npx: source could not be classified; review npm configuration locally. No settings changed.'
+            return
+        }
+        $status = Invoke-NpmMetadataCheck
+        if ($status -eq 0) {
+            Write-Success 'npm/npx: create-vite metadata lookup succeeded using existing configuration and a fresh cache. No package installed.'
+            return
+        }
+        $script:failedItems += "readiness: npm create-vite metadata lookup failed (exit $status); check network/feed access and effective npm configuration, including environment and project overrides. No settings changed."
+    }
+    catch {
+        $script:readinessNotes += 'npm/npx: command could not be completed; review npm installation and configuration locally. Native diagnostics withheld to protect credentials.'
+    }
+}
+
+function Test-PipSource {
+    $VerbosePreference = 'SilentlyContinue'
+    $client = Get-Command pip3, pip -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $client) {
+        $script:readinessNotes += 'pip: CLI is unavailable; verify the Python installation and PATH.'
+        return
+    }
+    try {
+        $settings = @(Get-NativeCommandOutput $client.Name config list)
+        $status = $LASTEXITCODE
+        if ($status -ne 0) {
+            $script:readinessNotes += "pip: source inspection failed (exit $status); review pip configuration locally."
+            return
+        }
+        $values = @{}
+        foreach ($line in $settings) {
+            if ($line -match '^([^=]+)=(.*)$') {
+                $values[$Matches[1]] = $Matches[2].Trim("'")
+            }
+        }
+        foreach ($key in $values.Keys) {
+            if ($key -match '(\.(extra-index-url|find-links|no-index)$|^install\.index-url$)' -and $values[$key]) {
+                $script:readinessNotes += 'pip: additional or command-specific sources are configured; review them locally before testing package access. No settings changed.'
+                return
+            }
+        }
+        $source = 'https://pypi.org/simple/'
+        foreach ($key in @('global.index-url', 'index.index-url', ':env:.index-url')) {
+            if ($values[$key]) { $source = $values[$key] }
+        }
+        $kind = Get-PackageSourceKind $source
+        if ($kind -eq 'unknown') {
+            $script:readinessNotes += 'pip: source could not be classified; review pip configuration locally. No settings changed.'
+            return
+        }
+        Invoke-NativeCommand $client.Name --disable-pip-version-check --no-input --no-cache-dir --retries 0 --timeout 15 index versions pip | Out-Null
+        $status = $LASTEXITCODE
+        if ($status -eq 0) {
+            Write-Success 'pip: package-index metadata lookup succeeded using existing configuration. No package installed.'
+            return
+        }
+        $script:failedItems += "readiness: pip metadata lookup failed (exit $status); check network/feed access and effective pip configuration, including environment and command-specific overrides. No settings changed."
+    }
+    catch {
+        $script:readinessNotes += 'pip: command could not be completed; review pip installation and configuration locally. Native diagnostics withheld to protect credentials.'
+    }
+}
+
+function Test-NuGetSources {
+    $VerbosePreference = 'SilentlyContinue'
+    if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
+        $script:readinessNotes += 'NuGet/dotnet: dotnet CLI is unavailable; sources and authenticated restore remain unverified.'
+        return
+    }
+    $savedLanguage = $env:DOTNET_CLI_UI_LANGUAGE
+    $savedLogo = $env:DOTNET_NOLOGO
+    try {
+        $env:DOTNET_CLI_UI_LANGUAGE = 'en'
+        $env:DOTNET_NOLOGO = '1'
+        $sources = @(Get-NativeCommandOutput dotnet nuget list source --format short)
+        $status = $LASTEXITCODE
+        if ($status -ne 0) {
+            $script:readinessNotes += "NuGet/dotnet: source inspection failed (exit $status); review NuGet.Config locally."
+            return
+        }
+        $count = 0
+        $publicSource = $false
+        foreach ($line in $sources) {
+            if ($line -match '^\s*E\s+(.+)$') {
+                $count++
+                if ((Get-PackageSourceKind $Matches[1]) -eq 'public') { $publicSource = $true }
+            }
+        }
+        if ($count -eq 0) {
+            $script:readinessNotes += 'NuGet/dotnet: no enabled source could be identified; review NuGet.Config locally.'
+        } elseif ($publicSource) {
+            $script:readinessNotes += 'NuGet/dotnet: public-style source configured; managed proxy routing and authenticated restore are unverified. Confirm the approved route with device support.'
+        } else {
+            $script:readinessNotes += "NuGet/dotnet: $count enabled source(s) retained; verify authenticated restore with the existing credential provider in a trusted project."
+        }
+    }
+    catch {
+        $script:readinessNotes += 'NuGet/dotnet: command could not be completed; review the SDK installation and NuGet.Config locally. Native diagnostics withheld to protect credentials.'
+    }
+    finally {
+        $env:DOTNET_CLI_UI_LANGUAGE = $savedLanguage
+        $env:DOTNET_NOLOGO = $savedLogo
+    }
+}
+
+function Test-PackageSources {
+    Write-Info 'Checking existing package sources (source URLs and credentials are not printed)...'
+    Test-NpmSource
+    Test-PipSource
+    Test-NuGetSources
+    Write-Info 'Package checks do not prove policy approval, archive downloads, project-specific sources or separate binary downloads. Existing logins are retained.'
+}
+
+function Test-SetupReadiness {
+    Write-Info "Checking setup readiness..."
+    Test-DeviceEnrollment
+    Test-PackageSources
+    $issues = @()
+
+    foreach ($package in $config.windows.packages) {
+        if ((Test-WingetPackageInstalled -PackageId $package) -ne $true) {
+            $issues += "Installed package: $package (missing or winget could not verify it)"
+        }
+    }
+    if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
+        $issues += "Node.js executable"
+    }
+    if ($issues.Count -eq 0) {
+        Write-Success "Configured packages and Node.js verified"
+    }
+
+    if (Get-Command gh -ErrorAction SilentlyContinue) {
+        $account = Invoke-GHStoredAuth api user --jq .login
+        if ($LASTEXITCODE -eq 0 -and $account) {
+            Write-Success "GitHub CLI account: $account (confirm this machine's booth account)"
+            $missing = @(Get-GHMissingScope)
+            if ($missing.Count -gt 0) {
+                $issues += "GitHub CLI scopes: $($missing -join ',')"
+            } else {
+                Write-Success "GitHub CLI has the required scopes"
+            }
+            foreach ($repo in $config.shared.repos_to_clone) {
+                $result = Invoke-GHStoredAuth api "repos/$repo"
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Success "Repository access: $repo"
+                } else {
+                    $issues += "Repository access: $repo"
+                    if ($result) { Write-Warn ($result | Out-String).TrimEnd() }
+                }
+            }
+        } else {
+            $issues += "GitHub CLI account and repository access (check gh auth status --active -h github.com)"
+            if ($account) { Write-Warn ($account | Out-String).TrimEnd() }
+        }
+    } else {
+        $issues += "GitHub CLI account and repository access (check gh auth status --active -h github.com)"
+    }
+
+    foreach ($repo in $config.shared.repos_to_clone) {
+        $target = Join-Path (Join-Path $env:USERPROFILE 'repos') ($repo -split '/')[-1]
+        if (Test-Path -LiteralPath (Join-Path $target '.git')) {
+            Write-Success "Local checkout: $repo"
+        } else {
+            $issues += "Local checkout: $repo ($target)"
+        }
+    }
+    $launcher = Join-Path (Get-DemoLauncherRepoDir) '.github\extensions\demo-launcher\extension.mjs'
+    foreach ($target in @((Get-DemoLauncherLoaderPath), $launcher)) {
+        if ((Test-Path -LiteralPath $target -PathType Leaf) -and (Get-Item -LiteralPath $target).Length -gt 0) {
+            Write-Success "Demo Launcher file: $target"
+        } else {
+            $issues += "Demo Launcher file: $target"
+        }
+    }
+
+    foreach ($item in $issues) {
+        $script:failedItems += "readiness: $item"
+        Write-Err "Readiness check failed: $item"
+    }
+    Write-Info "Manual checks: confirm the booth account in each app and browser, restart Copilot, and run a real demo."
+}
+
 function Invoke-Main {
     param([string]$Ref)
 
@@ -1378,6 +1664,8 @@ function Invoke-Main {
     Install-PlaywrightMcpBundle
     Register-MCPServers
 
+    Test-SetupReadiness
+
     # Print summary and finish
     Write-Summary
     if ($script:failedItems.Count -gt 0) {
@@ -1388,7 +1676,11 @@ function Invoke-Main {
         Write-Warn "Script completed, but $($script:adminSkippedItems.Count) step(s) need Administrator (see above)"
         return
     }
-    Write-Success "Script completed successfully"
+    if ($script:readinessNotes.Count -gt 0) {
+        Write-Warn "Setup completed; review the unverified readiness checks above."
+    } else {
+        Write-Success "Script completed successfully"
+    }
 }
 
 if ($MyInvocation.InvocationName -ne ".") {

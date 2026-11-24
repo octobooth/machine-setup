@@ -8,8 +8,8 @@ Booth machine setup for GitHub event booths. It's public and MIT-licensed.
 
 - **macOS:** [`setup.sh`](setup.sh), [`install-demo-launcher.sh`](install-demo-launcher.sh) (also works on Linux), and iTerm2 color schemes in [`iterm2/`](iterm2/).
 - **Windows:** [`setup.ps1`](setup.ps1), [`install-demo-launcher.ps1`](install-demo-launcher.ps1), and [`windows/demo-launcher-loader.mjs`](windows/demo-launcher-loader.mjs) (a fallback copy of repo-setup-scripts' loader; keep it in sync).
-- **Clone-free setup:** [`bootstrap.sh`](bootstrap.sh) and [`bootstrap.ps1`](bootstrap.ps1) download the full archive before running setup, preserving terminal stdin for prompts. See [Run setup without cloning](README.md#run-setup-without-cloning).
-- **[`mcp-bundle/`](mcp-bundle/package.json)** pins the prebuilt Playwright MCP server. The [Playwright MCP bundle workflow](.github/workflows/playwright-mcp-bundle.yml) publishes it as the `playwright-mcp-v<version>` release, and setup and `install-demo-launcher` install it from there, never with `npx` (booth machines can't reach npm). See [Playwright MCP server](README.md#playwright-mcp-server).
+- **Clone-free setup:** [`bootstrap.sh`](bootstrap.sh) and [`bootstrap.ps1`](bootstrap.ps1) download the full archive before running setup, preserving terminal stdin for prompts. See [Setup instructions](README.md#setup-instructions).
+- **[`mcp-bundle/`](mcp-bundle/package.json)** pins the prebuilt Playwright MCP server. The [Playwright MCP bundle workflow](.github/workflows/playwright-mcp-bundle.yml) publishes it as the `playwright-mcp-v<version>` release, and setup and `install-demo-launcher` install it from there, never with `npx` (booth machines can't reach npm). See [Playwright MCP server](docs/setup-reference.md#playwright-mcp-server).
 - **[`config.json`](config.json)** drives both: packages, editors, VS Code extensions, `gh` extensions and scopes, MCP servers, Dock/taskbar apps, and `repos_to_clone`.
 - Setup clones the demo repos to `~/repos` (`$HOME\repos` on Windows) and installs the Demo Launcher loader for [`octobooth/repo-setup-scripts`](https://github.com/octobooth/repo-setup-scripts), which holds the demos and the launcher itself.
 
@@ -44,17 +44,18 @@ Follow these when changing the scripts, and check for them when reviewing a pull
 - **Testable scripts.** The scripts guard their main entry point so tests can source or dot-source them without installing anything. Keep that guard.
 - **Tests and CI.** Update the bats tests (`tests/bash`) and Pester tests (`tests/powershell`) with behavior changes, and keep [CI](.github/workflows/ci.yml) green, including the Windows PowerShell 5.1 job. When adding a `config.json` key, add it to the CI shape check.
 - **Docs.** Update the README and booth playbook in the same PR as the behavior change. Write for booth staff: short steps with the exact commands to type.
+- **README commands.** Both copy/paste setup commands must download and run `main`, never a fixed commit or release. Keep them consistent with the scripts; bootstrap tests execute the documented commands with stubbed downloads.
 - **Tags.** Never move or delete a pushed `vX.Y.Z` tag; only the major tag moves (see [Branches and releases](#branches-and-releases)).
 
 ## Accounts
 
 - Booth machines use the booth account (`octobooth-N`) for the GitHub Copilot app, the browser, VS Code, VS Code Insiders, and `gh`.
-- The `gh` scopes the demos need are in `config.json` `shared.gh_auth_scopes` (see [GitHub CLI login](README.md#github-cli-login)). Unset `GH_TOKEN`/`GITHUB_TOKEN` on booth machines.
+- The `gh` scopes the demos need are in `config.json` `shared.gh_auth_scopes` (see [GitHub CLI login](docs/setup-reference.md#github-cli-login)). Unset `GH_TOKEN`/`GITHUB_TOKEN` on booth machines.
 - Never use personal or staff accounts on booth machines.
 
 ## Demo Launcher gotchas
 
-- Booth machines install the launcher with this repo's scripts, not the URL installer in the Copilot app. Never both: that gives two "Demo Launcher" canvases ([Two Demo Launchers show up](README.md#two-demo-launchers-show-up)).
+- Booth machines install the launcher with this repo's scripts, not the URL installer in the Copilot app. Never both: that gives two "Demo Launcher" canvases ([Two Demo Launchers show up](docs/setup-reference.md#two-demo-launchers-show-up)).
 - A pinned repo-setup-scripts session must use **Current checkout**, not **New worktree**, or it keeps loading the old launcher.
 - Rerunning `setup.sh` without a release keeps an existing loader (unless `FORCE_REINSTALL=true`). Use `install-demo-launcher.sh` or `install-demo-launcher.ps1` to repair or update it.
 - Fully quit and reopen the Copilot app to load a new launcher. On Windows, quit it from the system tray icon; closing the window isn't enough.

@@ -16,12 +16,13 @@ expected_block() {
     echo "$BOOTH_INSTRUCTIONS_END"
 }
 
-@test "booth instructions source steers away from npm and pip" {
+@test "booth instructions require approved package sources and retain cloud alternatives" {
     run cat "$BOOTH_INSTRUCTIONS_SOURCE"
     [[ "$output" == *"npm install"* ]]
     [[ "$output" == *"pip install"* ]]
     [[ "$output" == *"index.html"* ]]
     [[ "$output" == *"Cloud session"* ]]
+    [[ "$output" == *"Never switch to a public registry after a failure"* ]]
 }
 
 @test "install_booth_instructions creates the file and its folder" {

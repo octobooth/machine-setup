@@ -54,6 +54,31 @@ Describe 'bootstrap.ps1' {
         $script:setupArgs[0] | Should -Be '-NoProfile'
     }
 
+    It 'README command downloads and invokes main even with an inherited release' {
+        $env:BOOTH_RELEASE = 'v1'
+        $script:savedReleaseForCheck = 'v1'
+        $script:readmeInstaller = $null
+        Mock Invoke-WebRequest {
+            $script:readmeInstaller = $OutFile
+            Set-Content -LiteralPath $OutFile -Value '# mock bootstrap'
+        }
+        Mock powershell.exe {
+            $script:setupArgs = @($args)
+            $global:LASTEXITCODE = 0
+        }
+        $readme = Get-Content -Raw -LiteralPath (Join-Path (Get-Location) 'README.md')
+        $command = [regex]::Match($readme, '(?ms)^   ```powershell\r?\n(.*?)^   ```').Groups[1].Value
+
+        & ([scriptblock]::Create($command))
+
+        Should -Invoke Invoke-WebRequest -Times 1 -Exactly -ParameterFilter {
+            $UseBasicParsing -and $Uri -eq 'https://raw.githubusercontent.com/octobooth/machine-setup/main/bootstrap.ps1'
+        }
+        $script:setupArgs[-2] | Should -Be '-Ref'
+        $script:setupArgs[-1] | Should -Be 'main'
+        Test-Path -LiteralPath $script:readmeInstaller | Should -BeFalse
+    }
+
     It 'pins both repositories to the explicit release' {
         $env:BOOTH_RELEASE = 'v1'
         $script:savedReleaseForCheck = 'v1'
