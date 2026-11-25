@@ -272,9 +272,12 @@ Describe 'setup.ps1' {
 
         Set-EditorTheme -Name 'VS Code' -SettingsDir 'Code'
 
+        $script:failedItems | Should -BeNullOrEmpty
+        Should -Invoke Write-Err -Times 0
         $settings = Get-Content -Raw -Path $settingsPath | ConvertFrom-Json
         $settings.'workbench.colorTheme' | Should -Be 'Light 2026'
         $settings.'editor.fontSize' | Should -Be 14
+        @(Get-ChildItem -LiteralPath $settingsDir -Filter '*.tmp').Count | Should -Be 0
     }
 
     It 'Set-EditorTheme preserves malformed settings and records a failure' {

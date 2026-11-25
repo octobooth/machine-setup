@@ -581,7 +581,8 @@ function Set-EditorTheme {
         $json = $settings | ConvertTo-Json -Depth 100 -ErrorAction Stop -WarningAction Stop
         [IO.File]::WriteAllText($temporaryPath, $json, [Text.UTF8Encoding]::new($true))
         if ($exists) {
-            [IO.File]::Replace($temporaryPath, $settingsPath, $null)
+            # PowerShell converts $null to an empty string for .NET string parameters.
+            [IO.File]::Replace($temporaryPath, $settingsPath, [System.Management.Automation.Language.NullString]::Value)
         } else {
             [IO.File]::Move($temporaryPath, $settingsPath)
         }
