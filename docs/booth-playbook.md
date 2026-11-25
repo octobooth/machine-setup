@@ -1,31 +1,24 @@
 # Booth playbook
 
-_Last updated by [@filmgirl](https://github.com/filmgirl) on November 8, 2026_
-
 A step-by-step walkthrough for running a booth: set up each booth machine before the event, run demos on booth day, then clean up and reset the booth accounts afterwards. You can read this without logging in to anything. Each step lists the access and tools it needs.
 
-[Machine setup reference (README)](../README.md) · [Demo Launcher](../README.md#demo-launcher) · [Troubleshooting](#troubleshooting)
-
-> [!WARNING]
-> **Do not cut over booth machines yet.** The copied destination `v1` / `v1.2.0` tags are not migration-ready, and the required Playwright archive and checksum are not published in [destination releases](https://github.com/octobooth/machine-setup/releases). The setup and update commands below require an approved, tested destination release. Keep existing installations on their approved source release until then; use [Upgrade an existing machine to octobooth](../README.md#upgrade-an-existing-machine-to-octobooth) when cutover is approved.
->
-> Destination repository content is copied, but Actions remain disabled and ChatOps App provisioning and booth feature access are unverified. Security demos still require validated destination workflows and features; open-secret-alert examples remain unresolved. Do not bypass repository protection or enable automation as part of setup.
+[Machine setup reference (README)](../README.md) · [Demo Launcher](setup-reference.md#demo-launcher) · [Troubleshooting](#troubleshooting)
 
 ## At a glance
 
 1. **[Before the event](#part-1-before-the-event-set-up-each-booth-machine)**: on each machine, sign in as its booth account, run setup, check the Demo Launcher opens, add browser bookmarks, sign in to VS Code and VS Code Insiders, and [check the machine is ready](#check-that-the-machine-is-ready).
-2. **[Each booth day](#before-each-booth-day-update-the-machine)**: after destination release approval, update both script repositories to that tested release and refresh the Demo Launcher, then [create the security demos ahead of time](#create-the-security-demos-ahead-of-time) once on one machine, and bookmark their repos on every machine.
+2. **[Each booth day](#before-each-booth-day-update-the-machine)**: use matching releases of both script repositories and refresh the Demo Launcher, then [create the security demos ahead of time](#create-the-security-demos-ahead-of-time) once on one machine and bookmark their repos on every machine.
 3. **[During the event](#part-2-during-the-event-run-demos)**: open the pinned apps and the Demo Launcher, and create demos.
-4. **[After the event](#part-3-after-the-event-clean-up-and-reset)**: delete the demo repos in the booth accounts and the org, clear the booth machines' demo folders, and have an org admin reset the booth accounts.
+4. **[After the event](#part-3-after-the-event-clean-up-and-reset)**: retain demo environments for one week after the event ends, document the DevRel review, then delete only approved environments and reset eligible accounts.
 
-Any time, [Clean up demo repos](#clean-up-demo-repos) covers the everyday cleanups: the Demo Launcher, the weekly cleanup in each booth account, and the org's nightly cleanup and `/cleanup` command. [How to clean all Octobooth repos](#how-to-clean-all-octobooth-repos) is for org admins.
+[Clean up demo repos](#clean-up-demo-repos) covers reviewed deletion and the limits of age-based cleanup tools. [How to clean all Octobooth repos](#how-to-clean-all-octobooth-repos) is for org admins; it does not bypass retention or review.
 
 > [!IMPORTANT]
-> **Booth machines can't download npm or Python packages.** Booth networks block `registry.npmjs.org` and `files.pythonhosted.org`, so `npm install`, `npx`, scaffolders like `npm create vite`, and `pip install` fail or hang in local Copilot sessions. (`pypi.org` loads, but package downloads don't.)
+> **Use approved package sources.** Setup checks existing npm and pip routes without changing configuration. Review the [package-source results](setup-reference.md#managed-devices-and-package-feeds); metadata success alone does not verify package downloads or a demo.
 >
-> - Setup adds [Copilot booth instructions](../README.md#copilot-booth-instructions) that steer local sessions to plain HTML/CSS/JavaScript, Node.js built-ins, or the Python standard library.
-> - For anything that needs packages (React, Next.js, Vite, Flask, etc.), use a **Cloud** session in a GitHub repo, such as one made with the Demo Launcher's **GitHub Copilot Fusion: Blank Prompt** demo, or a Codespace. See [Framework apps need a Cloud session](#framework-apps-need-a-cloud-session).
-> - Setup doesn't register any MCP server that runs through `npx`. See [Copilot sessions stuck at "busy"](../README.md#copilot-sessions-stuck-at-busy).
+> - Setup adds [Copilot booth instructions](setup-reference.md#copilot-booth-instructions) that keep working feed settings and never switch to public registries after a failure.
+> - If approved local package access is unavailable, use plain HTML/CSS/JavaScript, Node.js built-ins, the Python standard library, or a **Cloud** session/Codespace. See [Framework apps need a Cloud session](#framework-apps-need-a-cloud-session).
+> - Setup doesn't register any MCP server that runs through `npx`. See [Copilot sessions stuck at "busy"](setup-reference.md#copilot-sessions-stuck-at-busy).
 
 ## Where things live
 
@@ -40,15 +33,31 @@ Any time, [Clean up demo repos](#clean-up-demo-repos) covers the everyday cleanu
 
 ## Part 1: Before the event: set up each booth machine
 
-Do this once on every booth machine. The steps below are the same as the [Setup Instructions](../README.md#setup-instructions) in the README, which also has extra detail on re-running setup and on each setting.
+Start with the [short installation guide](../README.md#setup-instructions), then complete the [readiness checklist](#check-that-the-machine-is-ready). The walkthroughs below are an alternative for staff maintaining a local machine-setup clone.
 
 ### What you need
 
-- **One booth account per machine.** Pick the account for this machine (for example `octobooth-1`) and have its password ready. Use it everywhere below, never your personal account. Verify its access to the internal templates, permission to create repositories in [octobooth](https://github.com/octobooth), Copilot features, Codespaces and billing, and required security features. These permissions are not established by copying the repositories; see [GitHub CLI login and access prerequisites](../README.md#github-cli-login).
+- **One booth account per machine.** Pick the account for this machine (for example `octobooth-1`) and have its password ready. Use it everywhere below, never your personal account. Verify its access to the internal templates, permission to create repositories in [octobooth](https://github.com/octobooth), Copilot features, Codespaces and billing, and required security features. These permissions are not established by copying the repositories; see [GitHub CLI login and access prerequisites](setup-reference.md#github-cli-login).
 - **An administrator account on the machine.** Setup installs apps and asks for the password.
 - **An internet connection.** Setup downloads a lot, so allow time.
 
-Then follow the steps for [macOS](#set-up-a-mac) or [Windows](#set-up-a-windows-machine).
+Setup reports device enrollment for information only. An **unknown** result does not block setup. Review operational package-source results instead; see [managed devices and package feeds](setup-reference.md#managed-devices-and-package-feeds).
+
+Use the [setup command](#run-the-setup-command), or follow the local-checkout steps for [macOS](#set-up-a-mac) or [Windows](#set-up-a-windows-machine).
+
+<a id="set-up-without-cloning"></a>
+
+### Run the setup command
+
+Use the [copy/paste setup commands](../README.md#setup-instructions). For a specific release, see [release installation](setup-reference.md#using-a-release).
+
+For testing a published branch revision, use a local bootstrap with its full commit SHA; see [testing a revision](development.md#releases). Keep the README commands on `main`. A machine-setup SHA does not pin the separate demo repository to that SHA.
+
+On macOS, quit iTerm2 and paste the Bash command in Terminal. On Windows, open **Windows PowerShell** as administrator, [check winget](#2-make-sure-winget-works), and paste the PowerShell command. If `gh` is already installed, check `gh auth status --active -h github.com` and switch to this machine's booth account before starting.
+
+Answer the normal installation and booth-account sign-in prompts. Download failures stop without running setup; connectivity and winget source problems still need to be fixed separately. Temporary setup files are removed afterward, so rerun the same bootstrap block to retry rather than looking for a local machine-setup checkout.
+
+When setup finishes, continue at [Set up the Demo Launcher on macOS](#3-set-up-the-demo-launcher) or [After setup on Windows](#6-after-setup), then complete bookmarks, editor sign-in, and readiness checks. For later commands that use local scripts, download a fresh archive or use the clone-based instructions below.
 
 ### Set up a Mac
 
@@ -66,14 +75,14 @@ Then follow the steps for [macOS](#set-up-a-mac) or [Windows](#set-up-a-windows-
    git clone https://github.com/octobooth/machine-setup.git ~/repos/machine-setup
    ```
 
-3. Put the scripts on the tested [`v1` release](https://github.com/octobooth/machine-setup/releases) the booth uses (see [Using a release](../README.md#using-a-release)). Do this again before each booth day, and before re-running `setup.sh` or `install-demo-launcher.sh`:
+3. Put the scripts on the tested [`v1` release](https://github.com/octobooth/machine-setup/releases) the booth uses (see [Using a release](setup-reference.md#using-a-release)). Do this again before each booth day, and before re-running `setup.sh` or `install-demo-launcher.sh`:
 
    ```bash
    git -C ~/repos/machine-setup fetch --tags --force
    git -C ~/repos/machine-setup checkout --detach v1
    ```
 
-If `git` still doesn't work, the README has a [ZIP fallback](../README.md#1-get-the-setup-scripts).
+If `git` still doesn't work, use the [release ZIP](setup-reference.md#using-a-release) instead.
 
 #### 2. Run setup
 
@@ -81,7 +90,7 @@ If `git` still doesn't work, the README has a [ZIP fallback](../README.md#1-get-
 2. If the GitHub CLI is already installed (for example, you're re-running setup), check which account it's logged in to:
 
    ```bash
-   gh auth status
+   gh auth status --active -h github.com
    ```
 
    If it shows an account other than this machine's booth account, log it out with `gh auth logout -h github.com`. Setup only logs in when the GitHub CLI isn't logged in, so it would otherwise keep the wrong account. On a new Mac, `gh` isn't installed yet; skip this.
@@ -95,32 +104,31 @@ If `git` still doesn't work, the README has a [ZIP fallback](../README.md#1-get-
 4. Answer the prompts as they come up:
    1. **Xcode Command Line Tools.** `git` and Homebrew need them. If they're missing, the installer opens: click **Install**, and the script waits until it finishes (up to 30 minutes; set `XCODE_CLT_TIMEOUT` in seconds to change this). If the install fails or times out, run `xcode-select --install`, finish the installer, and run `bash setup.sh --ref v1` again.
    2. **Your Mac password.** The Homebrew installer and the SF Mono font ask for it. Type it and press Enter (nothing shows while you type). If the Homebrew installer asks you to press RETURN to continue, press Enter.
-   3. **GitHub.com in Chrome.** The script opens Chrome and pauses. Sign in to GitHub.com as **the booth account**, then press Enter.
-   4. **Default browser.** If Chrome isn't the default browser yet, macOS asks whether to change it. Click **Use “Google Chrome”**, then press Enter. This also works if Chrome was installed before setup ran. If Chrome is already the default, the script skips this step.
-   5. **GitHub CLI login.** The GitHub CLI shows a one-time code. Press Enter to open the browser, enter the code, and approve the login (or scope upgrade) while signed in as the booth account. See [GitHub CLI login](../README.md#github-cli-login).
+   3. **Default browser.** If Chrome isn't the default browser yet, setup opens Chrome and macOS asks whether to change it. Select **Use “Google Chrome”**, then press Enter. This also works if Chrome was installed before setup ran. If Chrome is already the default, the script skips this step.
+   4. **GitHub CLI login, if needed.** Setup reuses the active login and requests only missing scopes. For a new login or scope upgrade, follow the one-time-code prompt and approve access in the browser as **the booth account**. OAuth, SSO, and two-factor authentication still require you. The browser, editors, and Copilot app have separate sign-ins; check each uses the same booth account. See [GitHub CLI login](setup-reference.md#github-cli-login).
 5. At the end, setup prints a summary of anything that failed. Fix the cause and run `bash setup.sh --ref v1` again; finished steps are skipped.
 6. Setup adds Google Chrome, the GitHub Copilot app, VS Code, VS Code Insiders, iTerm2, and VLC to the Dock.
 7. Store booth videos in `$HOME/Videos` and open them from VLC in the Dock.
 
 #### 3. Set up the Demo Launcher
 
-Setup already cloned `~/repos/repo-setup-scripts` and installed the Demo Launcher for every Copilot session. Don't also install the launcher from a URL in the Copilot app: that adds a second "Demo Launcher" (see [Troubleshooting](#troubleshooting)). To repair or update it, re-run `install-demo-launcher.sh`. [Why the script](../README.md#demo-launcher).
+Setup already cloned `~/repos/repo-setup-scripts` and installed the Demo Launcher for every Copilot session. Don't also install the launcher from a URL in the Copilot app: that adds a second "Demo Launcher" (see [Troubleshooting](#troubleshooting)). To repair or update it, re-run `install-demo-launcher.sh`. [Why the script](setup-reference.md#demo-launcher).
 
 1. Open the GitHub Copilot app and sign in with the booth account.
 2. Add the existing local folder `~/repos/repo-setup-scripts` as a project. Use the local folder, not the repo's URL: adding it by URL makes the app clone a second copy, and only `~/repos/repo-setup-scripts` is updated by `install-demo-launcher.sh` and used by the installed Demo Launcher.
 3. Start a session in the repo-setup-scripts project, choosing **Current checkout** (not **New worktree**). Then right-click that session in the Copilot app and choose **Pin** so it's easy to find on booth day.
 4. Ask Copilot to "open the demo launcher" in any chat or session.
 
-More detail: [Demo Launcher](../README.md#demo-launcher).
+More detail: [Demo Launcher](setup-reference.md#demo-launcher).
 
 #### 4. Add Chrome bookmarks
 
-In Chrome, still signed in to GitHub.com as the booth account, open each page below and press **Cmd+D** to bookmark it:
+In Chrome, sign in to GitHub.com as the booth account if needed, then open each page below and press **Cmd+D** to bookmark it:
 
 - `https://github.com/octobooth-N`: the booth account's profile, using this machine's number (for example `https://github.com/octobooth-1`).
 - `https://github.com/octobooth`: the `octobooth` org.
 
-On booth day, you'll also bookmark the security demo repos (AI Security and Security Supply Chain (v4)). You can't add them during setup: they're created within 72 hours of use. Create each demo once, on one machine, then open that same repo in Chrome on every booth machine and press **Cmd+D**. See [Create the security demos ahead of time](#create-the-security-demos-ahead-of-time).
+Before booth use, bookmark the security demo repos (AI Security and Security Supply Chain (v4)). Create each demo once, on one machine, then open that same repo in Chrome on every booth machine and press **Cmd+D**. See [Create the security demos ahead of time](#create-the-security-demos-ahead-of-time).
 
 #### 5. Sign in to VS Code and VS Code Insiders
 
@@ -137,6 +145,8 @@ Go through [Check that the machine is ready](#check-that-the-machine-is-ready).
 ### Set up a Windows machine
 
 These steps assume a brand-new Windows 10 or 11 machine with nothing installed beyond what ships with Windows. Sign in to Windows and connect to the internet first. Until setup finishes, you only have the built-in **Windows PowerShell 5.1**. `setup.ps1` is written to run there, and it installs PowerShell 7 for later use.
+
+On an existing machine, back up editor settings before running setup; see [existing VS Code settings](setup-reference.md#existing-vs-code-settings).
 
 #### 1. Open an administrator PowerShell
 
@@ -167,7 +177,7 @@ git clone https://github.com/octobooth/machine-setup.git "$HOME\repos\machine-se
 cd "$HOME\repos\machine-setup"
 ```
 
-Put the scripts on the tested [`v1` release](https://github.com/octobooth/machine-setup/releases) the booth uses (see [Using a release](../README.md#using-a-release)). Do this again before each booth day, and before re-running `setup.ps1` or `install-demo-launcher.ps1`:
+Put the scripts on the tested [`v1` release](https://github.com/octobooth/machine-setup/releases) the booth uses (see [Using a release](setup-reference.md#using-a-release)). Do this again before each booth day, and before re-running `setup.ps1` or `install-demo-launcher.ps1`:
 
 ```powershell
 git -C "$HOME\repos\machine-setup" fetch --tags --force
@@ -184,7 +194,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 
 #### 5. Run setup
 
-1. If the GitHub CLI is already installed (for example, you're re-running setup), check which account it's logged in to with `gh auth status`. If it shows an account other than this machine's booth account, log it out with `gh auth logout -h github.com`. Setup only logs in when the GitHub CLI isn't logged in, so it would otherwise keep the wrong account. On a new machine, `gh` isn't installed yet; skip this.
+1. If the GitHub CLI is already installed (for example, you're re-running setup), check which account it's logged in to with `gh auth status --active -h github.com`. If it shows an account other than this machine's booth account, switch accounts with `gh auth switch -h github.com -u octobooth-N` or log it out with `gh auth logout -h github.com`. Setup reuses the active login, so it would otherwise keep the wrong account. On a new machine, `gh` isn't installed yet; skip this.
 2. Run the setup script with the same release:
 
    ```powershell
@@ -193,10 +203,9 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 
 3. Answer the prompts as they come up:
    1. **Installs.** `winget` installs everything in `windows.packages` in [`config.json`](../config.json). PowerShell 7 (`Microsoft.PowerShell`) is installed first, followed by VS Code, VS Code Insiders, Windows Terminal, Git, GitHub CLI, Node.js LTS, Python, VLC, Copilot CLI, the GitHub Copilot app, and GitHub Desktop. This takes a while, and some installers briefly show their own windows. Setup then configures VLC and pins VS Code, VS Code Insiders, the GitHub Copilot app, Windows Terminal, and VLC to the taskbar. The taskbar briefly disappears while Explorer restarts.
-   2. **GitHub.com in Edge.** The script opens Microsoft Edge and pauses. Sign in to GitHub.com as **the booth account**, then press Enter.
-   3. **GitHub CLI login.** The GitHub CLI shows a one-time code. Press Enter to open the browser, enter the code, and approve the login (or scope upgrade) while signed in as the booth account. See [GitHub CLI login](../README.md#github-cli-login).
+   2. **GitHub CLI login, if needed.** Setup reuses the active login and requests only missing scopes. For a new login or scope upgrade, follow the one-time-code prompt and approve access in the browser as **the booth account**. OAuth, SSO, and two-factor authentication still require you. The browser, editors, and Copilot app have separate sign-ins; check each uses the same booth account. See [GitHub CLI login](setup-reference.md#github-cli-login).
 4. Setup then installs GitHub CLI extensions, clones the demo repos into `$HOME\repos`, installs the Demo Launcher for every Copilot chat, installs VS Code extensions and the theme, and registers MCP servers for Copilot CLI.
-5. At the end, setup prints a summary of anything that failed. Fix the cause and run `.\setup.ps1 -Ref v1` again; finished steps and `winget` packages that are already installed are skipped. For `winget` errors, see [Troubleshooting Windows package installs](../README.md#troubleshooting-windows-package-installs).
+5. At the end, setup prints a summary of anything that failed. Fix the cause and run `.\setup.ps1 -Ref v1` again; finished steps and `winget` packages that are already installed are skipped. For `winget` errors, see [Troubleshooting Windows package installs](setup-reference.md#troubleshooting-windows-package-installs).
 
 #### 6. After setup
 
@@ -206,22 +215,22 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 
 #### 7. Set up the Demo Launcher
 
-Setup already cloned `$HOME\repos\repo-setup-scripts` and installed the Demo Launcher for every Copilot chat. Don't also install the launcher from a URL in the Copilot app: that adds a second "Demo Launcher" (see [Troubleshooting](#troubleshooting)). To repair or update it, re-run `.\install-demo-launcher.ps1 -Ref v1`. [Why the script](../README.md#demo-launcher).
+Setup already cloned `$HOME\repos\repo-setup-scripts` and installed the Demo Launcher for every Copilot chat. Don't also install the launcher from a URL in the Copilot app: that adds a second "Demo Launcher" (see [Troubleshooting](#troubleshooting)). To repair or update it, re-run `.\install-demo-launcher.ps1 -Ref v1`. [Why the script](setup-reference.md#demo-launcher).
 
 1. Open the GitHub Copilot app and sign in with the booth account. If it was already open, fully quit it first (right-click its icon in the system tray and choose **Quit**), so it loads the launcher.
 2. Ask Copilot to "open the demo launcher" in any chat.
 3. Optional, for quick access on booth day: add the existing local folder `$HOME\repos\repo-setup-scripts` as a project (use the local folder, not the repo's URL, which clones a second copy), start a session in it with **Current checkout** (not **New worktree**), then right-click that session and choose **Pin**.
 
-More detail: [Windows: installed loader and project](../README.md#windows-installed-loader-and-project).
+More detail: [installed loader and project](setup-reference.md#demo-launcher).
 
 #### 8. Add Edge favorites
 
-Setup signed in to GitHub.com in Microsoft Edge, and Chrome isn't installed on Windows, so use Edge. Edge calls bookmarks favorites. In Edge, still signed in to GitHub.com as the booth account, open each page below and press **Ctrl+D** to bookmark it:
+Use Microsoft Edge on Windows; Chrome isn't installed by setup. Edge calls bookmarks favorites. In Edge, sign in to GitHub.com as the booth account if needed, then open each page below and press **Ctrl+D** to bookmark it:
 
 - `https://github.com/octobooth-N`: the booth account's profile, using this machine's number (for example `https://github.com/octobooth-1`).
 - `https://github.com/octobooth`: the `octobooth` org.
 
-On booth day, you'll also bookmark the security demo repos (AI Security and Security Supply Chain (v4)). You can't add them during setup: they're created within 72 hours of use. Create each demo once, on one machine, then open that same repo in Edge on every booth machine and press **Ctrl+D**. See [Create the security demos ahead of time](#create-the-security-demos-ahead-of-time).
+Before booth use, bookmark the security demo repos (AI Security and Security Supply Chain (v4)). Create each demo once, on one machine, then open that same repo in Edge on every booth machine and press **Ctrl+D**. See [Create the security demos ahead of time](#create-the-security-demos-ahead-of-time).
 
 #### 9. Sign in to VS Code and VS Code Insiders
 
@@ -239,19 +248,19 @@ Go through [Check that the machine is ready](#check-that-the-machine-is-ready).
 
 Check each item on every booth machine. `N` is this machine's booth account number.
 
-1. **GitHub CLI.** Run `gh auth status`. It should show `octobooth-N` as the active account, with `codespace`, `delete_repo`, `project`, and `workflow` in its token scopes. If not, follow [GitHub CLI login](../README.md#github-cli-login). If `GH_TOKEN` or `GITHUB_TOKEN` is set, unset it.
-2. **Demo repos.** `~/repos` (`$HOME\repos` on Windows) contains `repo-setup-scripts`, `tailspin-toys`, and `security-octo-supply` (the `repos_to_clone` list in [`config.json`](../config.json)).
+1. **Setup readiness.** Confirm setup's final checks pass and its displayed GitHub CLI account is `octobooth-N`. Setup checks installed packages, Node.js, GitHub scopes, read access to the configured demo repositories, local checkout presence, and Demo Launcher files. If needed, follow [GitHub CLI troubleshooting](setup-reference.md#github-cli-login). Leave `GH_TOKEN` and `GITHUB_TOKEN` unset.
+2. **Demo access.** Repository read access alone does not establish permission to create demo repositories, use private templates, or use Copilot and Codespaces. Verify those permissions as the booth account and run a real demo.
 3. **Copilot app.** It's signed in as `octobooth-N`, and "open the demo launcher" opens the launcher from a new chat. If you added the optional repo-setup-scripts project, it's from the local `~/repos/repo-setup-scripts` folder (`$HOME\repos\repo-setup-scripts` on Windows) and its pinned session is a **Current checkout** one.
 4. **VS Code and VS Code Insiders.** In each, **Accounts** shows `octobooth-N`, and GitHub Copilot is signed in and active.
 5. **Bookmarks.** The browser (Chrome on macOS, Edge on Windows) has bookmarks for `https://github.com/octobooth-N` and `https://github.com/octobooth`.
 6. **Dock or taskbar.** On macOS, the Dock has Google Chrome, the GitHub Copilot app, VS Code, VS Code Insiders, iTerm2, and VLC. On Windows, the taskbar has VS Code, VS Code Insiders, the GitHub Copilot app, Windows Terminal, and VLC. Machines set up with an older version of the setup scripts may still have a `load-demos.sh` or `load-demos.ps1` script on the Desktop. Setup no longer creates it, and nothing uses it, so you can delete it.
-7. **Weekly cleanup.** In a browser signed in as the booth account, open `https://github.com/octobooth-N/demo-cleanup/actions`. It should have a **Weekly demo cleanup** workflow with green runs. If the repo is missing or runs fail, ask an org admin to [set up the weekly cleanup](#set-up-or-repair-the-weekly-cleanup) for that account.
+7. **Retention protection.** Have an org admin verify the [cleanup rollout](#cleanup-rollout) for each participating account before the event. Confirm event records, designated reviewers, and a dry-run result; a green run alone does not prove retention compliance.
 
 ### Before each booth day: update the machine
 
-For an existing source-connected or pre-replacement destination clone, first follow [Upgrade an existing machine to octobooth](../README.md#upgrade-an-existing-machine-to-octobooth). That procedure preserves local work and worktrees and deliberately changes origins; neither `git pull` nor setup does that for you. The commands in this section apply only after the new destination release is approved.
+For an existing checkout, [inspect its origin and local work](setup-reference.md#existing-clones) before updating. Setup does not rewrite remotes or discard work.
 
-After destination release approval, update the setup scripts and the Demo Launcher to the same approved release, then fully restart the GitHub Copilot app so it loads the new launcher: on macOS, quit it with **Cmd+Q**; on Windows, right-click its system tray icon and choose **Quit**. Then reopen it.
+Update the setup scripts and Demo Launcher to the same release, then fully restart Copilot: **Cmd+Q** on macOS, or **Quit** from the Windows system tray. If you installed without a clone, use [launcher-only updates from a fresh archive](setup-reference.md#launcher-only-updates) instead of the Git commands below.
 
 On macOS:
 
@@ -272,11 +281,11 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 .\install-demo-launcher.ps1 -Ref v1
 ```
 
-After release approval, maintainers move `v1` to the tested destination `v1.x.y` in both repos. The copied `v1` is not that release. The installer also installs the [Playwright MCP server](../README.md#playwright-mcp-server) version that release pins, if it changed. Missing assets are a readiness failure even when the script only warns. If the script says the tag doesn't exist or the checkout has local changes, preserve the work and resolve that before booth use; see [Using a release](../README.md#using-a-release). Developers can test reviewed destination `main` on a non-booth machine without `--ref` / `-Ref`.
+`v1` is a moving major tag; use a full version such as `v1.3.0` for an exact pin. The installer also refreshes the [Playwright MCP server](setup-reference.md#playwright-mcp-server). Resolve download warnings, missing tags, or local-change errors before booth use; see [release behavior](setup-reference.md#using-a-release). Verify the launcher and a real demo on each machine rather than relying on release publication or exit status alone.
 
-The install script also refreshes the booth's Copilot instructions (see [Copilot booth instructions](../README.md#copilot-booth-instructions)).
+The install script also refreshes the booth's Copilot instructions (see [Copilot booth instructions](setup-reference.md#copilot-booth-instructions)).
 
-Both are safe to re-run. To also pick up changes in `config.json` (new apps, extensions, or repos), run setup again with the same release (`bash setup.sh --ref v1` or `.\setup.ps1 -Ref v1`) in addition to the launcher update above. Already-finished steps and already-installed packages are skipped. On Windows, run `.\setup.ps1` from **Terminal (Admin)**; otherwise it skips the taskbar pins. See [Re-running on a Windows machine that's already set up](../README.md#re-running-on-a-windows-machine-thats-already-set-up) for details, and [Demo Launcher](../README.md#demo-launcher) for what the install scripts do.
+Both are safe to re-run. To also pick up changes in `config.json` (new apps, extensions, or repos), run setup again with the same release (`bash setup.sh --ref v1` or `.\setup.ps1 -Ref v1`) in addition to the launcher update above. Already-finished steps and already-installed packages are skipped. On Windows, run `.\setup.ps1` from **Terminal (Admin)**; otherwise it skips the taskbar pins. See [Rerunning or updating](setup-reference.md#rerunning-or-updating) for details, and [Demo Launcher](setup-reference.md#demo-launcher) for what the install scripts do.
 
 #### Create the security demos ahead of time
 
@@ -289,20 +298,20 @@ Two demos take too long to create while a visitor waits: **AI Security** (about 
 2. When each is ready, open its demo repo in the browser (Chrome on macOS, Edge on Windows) and bookmark it (**Cmd+D** in Chrome, **Ctrl+D** in Edge).
 3. On each of the other booth machines, open the same repo URLs and bookmark them there. Don't create the demos again on every machine.
 
-Both demos create repos in the [octobooth organization](https://github.com/octobooth). Once separately approved and activated, [nightly cleanup](#org-nightly-cleanup) deletes them when they're more than 72 hours old; it is currently disabled. Create them within 72 hours of use so they also work with the intended cleanup schedule. One of each can serve every machine for the whole day. Before-the-demo checks: [AI Security](https://github.com/octobooth/repo-setup-scripts#ai-security-ai-scan--agentic-autofix) and [Security Supply Chain (v4)](https://github.com/octobooth/repo-setup-scripts#security-supply-chain-v4) in the public `repo-setup-scripts` README.
+Both demos create repos in the [octobooth organization](https://github.com/octobooth). One of each can serve every machine for the whole day. Record their event association and retain them through one week after event end and the DevRel review. Use the [org cleanup](#org-nightly-cleanup) after its gates are satisfied. Before-the-demo checks: [AI Security](https://github.com/octobooth/repo-setup-scripts#ai-security-ai-scan--agentic-autofix) and [Security Supply Chain (v4)](https://github.com/octobooth/repo-setup-scripts#security-supply-chain-v4) in the public `repo-setup-scripts` README.
 
 ## Part 2: During the event: run demos
 
 1. **Open the demo apps.** Open the GitHub Copilot app, VS Code, VS Code Insiders, and VLC from the Dock (macOS) or taskbar (Windows). Open your booth videos in VLC from `~/Videos` (`C:\Users\<YourUsername>\Videos` on Windows). In the browser (Chrome on macOS, Edge on Windows), use the bookmarks for the booth account, `octobooth`, and the [security demo repos you created ahead of time](#create-the-security-demos-ahead-of-time).
 2. **Open the Demo Launcher.** Ask Copilot to "open the demo launcher" in any chat.
 3. **Create demos from the launcher.** It creates each demo repo in the background and opens a session for it. The launcher, the demo list, and per-demo notes are documented in the public [repo-setup-scripts README](https://github.com/octobooth/repo-setup-scripts). Individual templates and features can require additional access.
-4. **Send framework requests to a Cloud session.** See [Framework apps need a Cloud session](#framework-apps-need-a-cloud-session).
+4. **Use Cloud when local package access is unavailable.** See [Framework apps need a Cloud session](#framework-apps-need-a-cloud-session).
 
-Each generated demo repo gets the `demo-generated` topic, which is how cleanup finds it. Never add that topic to canonical templates or tooling repositories. Automatic cleanup requires separately provisioned and enabled workflows; destination org cleanup is currently disabled. For reviewed manual cleanup (for example, at the end of a booth day), see [Clean up demo repos](#clean-up-demo-repos).
+Each generated demo repo gets the `demo-generated` topic, which is how cleanup finds it. Never add that topic to canonical templates or tooling repositories. Before deletion, complete event-end retention and the DevRel review; see [Clean up demo repos](#clean-up-demo-repos). A booth day ending is not permission to remove retained environments.
 
 ### Framework apps need a Cloud session
 
-Booth networks block npm and Python package downloads, so local sessions can't install packages. Setup adds [Copilot booth instructions](../README.md#copilot-booth-instructions) that tell Copilot to build plain HTML/CSS/JavaScript apps (or use only Node.js built-ins or the Python standard library) and to send framework requests to you. If an attendee wants a React, Next.js, Vite, Flask, or other framework app:
+Use this workflow when the machine does not have working approved package access. Setup adds [Copilot booth instructions](setup-reference.md#copilot-booth-instructions) that prefer dependency-free local apps and ask staff before using package downloads. For a React, Next.js, Vite, Flask, or other framework app that cannot run locally:
 
 1. Create a repo: in the Demo Launcher, create **GitHub Copilot Fusion: Blank Prompt** (or use any GitHub repo the booth account can push to).
 2. Start a new session in that repo and select **Cloud** before sending the prompt. Cloud sessions run on GitHub, where packages install normally.
@@ -311,97 +320,86 @@ You can also open the repo in a GitHub Codespace (**Code** > **Codespaces** > **
 
 ## Part 3: After the event: clean up and reset
 
-Do these in order.
+Retain event demo environments for 168 hours after the event ends. This includes remote demo repositories and the local state needed to review them. Repository creation time is not the event end time, and reaching an age cutoff is not approval to delete.
 
-### Step 1: Delete the demo repos
+### Step 1: Record retention and complete the DevRel review
 
-Booth staff can do this; see [Clean up demo repos](#clean-up-demo-repos) for each option.
+The event DRI records the event identifier, event end time in UTC, earliest deletion time (168 hours later), and exact repository inventory, including repository IDs and full names. Keep this inventory with the event closeout and in the control repository's default-branch `cleanup-events.json`. Use the shared [event cleanup record format](https://github.com/octobooth/repo-setup-scripts#event-cleanup-record). Repositories without an unambiguous event assignment must be retained.
 
-1. **Each booth account.** On each booth machine, use the Demo Launcher's [Clean up](#from-the-demo-launcher) section with **Any age**, and tick **Also delete local clones**. Or, from a browser signed in as that account, [run the weekly cleanup](#run-it-sooner-just-a-browser) with `older_than_days` set to `0`.
-2. **The `octobooth` org.** Destination ChatOps is not ready. After its separate activation, authorized staff can comment `/cleanup --all --confirm` on an issue in [repo-setup-scripts](https://github.com/octobooth/repo-setup-scripts). Until then, review the launcher's owner-scoped cleanup list with an authorized account. See [Org nightly cleanup](#org-nightly-cleanup).
+DevRel reviews the inventory with the DRI through the pull request recorded as `review_pr`. After the 168-hour deadline, a reviewer listed in the control repository's `CLEANUP_REVIEWERS` Actions variable approves that PR's exact head commit. The reviewer must currently have write, maintain, or admin access. The PR must be merged, and its manifest must match the current manifest bytes. Editing the inventory requires a matching review; a pasted URL or verbal approval is not enough. Follow [review and run cleanup](https://github.com/octobooth/repo-setup-scripts#review-and-run-cleanup) and the [DevRel booth coordination guide](https://github.com/github/devrel/blob/main/playbooks/events/booths.md#after-the-event) (staff access required).
 
-### Step 2: Clear the booth machines' demo folders
+Do not delete before the retention deadline or without valid review. Keep environments still needed for follow-up. Have an admin verify the [cleanup rollout](#cleanup-rollout) before relying on automated gates; machine setup does not deploy cleanup workflows or change live schedules.
 
-Local clones of deleted demo repos in `~/repos` stay on each booth machine unless you ticked **Also delete local clones** in the launcher. Remove those demo folders explicitly; rerunning [setup](../README.md#setup-instructions) does not remove or reset them. Keep shared checkouts such as `machine-setup`, `repo-setup-scripts`, `tailspin-toys`, and `security-octo-supply`.
+### Step 2: Delete only approved environments
+
+After both gates are satisfied, preview the event's candidates, then run its reviewed [account workflow](#weekly-cleanup-in-each-booth-account) or [org workflow](#org-nightly-cleanup). Inspect the dry run before requesting deletion. Remove local demo folders only if the review also approves that removal. Keep shared checkouts such as `machine-setup`, `repo-setup-scripts`, `tailspin-toys`, and `security-octo-supply`. Rerunning [setup](../README.md#setup-instructions) does not remove or reset them.
 
 ### Step 3: Reset the booth accounts (org admins)
 
-To delete **every** repo in the booth accounts, not just demo repos, an org admin follows [How to clean all Octobooth repos](#how-to-clean-all-octobooth-repos).
+Reset an account only after its retained environments have been reviewed and no protected work remains. Account-wide cleanup must use the same event and review gates; see [How to clean all Octobooth repos](#how-to-clean-all-octobooth-repos).
 
 ## Clean up demo repos
 
-Every demo repo has the `demo-generated` topic. These cleanups only delete repos with that topic, so other repos are safe. Use them during the event or after it.
+The `demo-generated` topic identifies candidates, not deletion permission. Before deletion, verify each candidate's exact repository identity, event end time, 168-hour retention deadline, and current review approval. Missing or duplicate event assignments are reasons to retain a repository, not to infer its event from its creation date.
 
-| Where the demo repos are | Automatic cleanup | To clean up sooner |
+### Cleanup rollout
+
+The procedures below require the event-aware [repo-setup-scripts cleanup](https://github.com/octobooth/repo-setup-scripts#cleanup-rollout) and [admin-tasks account template](https://github.com/octobooth/admin-tasks) to be merged and deployed. Each existing booth account's cleanup repository is a separate deployed copy and needs a deliberate reinstall; changing the template does not update those copies. Administrators must verify the deployed version, event records, designated reviewers, and a dry-run result for each account and the organization. Older age-only workflows must not delete retained environments.
+
+Merging a pull request or running machine setup does not enable a schedule, update account copies, or prove live enforcement. Workflow deployment, credentials, and schedule changes require their own authorization.
+
+| Cleanup location | Control repository | Review setup |
 | --- | --- | --- |
-| Each booth account (`octobooth-1` … `octobooth-10`), the default | [Weekly cleanup](#weekly-cleanup-in-each-booth-account): Mondays 08:00 UTC, repos more than 7 days old | The [Demo Launcher](#from-the-demo-launcher) on that machine, or [run the weekly cleanup](#run-it-sooner-just-a-browser) from a browser signed in as that account |
-| The `octobooth` org (ChatOps and the security demos) | Currently disabled; after separate activation, [org nightly cleanup](#org-nightly-cleanup) runs at 08:00 UTC for repos more than 72 hours old | After App/workflow provisioning and activation: `/cleanup` or the **Clean up demos** workflow; meanwhile, authorized staff can review the launcher's owner-scoped cleanup list |
+| [Account weekly template](https://github.com/octobooth/admin-tasks/blob/main/templates/demo-cleanup/.github/workflows/cleanup.yml) | That account's `demo-cleanup` repository | Default-branch event manifest and `CLEANUP_REVIEWERS` |
+| [Org cleanup workflow](https://github.com/octobooth/repo-setup-scripts/blob/main/.github/workflows/cleanup-demos.yml) | `octobooth/repo-setup-scripts` | Default-branch event manifest and `CLEANUP_REVIEWERS` |
 
-08:00 UTC is midnight Pacific (1 AM during daylight saving time).
+Scheduled and manual runs use the same event-end and live-review gates. Repository age, confirmation flags, and an event filter cannot bypass them.
 
 ### From the Demo Launcher
 
-The Demo Launcher on each booth machine can delete that booth account's demo repos. Deleting needs the `delete_repo` scope, which setup adds to the GitHub CLI login.
+Use the updated Demo Launcher to preview candidates before running the reviewed workflow.
 
 1. Ask Copilot to "open the demo launcher" and scroll to **Clean up**.
-2. Leave **Owner** empty to clean up the booth account that's logged in.
-3. Set **Older than** (default 72 hours), or click **Any age** to include every demo repo, however new.
-4. Click **Find demo repos** and review the list. Untick any repo you want to keep.
-5. Optionally tick **Also delete local clones** to remove their folders in `~/repos` too.
-6. Click **Delete** and then click it again to confirm.
+2. Select the owner and its cleanup control repository. For a booth account, the control repository is that account's `demo-cleanup`; for org demos, it is `octobooth/repo-setup-scripts`.
+3. Filter to the recorded event and preview the candidates.
+4. Compare the preview with the approved inventory, then follow [review and run cleanup](https://github.com/octobooth/repo-setup-scripts#review-and-run-cleanup). Retained or ineligible entries must not be deleted manually to bypass the gate.
 
-The same cleanup runs in a terminal on that machine. It lists the matching repos and asks before deleting:
+For a read-only candidate list from a terminal:
 
 ```bash
 cd ~/repos/repo-setup-scripts
-bash ./create-repo.sh --cleanup          # demo repos more than 72 hours old
-bash ./create-repo.sh --cleanup --all    # every demo repo, however new
+bash ./create-repo.sh --cleanup --dry-run
 ```
 
-On Windows, use `.\create-repo.ps1 -Cleanup` (add `-All` for every demo repo). Add `--dry-run` (`-DryRun`) to only list what it would delete. The public [repo-setup-scripts README](https://github.com/octobooth/repo-setup-scripts) has every option.
+On Windows, use `.\create-repo.ps1 -Cleanup -DryRun`. These commands require the updated scripts and an existing Node.js runtime. Check the preview's eligibility results, not just repository age. The [cleanup guide](https://github.com/octobooth/repo-setup-scripts#review-and-run-cleanup) documents control-repository and event selection.
 
 For org demos, use the [org cleanup](#org-nightly-cleanup) instead. If you type `octobooth` as the launcher's owner, the list includes demos from every booth and ChatOps.
 
 ### Weekly cleanup in each booth account
 
-Each booth account has a private repo, `octobooth-N/demo-cleanup`, with a workflow named **Weekly demo cleanup**. It runs as that account, using that account's own token, and only touches that account's repos:
+The [weekly cleanup template](https://github.com/octobooth/admin-tasks/blob/main/templates/demo-cleanup/.github/workflows/cleanup.yml) installs **Weekly demo cleanup** into `octobooth-N/demo-cleanup` and pins the shared cleanup engine to a specific commit. Each account needs its own event manifest, designated reviewers, and authorized credentials. Existing account copies require a deliberate reinstall.
 
-- It deletes repos the account owns that have the `demo-generated` topic and are more than 7 days old.
-- It never deletes repos without that topic, or the `demo-cleanup` repo itself.
-- Nothing runs from the org, and no admin is needed once it's set up.
+<a id="run-it-sooner-just-a-browser"></a>
 
-#### Run it sooner (just a browser)
+#### Inspect candidates without deleting
 
-1. Sign in to github.com as the booth account and go to `https://github.com/octobooth-N/demo-cleanup/actions`, using that account's number.
-2. Click **Weekly demo cleanup** in the left sidebar.
-3. Click **Run workflow** on the right.
-4. Set **older_than_days**:
-   - `7` (the default) deletes the same repos as the Monday run.
-   - `0` deletes **every** demo repo in the account, however new.
-   - Any other number means "older than that many days".
-5. Optionally tick **dry_run** to only list what it would delete.
-6. Click the green **Run workflow** button. The run appears after a few seconds; open it to see what was deleted.
+Sign in as the booth account, open its `demo-cleanup` repository's **Actions** tab, and verify the deployed workflow supports event-based cleanup. Select **Weekly demo cleanup** > **Run workflow**, enter the event identifier, keep **dry_run** enabled, and review the output against the event inventory. After the retention and review gates pass, run the same event with **dry_run** disabled to request deletion. No age or all-repositories override is supported.
 
 #### Check that it's working
 
-Open the account's `demo-cleanup` **Actions** tab. Each Monday should have a green run. If a run fails, GitHub emails the booth account, and the run's log says what's wrong. The usual cause is a revoked or deleted token; ask an org admin to [set up that account again](#set-up-or-repair-the-weekly-cleanup).
+Have an admin inspect the account's deployed engine version, event manifest, reviewer configuration, and dry-run output. A green run with no eligible repositories can be correct: missing assignments, unmet retention, or invalid reviews must retain environments. Investigate the reported reason rather than bypassing it.
 
 ### Org nightly cleanup
 
 > [!IMPORTANT]
-> Destination Actions are disabled and the destination ChatOps App is not provisioned. Neither scheduled cleanup nor `/cleanup` is ready. Activation requires separate approval, correct App permissions and credentials, and a dry-run review that excludes canonical repositories. Do not reuse source App credentials.
+> Verify the event-aware workflow is deployed before using this procedure. Repository-level Actions being enabled does not mean this workflow or its schedule is enabled.
 
-After activation, demo repos created in the [octobooth organization](https://github.com/octobooth) (ChatOps and the security demos) are deleted by the **Clean up demos** workflow in [repo-setup-scripts](https://github.com/octobooth/repo-setup-scripts) once they're more than 72 hours old. To run it sooner, authorized org members with write access can either:
-
-- open an issue in `repo-setup-scripts` and comment `/cleanup 24 --confirm` (any number of hours), or `/cleanup --all --confirm` after an event; or
-- run **Clean up demos** from that repo's **Actions** tab.
-
-Comments without `--confirm` are dry runs. These cleanups can't see repos in the booth accounts.
+In [repo-setup-scripts Actions](https://github.com/octobooth/repo-setup-scripts/actions/workflows/cleanup-demos.yml), select **Clean up demos**, enter the event identifier, and run with **dry_run** enabled. Review the result, then request execution with **dry_run** disabled only when the event record and live approval satisfy the gates. The org control repository is `octobooth/repo-setup-scripts`; account-owned environments use their own account control repositories.
 
 ## How to clean all Octobooth repos
 
 > [!WARNING]
-> The destination [admin-tasks repository](https://github.com/octobooth/admin-tasks) is copied, but copying does not authorize account deletion or activate weekly cleanup. Verify account permissions and review dry-run output before any approved cleanup. Do not reuse source App credentials or switch a working source admin checkout without a deliberate review.
+> Account cleanup must preserve the same event retention and live-review gates. Verify account permissions and dry-run output. Do not reuse credentials from another account or use an older wipe tool to bypass the reviewed workflow.
 
 This section should be run by someone with admin access to the `octobooth` org, such as [@geektrainer](https://github.com/geektrainer), [@jdooley-clt](https://github.com/jdooley-clt), or someone else on the GitHub DevRel team. For everyday cleanup of demo repos, use [Clean up demo repos](#clean-up-demo-repos) instead.
 
@@ -421,60 +419,27 @@ The scripts are in the private [`octobooth/admin-tasks`](https://github.com/octo
 
 ### Wipe every repo in the booth accounts
 
-`admin-tasks/scripts/wipe-accounts.sh` deletes **every** repo in each booth account, demo or not, except `demo-cleanup`. It goes one account at a time: log in (or switch) → list that account's repos → you confirm → delete → next account. It doesn't touch the org's repos or the booth machines' local folders.
-
-```bash
-bash scripts/wipe-accounts.sh --dry-run    # list what would be deleted, change nothing
-bash scripts/wipe-accounts.sh              # walk through octobooth-1..10
-bash scripts/wipe-accounts.sh --from 5     # resume at octobooth-5
-```
-
-- **Logins.** For each booth account the GitHub CLI isn't logged in to yet, the script walks you through a browser login. Sign in to github.com as that account (a private window is easiest), press Enter, and paste the one-time code it shows. Type `s` to skip an account. Logins are remembered, so later runs don't ask again.
-- **Confirming.** For each account it lists the repos, numbered. Type:
-  - `WIPE` (in capitals) to delete them.
-  - `k` to keep some, by number or name.
-  - `s` to skip the account.
-  - `q` to stop.
-
-  Anything else, including lowercase `wipe`, shows a warning and asks again.
-- **Finishing up.** At the end it prints a summary and, if anything was skipped or failed, the exact command to finish it.
+Use each account's [reviewed cleanup workflow](#weekly-cleanup-in-each-booth-account), not blanket repository deletion. Environments without a valid event record and current review must remain. Keep canonical templates, tooling repositories, and local state that was not approved for removal. See [admin-tasks](https://github.com/octobooth/admin-tasks) for the account-maintenance entry points and rollout instructions.
 
 ### Set up or repair the weekly cleanup
 
-Needed for a new booth account, or when an account's cleanup reports a token problem. You need a Mac (or Linux), the GitHub CLI logged in to your own GitHub account, access to `admin-tasks`, and a browser where you can sign in as the booth account(s).
-
-```bash
-gh repo clone octobooth/admin-tasks && cd admin-tasks   # or: cd admin-tasks && git pull
-bash scripts/setup-weekly-cleanup.sh --accounts 3             # one account
-bash scripts/setup-weekly-cleanup.sh                          # all of octobooth-1..10
-bash scripts/setup-weekly-cleanup.sh --from 6                 # resume at octobooth-6
-```
-
-For each account, the script:
-
-1. Prints and copies a link that creates a **classic** token with `repo`, `delete_repo`, and `workflow` ticked. The token's note names the account.
-2. You open the link in a browser or profile signed in as **that** account, then check the avatar in the top right. Press `o` to open the link in your default browser instead.
-3. You set **Expiration** to **No expiration**, generate the token, and paste it into the script. Your typing is hidden.
-4. The script checks the token (right account, classic, right scopes, doesn't expire), creates the `demo-cleanup` repo if needed, adds the workflow, and saves the token as the `CLEANUP_TOKEN` secret.
-5. It runs a dry-run test in Actions and shows what it found.
-
-Rerunning is safe; it replaces the token. The token belongs to the booth account, not to you, so it keeps working whoever set it up and whatever machines are logged in. It stops working only if someone deletes or regenerates it in that account's **Settings → Developer settings → Personal access tokens (classic)**, where its note is `demo-cleanup weekly cleanup (octobooth-N)`.
+Use the updated [setup script](https://github.com/octobooth/admin-tasks/blob/main/scripts/setup-weekly-cleanup.sh) only after the shared engine and account template are available and an administrator has authorized deployment. Deliberately reinstall each existing account copy, preserving its event manifest and reviewer configuration, then inspect a dry run. Credential repairs and schedule activation need separate approval; machine setup does neither.
 
 ## Troubleshooting
 
 | Problem | Fix |
 | --- | --- |
-| `gh auth status` shows your personal account (or another booth account) | Run `gh auth logout -h github.com`, then `gh auth login -h github.com` as this machine's booth account and add the scopes. See [GitHub CLI login](../README.md#github-cli-login). |
-| Setup ends with "The following items failed to install" | Fix the cause shown for each item and run setup again; finished steps are skipped. On Windows, see [Troubleshooting Windows package installs](../README.md#troubleshooting-windows-package-installs). |
+| `gh auth status` shows your personal account (or another booth account) | Run `gh auth logout -h github.com`, then `gh auth login -h github.com` as this machine's booth account and add the scopes. See [GitHub CLI login](setup-reference.md#github-cli-login). |
+| Setup ends with "The following setup items need attention" | Keep the earlier error output for each item. See [Windows package errors](setup-reference.md#troubleshooting-windows-package-installs) or [editor extension diagnostics](setup-reference.md#editor-extension-installation-failures), fix the cause, then rerun; finished steps are skipped. |
 | "open the demo launcher" doesn't work | [Update the Demo Launcher](#before-each-booth-day-update-the-machine), which also reinstalls its loader, then fully quit and reopen the GitHub Copilot app (on Windows, right-click its tray icon and choose **Quit**). If it still doesn't open, ask from a session in the repo-setup-scripts project. |
 | The pinned session still shows the old launcher after an update | It's probably a **New worktree** session, which keeps its own copy. Archive it and start a new **Current checkout** session in the repo-setup-scripts project. |
 | Two "Demo Launcher" canvases, both labeled Personal | One was installed from a URL (it's named `demo-launcher-loader`). Remove `demo-launcher-loader` from the Copilot app's **Extensions** screen, or delete `~/.copilot/extensions/demo-launcher-loader` (`$HOME\.copilot\extensions\demo-launcher-loader` on Windows). Then re-run `install-demo-launcher.sh` or `install-demo-launcher.ps1` and restart the app. |
 | A "Demo Launcher" labeled "repository: security-octo-supply-v4-…" | It comes from a demo repo made from the old v4 template, which included a HydraFusion launcher (since removed). Remove that demo project from the Copilot app. |
-| Setup warns "Couldn't download Playwright MCP" | The machine couldn't reach github.com, or that bundle release isn't published yet. Everything else still works. Run the [update](#before-each-booth-day-update-the-machine) again later. See [Playwright MCP server](../README.md#playwright-mcp-server). |
-| The launcher's **Clean up** says your `gh` login can't delete repos | Run `gh auth refresh -h github.com -s delete_repo` in a terminal as the booth account, then click **Delete** again. |
-| Copilot sessions stay "busy" and never answer | An old Playwright MCP server (`npx @playwright/mcp`) is hanging because npm is blocked. Run the [update](#before-each-booth-day-update-the-machine), which replaces it with the prebuilt one, or remove it by hand with the command in [Copilot sessions stuck at "busy"](../README.md#copilot-sessions-stuck-at-busy). Then fully quit and reopen the GitHub Copilot app. |
-| A booth account's weekly cleanup run failed | Open the failed run. If it mentions `CLEANUP_TOKEN`, ask an org admin to [set up that account again](#set-up-or-repair-the-weekly-cleanup). |
-| Demo repos in a booth account aren't being deleted | Check they're more than 7 days old and have the `demo-generated` topic (shown under **About** on the repo page). To delete them now, use the launcher's [Clean up](#from-the-demo-launcher) with **Any age**, or [run the weekly cleanup](#run-it-sooner-just-a-browser) with `older_than_days` set to `0`. |
+| Setup warns "Couldn't download Playwright MCP" | Check network access and the configured bundle's release assets, then rerun the [update](#before-each-booth-day-update-the-machine). Verify browser tools work before booth use; see [Playwright MCP server](setup-reference.md#playwright-mcp-server). |
+| Cleanup reports insufficient permissions | Confirm the booth account and required scopes, then follow the [reviewed workflow](https://github.com/octobooth/repo-setup-scripts#review-and-run-cleanup). Permission changes do not replace event retention or review approval. |
+| Copilot sessions stay "busy" and never answer | An `npx` Playwright MCP entry can hang because npm is blocked. See [Copilot sessions stuck at "busy"](setup-reference.md#copilot-sessions-stuck-at-busy), refresh the managed entry, then fully quit and reopen Copilot. |
+| A booth account's weekly cleanup run failed | Ask an admin to inspect the failure and the retention/review gates before [repairing credentials or the workflow](#set-up-or-repair-the-weekly-cleanup). |
+| Demo repos in a booth account aren't being deleted | Check the event assignment, 168-hour deadline, current manifest, reviewer access, and exact-head approval timing. Review the dry-run reason; do not use an age-only override. |
 | (Admins) The weekly cleanup setup script says a token belongs to the wrong account | The browser was signed in as another account. Delete that stray token in the other account's token settings, switch the browser to the right account, and make a new one. |
 | (Admins) `gh repo clone octobooth/admin-tasks` says "Could not resolve" | Log in to the GitHub CLI as your own org-member account: `gh auth login -h github.com`. |
 | (Admins) The wipe script asks for `delete_repo` | Approve it in the browser while signed in as that booth account. |

@@ -18,6 +18,267 @@ load_script() {
     [[ ! -f "$COPILOT_HOME/mcp-config.json" ]]
 }
 
+@test "MDM enrollment preserves package settings and does not infer feed access on reruns" {
+    load_script
+    printf 'registry=https://packages.example.test/npm/\n@private:registry=https://private.example.test/\n' > "$HOME/.npmrc"
+    cp "$HOME/.npmrc" "$BATS_TEST_TMPDIR/npmrc.before"
+    profiles() { printf 'Enrolled via DEP: Yes\nMDM enrollment: Yes (User Approved)\n'; }
+    npm() { echo "unexpected npm invocation"; return 1; }
+
+    check_and_report() {
+        check_device_enrollment
+        check_device_enrollment
+        printf 'failures=%s\n' "${#failed_items[@]}"
+    }
+    run check_and_report
+
+    [[ "$output" == *"MDM enrollment: enrolled;"* ]]
+    [[ "$output" == *"package-feed access are not established by enrollment"* ]]
+    [[ "$output" == *"failures=0"* && "$output" != *"unexpected npm"* ]]
+    cmp "$HOME/.npmrc" "$BATS_TEST_TMPDIR/npmrc.before"
+}
+
+@test "MDM detection distinguishes not enrolled from unavailable status" {
+    load_script
+    profiles() { printf 'Enrolled via DEP: No\nMDM enrollment: No\n'; }
+
+    run check_device_enrollment
+
+    [[ "$output" == *"MDM enrollment: not enrolled;"* ]]
+    [[ "$output" != *"unknown"* ]]
+}
+
+@test "DEP enrollment without an MDM result is informational unknown" {
+    load_script
+    profiles() { printf 'Enrolled via DEP: Yes\n'; }
+    check_and_report() {
+        check_device_enrollment
+        printf 'failure_count=%s\n' "${#failed_items[@]}"
+    }
+
+    run check_and_report
+
+    [[ "$output" == *"MDM enrollment: unknown (unrecognized profiles response)"* ]]
+    [[ "$output" == *"failure_count=0"* ]]
+}
+
+@test "failed enrollment query is unknown even if it prints enrolled" {
+    load_script
+    profiles() { printf 'MDM enrollment: Yes\n'; return 7; }
+    check_and_report() {
+        check_device_enrollment
+        printf 'failure_count=%s\n' "${#failed_items[@]}"
+    }
+
+    run check_and_report
+
+    [[ "$output" == *"MDM enrollment: unknown (profiles exited 7)"* ]]
+    [[ "$output" == *"failure_count=0"* ]]
+}
+
+prepare_package_checks() {
+    load_script
+    export TMPDIR="$BATS_TEST_TMPDIR"
+    PACKAGE_LOG="$BATS_TEST_TMPDIR/package-commands"
+    NPM_SOURCE="https://test:fixture-secret@packages.example.test/npm/"
+    NPM_CONFIG_STATUS=0
+    PIP_SOURCE="https://test:fixture-secret@packages.example.test/simple/"
+    ORIGINAL_STATUS=0
+    npm() {
+        printf 'npm %s\n' "$*" >> "$PACKAGE_LOG"
+        case "$*" in
+            "config get registry") echo "$NPM_SOURCE"; return "$NPM_CONFIG_STATUS" ;;
+            "view "*)
+                echo "fixture-secret diagnostic" >&2
+                return "$ORIGINAL_STATUS" ;;
+            *) return 99 ;;
+        esac
+    }
+    pip3() {
+        printf 'pip %s\n' "$*" >> "$PACKAGE_LOG"
+        case "$*" in
+            "config list")
+                printf "global.index-url='%s'\n" "$PIP_SOURCE"
+                [[ -z "${EXTRA_PIP_CONFIG:-}" ]] || printf '%s\n' "$EXTRA_PIP_CONFIG" ;;
+            *"index versions pip"*)
+                echo "fixture-secret diagnostic" >&2
+                return "$ORIGINAL_STATUS" ;;
+            *) return 99 ;;
+        esac
+    }
+    dotnet() {
+        printf 'dotnet %s\n' "$*" >> "$PACKAGE_LOG"
+        printf 'E https://test:fixture-secret@packages.example.test/nuget/\nD https://api.nuget.org/v3/index.json\n'
+    }
+    unset PIP_CONFIG_FILE EXTRA_PIP_CONFIG
+}
+
+report_package_checks() {
+    check_package_sources
+    printf 'failure_count=%s\n' "${#failed_items[@]}"
+    print_summary
+}
+
+@test "working package routes survive reruns without config writes or secret output" {
+    prepare_package_checks
+    check_twice() { report_package_checks; report_package_checks; }
+
+    run check_twice
+
+    [[ "$output" == *"failure_count=0"* ]]
+    [[ "$output" == *"existing configuration and a fresh cache"* ]]
+    [[ "$output" == *"1 enabled source(s) retained"* ]]
+    [[ "$output" != *"fixture-secret"* && "$output" != *"packages.example.test"* ]]
+    ! grep -E 'config (set|--user set)|--registry=|--index-url ' "$PACKAGE_LOG"
+    ! grep -E 'npm install|pip install|dotnet restore|login' "$PACKAGE_LOG"
+}
+
+@test "working public-style configuration is retained without claiming policy approval" {
+    prepare_package_checks
+    NPM_SOURCE="https://registry.npmjs.org/"
+    PIP_SOURCE="https://pypi.org/simple/"
+
+    run report_package_checks
+
+    [[ "$output" == *"failure_count=0"* ]]
+    [[ "$output" == *"do not prove policy approval"* ]]
+    ! grep -E 'config (set|--user set)|--registry=|--index-url ' "$PACKAGE_LOG"
+}
+
+@test "failed public routes report failures without changing settings on reruns" {
+    prepare_package_checks
+    NPM_SOURCE="https://registry.npmjs.org/"
+    PIP_SOURCE="https://pypi.org/simple/"
+    ORIGINAL_STATUS=1
+    check_twice() { report_package_checks; report_package_checks; }
+
+    run check_twice
+
+    [[ "$output" == *"failure_count=4"* ]]
+    [[ "$output" == *"metadata lookup failed (exit 1)"* ]]
+    [[ "$output" == *"No settings changed"* ]]
+    ! grep -E 'config (set|--user set)|--registry=|--index-url ' "$PACKAGE_LOG"
+}
+
+@test "failed custom routes are reported without replacement or leaking diagnostics" {
+    prepare_package_checks
+    ORIGINAL_STATUS=23
+
+    run report_package_checks
+
+    [[ "$output" == *"failure_count=2"* ]]
+    [[ "$output" == *"exit 23"* && "$output" == *"No settings changed"* ]]
+    [[ "$output" != *"fixture-secret"* ]]
+    ! grep -E 'config (set|--user set)|--registry=|--index-url ' "$PACKAGE_LOG"
+}
+
+@test "failed effective npm source never overwrites underlying user configuration" {
+    prepare_package_checks
+    NPM_SOURCE="https://registry.npmjs.org/"
+    ORIGINAL_STATUS=1
+    printf 'registry=https://private.example.test/npm/\n@private:registry=https://scoped.example.test/\n' > "$HOME/.npmrc"
+    cp "$HOME/.npmrc" "$BATS_TEST_TMPDIR/npmrc.before"
+    check_overrides() {
+        check_npm_source
+        check_npm_source
+        print_summary
+    }
+
+    run check_overrides
+
+    [[ "$output" == *"environment and project overrides"* ]]
+    [[ "$output" == *"No settings changed"* ]]
+    [[ "$output" != *"registry configured for this user"* ]]
+    ! grep 'npm config set' "$PACKAGE_LOG"
+    cmp "$HOME/.npmrc" "$BATS_TEST_TMPDIR/npmrc.before"
+}
+
+@test "unreadable npm configuration leaves settings untouched and reports unverified" {
+    prepare_package_checks
+    NPM_SOURCE="https://registry.npmjs.org/"
+    NPM_CONFIG_STATUS=7
+    check_and_report() { check_npm_source; print_summary; }
+
+    run check_and_report
+
+    [[ "$output" == *"registry inspection failed (exit 7)"* ]]
+    ! grep -E 'npm (config set|view)' "$PACKAGE_LOG"
+}
+
+@test "pip additional sources are retained and explicitly unverified" {
+    prepare_package_checks
+    EXTRA_PIP_CONFIG=":env:.extra-index-url='https://test:fixture-secret@other.example.test/'"
+
+    run report_package_checks
+
+    [[ "$output" == *"additional or command-specific sources"* ]]
+    [[ "$output" == *"failure_count=0"* && "$output" != *"fixture-secret"* ]]
+    ! grep 'index versions' "$PACKAGE_LOG"
+}
+
+@test "editor extension failures retain stdout stderr and native exit code" {
+    load_script
+    vs_code_extensions=("example.test-extension")
+    fake_editor() {
+        case "$1" in
+            --version|--list-extensions) return 0 ;;
+            --install-extension)
+                echo "Installing extension example.test-extension..."
+                echo "Request failed: example Marketplace error" >&2
+                return 23 ;;
+        esac
+    }
+    install_and_report() {
+        install_vscode_extensions "VS Code Insiders" fake_editor
+        printf 'failures=%s\n' "${failed_items[*]}"
+    }
+
+    run install_and_report
+
+    [[ "$output" == *"Failed: VS Code Insiders extension: example.test-extension (exit code: 23)"* ]]
+    [[ "$output" == *"Installing extension example.test-extension..."* ]]
+    [[ "$output" == *"Request failed: example Marketplace error"* ]]
+    [[ "$output" == *"failures=VS Code Insiders extension: example.test-extension"* ]]
+}
+
+@test "editor extension failures without output still report the exit code" {
+    load_script
+    vs_code_extensions=("example.test-extension")
+    fake_editor() {
+        case "$1" in
+            --version|--list-extensions) return 0 ;;
+            --install-extension) return 9 ;;
+        esac
+    }
+
+    run install_vscode_extensions "VS Code Insiders" fake_editor
+
+    [[ "$output" == *"Failed: VS Code Insiders extension: example.test-extension (exit code: 9)"* ]]
+}
+
+@test "editor built-in conflicts remain successful without failure diagnostics" {
+    load_script
+    vs_code_extensions=("example.test-extension")
+    fake_editor() {
+        case "$1" in
+            --version|--list-extensions) return 0 ;;
+            --install-extension)
+                echo "Cannot install built-in extension" >&2
+                return 1 ;;
+        esac
+    }
+    install_and_report() {
+        install_vscode_extensions "VS Code Insiders" fake_editor
+        printf 'failure_count=%s\n' "${#failed_items[@]}"
+    }
+
+    run install_and_report
+
+    [[ "$output" == *"Built-in: example.test-extension (VS Code Insiders), skipping..."* ]]
+    [[ "$output" == *"failure_count=0"* ]]
+    [[ "$output" != *"Cannot install"* && "$output" != *"Failed:"* ]]
+}
+
 @test "configure_vscode_theme merges theme into existing settings" {
     load_script
     load_config
@@ -34,6 +295,51 @@ load_script() {
     run jq -r '.["editor.fontSize"]' "$settings_file"
     [ "$status" -eq 0 ]
     [ "$output" = "14" ]
+}
+
+@test "theme parsing failures preserve JSONC and malformed settings and report failure" {
+    load_script
+    VSCODE_THEME='Light "2026"'
+    local settings_file="$HOME/Library/Application Support/Code/User/settings.json"
+    for settings in $'{\n// keep my settings\n"editor.fontSize": 14\n}' '{"broken":' '[]' '{} {}'; do
+        printf '%s\n' "$settings" > "$settings_file"
+        cp "$settings_file" "$BATS_TEST_TMPDIR/settings.before"
+        failed_items=()
+
+        if configure_vscode_theme "VS Code" "Code"; then
+            return 1
+        fi
+
+        cmp "$settings_file" "$BATS_TEST_TMPDIR/settings.before"
+        [[ "${failed_items[*]}" == *"settings could not be parsed; original preserved"* ]]
+        [[ "$(find "$(dirname "$settings_file")" -name 'settings.json.*' | wc -l | tr -d ' ')" == 0 ]]
+    done
+}
+
+@test "theme replacement failure preserves existing settings and cleans temporary output" {
+    load_script
+    VSCODE_THEME="Light 2026"
+    local settings_file="$HOME/Library/Application Support/Code/User/settings.json"
+    printf '{"editor.fontSize":14}\n' > "$settings_file"
+    cp "$settings_file" "$BATS_TEST_TMPDIR/settings.before"
+    mv() { return 1; }
+
+    if configure_vscode_theme "VS Code" "Code"; then
+        return 1
+    fi
+
+    cmp "$settings_file" "$BATS_TEST_TMPDIR/settings.before"
+    [[ "${failed_items[*]}" == *"settings could not be written; original preserved"* ]]
+    [[ "$(find "$(dirname "$settings_file")" -name 'settings.json.*' | wc -l | tr -d ' ')" == 0 ]]
+}
+
+@test "theme output uses JSON escaping when creating settings" {
+    load_script
+    VSCODE_THEME='Light "2026"'
+
+    configure_vscode_theme "VS Code" "Code"
+
+    [[ "$(jq -r '.["workbench.colorTheme"]' "$HOME/Library/Application Support/Code/User/settings.json")" == "$VSCODE_THEME" ]]
 }
 
 @test "register_mcp_servers writes config for http servers" {
@@ -688,8 +994,25 @@ stub_gh_auth() {
 #!/bin/bash
 echo "$* [GH_TOKEN=${GH_TOKEN-unset} GITHUB_TOKEN=${GITHUB_TOKEN-unset}]" >> "$GH_LOG"
 if [[ "$1 $2" == "auth status" ]]; then
+    [[ "${GH_NEEDS_LOGIN:-false}" == "true" && ! -f "$GH_LOG.logged-in" ]] && exit 1
     echo "  - Token scopes: $GH_SCOPES"
+    if [[ " $* " != *" --active "* ]]; then
+        echo "  - Token scopes: 'codespace', 'delete_repo', 'project', 'workflow'"
+        exit 1 # An inactive account is expired.
+    fi
+elif [[ "$1 $2" == "auth login" ]]; then
+    [[ "${GH_LOGIN_FAIL:-false}" == "true" ]] && exit 1
+    touch "$GH_LOG.logged-in"
+elif [[ "$1 $2" == "auth refresh" ]]; then
+    exit "${GH_REFRESH_EXIT:-0}"
+elif [[ "$1 $2" == "api user" ]]; then
+    [[ "${GH_API_FAIL:-false}" == "true" ]] && { echo "API unavailable" >&2; exit 1; }
+    echo "octobooth-1"
+elif [[ "$1" == "api" && "$2" == "repos/${GH_DENIED_REPO:-none}" ]]; then
+    echo "Repository not accessible" >&2
+    exit 1
 fi
+exit 0
 STUB
     chmod +x "$BATS_TEST_TMPDIR/bin/gh"
 }
@@ -720,6 +1043,141 @@ STUB
 
     run grep -F 'auth refresh' "$GH_LOG"
     [ "$status" -ne 0 ]
+}
+
+@test "authenticate_gh reuses the active login despite an expired inactive account" {
+    stub_gh_auth
+    export GH_SCOPES="'codespace', 'delete_repo', 'project', 'repo', 'workflow'"
+    load_script
+    load_config
+    install_gh_extensions() { echo extensions >> "$GH_LOG"; }
+
+    authenticate_gh < /dev/null
+
+    ! grep -E 'auth (login|refresh)' "$GH_LOG"
+    grep -Fx 'extensions' "$GH_LOG"
+    [ "${#failed_items[@]}" -eq 0 ]
+}
+
+@test "authenticate_gh requests web HTTPS login with all configured scopes when needed" {
+    stub_gh_auth
+    export GH_NEEDS_LOGIN=true GH_SCOPES="'codespace', 'delete_repo', 'project', 'workflow'"
+    load_script
+    load_config
+    install_gh_extensions() { echo extensions >> "$GH_LOG"; }
+
+    authenticate_gh
+
+    grep -F 'auth login --web --git-protocol https -h github.com -s codespace,delete_repo,project,workflow' "$GH_LOG"
+    ! grep -F 'auth refresh' "$GH_LOG"
+    grep -Fx 'extensions' "$GH_LOG"
+}
+
+@test "authenticate_gh records cancelled login without installing extensions" {
+    stub_gh_auth
+    export GH_NEEDS_LOGIN=true GH_LOGIN_FAIL=true
+    load_script
+    load_config
+    install_gh_extensions() { echo extensions >> "$GH_LOG"; }
+
+    authenticate_gh
+
+    [ "${failed_items[0]}" = "GitHub CLI authentication" ]
+    ! grep -E 'auth refresh|^extensions$' "$GH_LOG"
+}
+
+@test "authenticate_gh records a rejected scope upgrade" {
+    stub_gh_auth
+    export GH_SCOPES="'codespace', 'repo'" GH_REFRESH_EXIT=1
+    load_script
+    load_config
+    install_gh_extensions() { :; }
+
+    authenticate_gh
+
+    [ "${#failed_items[@]}" -eq 1 ]
+    [[ "${failed_items[0]}" == "gh auth scopes:"* ]]
+}
+
+@test "account reminder does not open a browser or wait for input" {
+    load_script
+    open() { echo unexpected-browser; return 1; }
+    read() { echo unexpected-prompt; return 1; }
+
+    run show_github_account_reminder < /dev/null
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"separate sign-ins"* ]]
+    [[ "$output" != *"unexpected-"* ]]
+}
+
+prepare_readiness_check() {
+    stub_gh_auth
+    export GH_SCOPES="'codespace', 'delete_repo', 'project', 'workflow'"
+    load_script
+    load_config
+    profiles() { printf 'MDM enrollment: Yes (User Approved)\n'; }
+    check_package_sources() { :; }
+    brew_casks=("vlc")
+    brew_formulas=("gh")
+    brew() { [[ "${*: -1}" != "${MISSING_PACKAGE:-none}" ]]; }
+    find_node_bin() { echo "/example/node"; }
+    local repo
+    for repo in repo-setup-scripts tailspin-toys security-octo-supply; do
+        mkdir -p "$HOME/repos/$repo"
+        echo "gitdir: /example/worktree" > "$HOME/repos/$repo/.git"
+    done
+    mkdir -p "$COPILOT_HOME/extensions/demo-launcher" "$HOME/repos/repo-setup-scripts/.github/extensions/demo-launcher"
+    echo "// loader" > "$COPILOT_HOME/extensions/demo-launcher/extension.mjs"
+    echo "// launcher" > "$HOME/repos/repo-setup-scripts/.github/extensions/demo-launcher/extension.mjs"
+}
+
+report_readiness_check() {
+    check_setup_readiness
+    printf 'failure_count=%s\n' "${#failed_items[@]}"
+    printf 'failures=%s\n' "${failed_items[*]}"
+}
+
+@test "readiness reports the stored account and checks repository access without prompting" {
+    prepare_readiness_check
+    export GH_TOKEN=env-token GITHUB_TOKEN=env-token
+
+    run report_readiness_check
+
+    [[ "$output" == *"GitHub CLI account: octobooth-1"* ]]
+    [[ "$output" == *"failure_count=0"* ]]
+    grep -F 'api repos/octobooth/tailspin-toys [GH_TOKEN=unset GITHUB_TOKEN=unset]' "$GH_LOG"
+    ! grep -E 'auth (login|refresh)|env-token' "$GH_LOG"
+}
+
+@test "readiness aggregates missing packages scopes repositories and launcher files" {
+    prepare_readiness_check
+    export MISSING_PACKAGE=vlc GH_SCOPES="'repo'" GH_DENIED_REPO=octobooth/tailspin-toys
+    rm "$HOME/repos/security-octo-supply/.git"
+    : > "$COPILOT_HOME/extensions/demo-launcher/extension.mjs"
+
+    run report_readiness_check
+
+    [[ "$output" == *"readiness: Installed package: vlc"* ]]
+    [[ "$output" == *"readiness: GitHub CLI scopes: codespace,delete_repo,project,workflow"* ]]
+    [[ "$output" == *"readiness: Repository access: octobooth/tailspin-toys"* ]]
+    [[ "$output" == *"readiness: Local checkout: octobooth/security-octo-supply"* ]]
+    [[ "$output" == *"readiness: Demo Launcher file:"* ]]
+    [[ "$output" == *"Repository not accessible"* ]]
+    [[ "$output" == *"failure_count=5"* ]]
+}
+
+@test "readiness records identity lookup failures without claiming repository access" {
+    prepare_readiness_check
+    export GH_API_FAIL=true
+
+    run report_readiness_check
+
+    [[ "$output" == *"API unavailable"* ]]
+    [[ "$output" == *"readiness: GitHub CLI account and repository access"* ]]
+    [[ "$output" == *"failure_count=1"* ]]
+    [[ "$output" != *"GitHub CLI account: octobooth-1"* ]]
+    ! grep -F 'api repos/' "$GH_LOG"
 }
 
 @test "install_demo_launcher skips when repo-setup-scripts has no Demo Launcher" {
@@ -1199,10 +1657,12 @@ STUB
 @test "set_default_browser_chrome skips when Chrome is already the default" {
     stub_defaultbrowser chrome
     load_script
+    open() { echo unexpected-browser; return 1; }
 
     run set_default_browser_chrome < /dev/null
     [ "$status" -eq 0 ]
     [[ "$output" == *"already the default browser"* ]] || false
+    [[ "$output" != *"unexpected-browser"* ]]
 
     run grep -Fx "chrome" "$DEFAULTBROWSER_LOG"
     [ "$status" -ne 0 ]
@@ -1211,21 +1671,36 @@ STUB
 @test "set_default_browser_chrome switches the default to Chrome" {
     stub_defaultbrowser safari
     load_script
+    open() { echo "$*" >> "$DEFAULTBROWSER_LOG"; }
 
     run set_default_browser_chrome <<< ""
     [ "$status" -eq 0 ]
     [[ "$output" == *"Chrome is now the default browser"* ]] || false
     [ "$(cat "$DEFAULT_BROWSER_FILE")" = "chrome" ]
+    grep -Fx -- "-a Google Chrome" "$DEFAULTBROWSER_LOG"
 }
 
 @test "set_default_browser_chrome reports failure when the dialog is declined" {
     stub_defaultbrowser safari
     export ACCEPT_DIALOG=false
     load_script
+    open() { :; }
 
     run set_default_browser_chrome <<< ""
     [ "$status" -eq 1 ]
     [[ "$output" == *"System Settings"* ]] || false
+}
+
+@test "set_default_browser_chrome stops if Chrome cannot launch" {
+    stub_defaultbrowser safari
+    load_script
+    open() { return 1; }
+
+    run set_default_browser_chrome < /dev/null
+
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"Could not launch Chrome"* ]]
+    ! grep -Fx "chrome" "$DEFAULTBROWSER_LOG"
 }
 
 # Stubs dockutil, defaults, and killall with a Dock backed by files, and

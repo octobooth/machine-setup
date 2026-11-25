@@ -58,9 +58,9 @@ jobs:
       - name: Install shellcheck
         run: sudo apt-get update && sudo apt-get install --yes shellcheck
       - name: Lint bash scripts
-        run: shellcheck --severity=warning -x setup.sh install-demo-launcher.sh
+        run: shellcheck --severity=warning -x setup.sh install-demo-launcher.sh bootstrap.sh
       - name: Parse bash scripts
-        run: bash -n setup.sh && bash -n install-demo-launcher.sh
+        run: bash -n setup.sh && bash -n install-demo-launcher.sh && bash -n bootstrap.sh
 
   test-bash:
     name: Test bash
@@ -87,10 +87,11 @@ jobs:
         run: |
           Invoke-ScriptAnalyzer -Path .\setup.ps1 -Settings .\PSScriptAnalyzerSettings.psd1
           Invoke-ScriptAnalyzer -Path .\install-demo-launcher.ps1 -Settings .\PSScriptAnalyzerSettings.psd1
+          Invoke-ScriptAnalyzer -Path .\bootstrap.ps1 -Settings .\PSScriptAnalyzerSettings.psd1
       - name: Parse PowerShell scripts
         shell: pwsh
         run: |
-          foreach ($file in 'setup.ps1', 'install-demo-launcher.ps1') {
+          foreach ($file in 'setup.ps1', 'install-demo-launcher.ps1', 'bootstrap.ps1') {
             $errors = $null
             [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD $file), [ref]$null, [ref]$errors) | Out-Null
             if ($errors.Count -gt 0) {

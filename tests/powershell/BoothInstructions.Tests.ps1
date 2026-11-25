@@ -29,12 +29,13 @@ Describe 'Copilot booth instructions' {
         $script:BoothInstructionsSource = $script:originalSource
     }
 
-    It 'source steers away from npm and pip' {
+    It 'source requires approved package sources and retains cloud alternatives' {
         $text = [System.IO.File]::ReadAllText($script:BoothInstructionsSource)
         $text | Should -Match 'npm install'
         $text | Should -Match 'pip install'
         $text | Should -Match 'index\.html'
         $text | Should -Match 'Cloud session'
+        $text | Should -Match 'Never switch to a public registry after a failure'
     }
 
     It 'creates the file and its folder as UTF-8 without a BOM' {
